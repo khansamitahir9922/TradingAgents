@@ -319,8 +319,12 @@ class TradingAgentsGraph:
         try:
             # Another run settling the same log does the work; this one goes on.
             done = self.settle_all_pending(wait=False)
-            if done.failed:
-                note = (f"{len(done.failed)} past decision(s) could not be settled this run "
+            # Only this ticker's failures belong in its report: another ticker's
+            # decision that cannot settle (a delisted symbol) would otherwise be
+            # noted in every report after it. Each failure is still logged.
+            failed = [f for f in done.failed if f[0] == state["company_of_interest"]]
+            if failed:
+                note = (f"{len(failed)} past decision(s) could not be settled this run "
                         "and stay pending.")
         except Exception as exc:
             logger.warning("Settling past decisions failed: %s", exc)

@@ -366,6 +366,31 @@ def test_the_run_settles_other_tickers_due_decisions_too(tmp_path, monkeypatch, 
 
 
 @pytest.mark.unit
+def test_another_tickers_unsettleable_decision_is_not_noted_in_this_report(tmp_path, monkeypatch, offline):
+    """A delisted ticker's decision fails to settle on every run; only a report on
+    that ticker says so, not every unrelated report after it."""
+    from tradingagents.dataflows.errors import VendorUnavailableError
+    from tradingagents.memory import settlement
+
+    graph = _graph(tmp_path, monkeypatch, ScriptedModel(structured=True))
+    graph.memory_log.store_decision("TWTR", "2026-01-02", "Rating: Buy\n\nBuy TWTR.")
+
+    def delisted(*args, **kwargs):
+        # What get_closes raises for a delisted symbol: yfinance's YFTzMissingError via yf_retry.
+        raise VendorUnavailableError("Yahoo Finance request failed: YFTzMissingError")
+
+    monkeypatch.setattr(settlement, "get_closes", delisted)
+
+    nvda = graph._memory_step({"company_of_interest": "NVDA", "trade_date": "2026-01-20"})
+    twtr = graph._memory_step({"company_of_interest": "TWTR", "trade_date": "2026-01-20"})
+
+    assert nvda["memory_note"] == ""
+    assert "1 past decision(s) could not be settled" in twtr["memory_note"]
+    entry = next(e for e in graph.memory_log.load_entries() if e["ticker"] == "TWTR")
+    assert entry["pending"]                     # still retried next run, as before
+
+
+@pytest.mark.unit
 def test_the_memory_step_reads_lessons_as_of_the_trade_date_and_settles_once(tmp_path, monkeypatch, offline):
     """A past-dated run reads only lessons known by its date (#1251); a resumed run
     that re-runs the step settles nothing twice."""
