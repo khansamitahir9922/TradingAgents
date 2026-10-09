@@ -1,0 +1,178 @@
+﻿...............................................................sss...... [  5%]
+........................s............................................... [ 11%]
+........F............................................................... [ 17%]
+........................................................................ [ 22%]
+................................................................ [ 27%]
+..................................................................... [ 33%]
+........................................................................ [ 39%]
+........................................................................ [ 44%]
+........................................................ [ 49%]
+........................................................................ [ 54%]
+........................................................................ [ 60%]
+........................................................................ [ 66%]
+........................................................................ [ 71%]
+........................................................................ [ 77%]
+........................................................................ [ 83%]
+......................................F................................. [ 89%]
+........................................................................ [ 94%]
+...................................................................      [100%]
+================================== FAILURES ===================================
+____________ test_every_command_is_registered_when_run_as_a_module ____________
+
+    @pytest.mark.unit
+    def test_every_command_is_registered_when_run_as_a_module():
+        """README documents `python -m cli.main`, which executes the file top to
+        bottom, so a command defined after the __main__ block would not exist."""
+        import re
+        import subprocess
+        import sys
+
+        out = subprocess.run([sys.executable, "-m", "cli.main", "backtest", "--help"],
+                             capture_output=True, text=True, timeout=120)
+        assert out.returncode == 0, out.stderr[-400:]
+        # Where the terminal takes colour, help styles each option and splits
+        # "--start" across escape sequences, so read the text without them.
+>       plain = re.sub(r"\x1b\[[0-9;]*m", "", out.stdout)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_cli_commands.py:95:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+pattern = '\\x1b\\[[0-9;]*m', repl = '', string = None, count = 0, flags = 0
+
+    def sub(pattern, repl, string, count=0, flags=0):
+        """Return the string obtained by replacing the leftmost
+        non-overlapping occurrences of the pattern in string by the
+        replacement repl.  repl can be either a string or a callable;
+        if a string, backslash escapes in it are processed.  If it is
+        a callable, it's passed the Match object and must return
+        a replacement string to be used."""
+>       return _compile(pattern, flags).sub(repl, string, count)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: expected string or bytes-like object, got 'NoneType'
+
+..\AppData\Local\Programs\Python\Python311\Lib\re\__init__.py:185: TypeError
+_____________ test_yfinance_keeps_its_cache_out_of_the_users_home _____________
+
+    @pytest.mark.unit
+    def test_yfinance_keeps_its_cache_out_of_the_users_home():
+        """yfinance caches each symbol's time zone on disk, in the home directory by default."""
+        from pathlib import Path
+
+        from yfinance.cache import _TzDBManager
+
+>       assert not Path(_TzDBManager.get_location()).is_relative_to(Path.home())
+E       AssertionError: assert not True
+E        +  where True = is_relative_to(WindowsPath('C:/Users/LOQ'))
+E        +    where is_relative_to = WindowsPath('C:/Users/LOQ/AppData/Local/Temp/tradingagents-tests-yf-n3c8di98').is_relative_to
+E        +      where WindowsPath('C:/Users/LOQ/AppData/Local/Temp/tradingagents-tests-yf-n3c8di98') = <class 'pathlib.Path'>('C:\\Users\\LOQ\\AppData\\Local\\Temp\\tradingagents-tests-yf-n3c8di98')
+E        +        where 'C:\\Users\\LOQ\\AppData\\Local\\Temp\\tradingagents-tests-yf-n3c8di98' = get_location()
+E        +          where get_location = <class 'yfinance.cache._TzDBManager'>.get_location
+E        +    and   WindowsPath('C:/Users/LOQ') = home()
+E        +      where home = <class 'pathlib.Path'>.home
+
+tests\test_suite_isolation.py:42: AssertionError
+============================== warnings summary ===============================
+tests/test_anthropic_effort.py::TestEffortGate::test_unsupported_models_do_not_receive_effort[claude-haiku-5-0]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-haiku-5-0' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_unsupported_models_do_not_receive_effort[claude-haiku-4-7-preview]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-haiku-4-7-preview' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_unsupported_models_do_not_receive_effort[claude-sonnet-4-5]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-sonnet-4-5' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_unsupported_models_do_not_receive_effort[claude-sonnet-4-0]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-sonnet-4-0' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_current_opus_and_sonnet_receive_effort[claude-opus-4-5]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-opus-4-5' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_current_opus_and_sonnet_receive_effort[claude-opus-4-6]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-opus-4-6' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_current_opus_and_sonnet_receive_effort[claude-sonnet-4-6]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-sonnet-4-6' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_future_opus_sonnet_inherit_effort_via_pattern[claude-opus-5-0]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-opus-5-0' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_future_opus_sonnet_inherit_effort_via_pattern[claude-sonnet-5-0]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-sonnet-5-0' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_claude_5_family_receives_effort[claude-mythos-5]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-mythos-5' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_mythos_preview_receives_effort
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-mythos-preview' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_unknown_anthropic_model_does_not_receive_effort
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-experimental-x' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_cli_commands.py::test_every_command_is_registered_when_run_as_a_module
+  C:\Users\LOQ\TradingAgents\.venv\Lib\site-packages\_pytest\threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-2 (_readerthread)
+
+  Traceback (most recent call last):
+    File "C:\Users\LOQ\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+      self.run()
+    File "C:\Users\LOQ\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+      self._target(*self._args, **self._kwargs)
+    File "C:\Users\LOQ\AppData\Local\Programs\Python\Python311\Lib\subprocess.py", line 1599, in _readerthread
+      buffer.append(fh.read())
+                    ^^^^^^^^^
+    File "C:\Users\LOQ\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 23, in decode
+      return codecs.charmap_decode(input,self.errors,decoding_table)[0]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  UnicodeDecodeError: 'charmap' codec can't decode byte 0x90 in position 619: character maps to <undefined>
+
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+tests/test_google_thinking_level.py::test_latest_alias_remaps_minimal_to_low[gemini-flash-latest]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\google_client.py:46: RuntimeWarning: Model 'gemini-flash-latest' is not in the known model list for provider 'google'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_google_thinking_level.py::test_latest_alias_remaps_minimal_to_low[gemini-pro-latest]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\google_client.py:46: RuntimeWarning: Model 'gemini-pro-latest' is not in the known model list for provider 'google'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_ollama_base_url.py::test_resolver_does_not_affect_other_providers
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\openai_client.py:279: RuntimeWarning: Model 'm' is not in the known model list for provider 'xai'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_ollama_base_url.py::test_resolver_does_not_affect_other_providers
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\openai_client.py:279: RuntimeWarning: Model 'm' is not in the known model list for provider 'deepseek'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_openai_reasoning_effort.py::test_non_reasoning_model_drops_effort
+tests/test_temperature_config.py::TestTemperatureForwarding::test_temperature_reaches_client_when_set[openai-gpt-4.1]
+tests/test_temperature_config.py::TestTemperatureForwarding::test_temperature_omitted_leaves_provider_default
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\openai_client.py:279: RuntimeWarning: Model 'gpt-4.1' is not in the known model list for provider 'openai'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_temperature_config.py::TestTemperatureForwarding::test_temperature_reaches_client_when_set[deepseek-deepseek-chat]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\openai_client.py:279: RuntimeWarning: Model 'deepseek-chat' is not in the known model list for provider 'deepseek'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_api_key_env.py:159: POSIX file modes
+SKIPPED [1] tests\test_api_key_env.py:173: POSIX file modes
+SKIPPED [1] tests\test_api_key_env.py:183: POSIX file modes
+SKIPPED [1] tests\test_bedrock_provider.py:74: could not import 'langchain_aws': No module named 'langchain_aws'
+FAILED tests/test_cli_commands.py::test_every_command_is_registered_when_run_as_a_module
+FAILED tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home
+2 failed, 1258 passed, 4 skipped, 1 deselected, 21 warnings, 99 subtests passed in 29.84s

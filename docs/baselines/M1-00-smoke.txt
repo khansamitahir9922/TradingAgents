@@ -1,0 +1,9 @@
+$ py -3.11 -m venv <scratch>/smoke-baseline
+$ <scratch>/smoke-baseline/Scripts/python.exe -m pip install .
+
+[notice] A new release of pip is available: 24.0 -> 26.2.1
+[notice] To update, run: C:\Users\LOQ\AppData\Local\Temp\claude\c--Users-LOQ-TradingAgents\225abe54-166d-446e-bbb1-bce4e1695dc3\scratchpad\smoke-baseline\Scripts\python.exe -m pip install --upgrade pip
+pip exit: 0
+$ <scratch>/smoke-baseline/Scripts/python.exe -c "import tradingagents, cli.main; print('clean-install import OK')"   (run from the repository root, as in CI)
+clean-install import OK
+import exit: 0

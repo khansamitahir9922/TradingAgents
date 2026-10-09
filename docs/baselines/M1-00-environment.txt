@@ -1,0 +1,6 @@
+commit: 9486f05c554b9a544b15fecc7d9bb0f2d58cb2d6
+branch: main
+os: Microsoft Windows [Version 10.0.26200.9457]
+python: Python 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+pip: pip 26.2.1 from C:\Users\LOQ\TradingAgents\.venv\Lib\site-packages\pip (python 3.11)
+recorded_at_utc: 2026-10-09T06:04:32Z

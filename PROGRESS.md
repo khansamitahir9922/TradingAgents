@@ -8,13 +8,13 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 | | |
 |---|---|
-| **Milestone** | **M0 Architecture: complete (locally).** Codex's review of the M0 commit passed with no blocking findings, and the owner approved the merge. |
-| **`main`** | Local `main` was fast-forwarded to **`906ae85`** (`docs: record Architecture v1.0 and M0 working documents`). It's 2 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **M1** | **Not started. M1-00 is next** (package skeleton and recorded test baseline), on `m1/M1-00-skeleton` from `main`, when the owner starts it. |
-| **Open branch** | `docs/m0-closeout`, from `main` at `906ae85`. It changes **two files only**: this status update and the PRD's "review draft" wording. **Codex review passed (2026-10-09); committed with the owner's approval; awaiting review of that commit and the owner-approved merge.** |
-| **Other branches** | `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
-| **Runtime code** | Unchanged. M0 and this follow-up change documents only. |
-| **Runtime tests** | **Not run** for M0 or this follow-up, because only documents changed. See "Last check results". |
+| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress**, starting with M1-00. |
+| **`main`** | Local `main` is at **`9486f05`** (`docs: update M0 handoff and record future ML proposals`): the M0 commit `906ae85` plus the reviewed close-out commit, fast-forwarded with the owner's approval. It's 3 commits ahead of `origin/main`. **Nothing has been pushed.** |
+| **Current task** | **M1-00**: package skeleton, layering tests and recorded test baseline. Branch `m1/M1-00-skeleton`, from `main` at `9486f05`. **Implemented and checked; committed with the owner's approval; awaiting Codex review of the commit**, then the owner-approved merge. |
+| **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
+| **Other branches** | `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
+| **Runtime code** | `tradingagents/` and `cli/` unchanged. M1-00 adds only the empty `investment_engine` package, its tests, the packaging line and the CI smoke-import line. |
+| **Runtime tests** | **Run for M1-00.** The baseline was recorded and compared; see "Last check results" and `docs/baselines/M1-00-baseline.md`. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -29,8 +29,8 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **`docs/m0-closeout`** (`PROGRESS.md` and `docs/PRD.md` only): Codex review passed; committed with the owner's approval. Next: Codex reviews the commit, then the owner approves the merge into `main`.
-2. **M1-00:** package skeleton and recorded test baseline, on `m1/M1-00-skeleton` from `main`, when the owner starts it.
+1. **Codex reviews the M1-00 commit** on `m1/M1-00-skeleton`, then the owner approves the merge into `main`. Push only if the owner asks.
+2. Then **M1-01 (Clock)**, after M1-00 is merged. It isn't started.
 
 **Known stale labels, left for a later update.** AGENTS.md, CLAUDE.md, the design principles, the task README, the ADR records and the roadmap's M0 table still say "awaiting review of the M0 commit and merge". They describe the state before M0-10 and M0-11. This file is the current record.
 
@@ -89,7 +89,7 @@ Report directional accuracy against the base rate, and the information coefficie
 ## Open issues and decisions
 | Item | Owner | Needed by |
 |---|---|---|
-| OPEN-01: package name (proposed `investment_engine`) | Owner | M1-00 |
+| ~~OPEN-01: package name~~ **Resolved:** `investment_engine`, confirmed by the owner on 2026-10-09 | Owner | Done |
 | Which independent sources count as anchors for as-traded prices, volumes and dividends | Codex and owner, at spec review | M1-12 |
 | The per-field Yahoo determination results | Determined in M1-12 | M1-12 / M1-13 |
 | How far back yfinance hourly history reaches | Measured in M1-13 | M1-13 |
@@ -105,17 +105,40 @@ Report directional accuracy against the base rate, and the information coefficie
 | Check | Result | Evidence |
 |---|---|---|
 | Runtime test suite | **Not run** for the M0 documentation work (no runtime changes) | — |
-| Earlier full-suite run (before M0, on the `559f8c2` work) | Two Windows failures were **reported** in that session: `test_yfinance_keeps_its_cache_out_of_the_users_home`, and `test_every_command_is_registered_when_run_as_a_module` (PowerShell only). **Reported, not established:** no saved output, and not reproduced by Codex. | None saved. M1-00 records the baseline under `docs/baselines/`. |
+| **M1-00 baseline** (`main` at `9486f05`, before any change) | **Git Bash:** 1 failed, 1259 passed, 4 skipped, 1 deselected. **PowerShell:** 2 failed, 1258 passed, 4 skipped, 1 deselected. `ruff check .` passed. Clean-install smoke passed. Both earlier-reported failures are now **established, with saved output**:<br>• `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home` fails in **both shells** (the temp folder is inside the home folder);<br>• `tests/test_cli_commands.py::test_every_command_is_registered_when_run_as_a_module` fails in **PowerShell only** (a cp1252 `UnicodeDecodeError` in the subprocess output). | `docs/baselines/M1-00-baseline.md` and the raw `M1-00-*.txt` outputs |
+| **M1-00 after the change** (`m1/M1-00-skeleton`) | New tests: `tests/engine/test_layering.py`, **5 passed**. **Git Bash:** 1 failed, **1264 passed** (+5), 4 skipped, 1 deselected; the failing set is identical to the baseline. **PowerShell:** 2 failed, **1263 passed** (+5), 4 skipped, 1 deselected; the failing set is identical. **No new failures.** `ruff check .` passed. Clean-install smoke, with the extended import `tradingagents, cli.main, investment_engine`, passed from the repository root as in CI. From outside the repository, `investment_engine` imports from the venv's `site-packages`, which proves it's packaged. | `docs/baselines/M1-00-after-*.txt` |
+| Not reproducible locally | Python 3.12 and 3.13; the CI `TZ=America/New_York` job. The optional Python 3.14 run wasn't done. | Recorded in the baseline |
 | Documentation checks (2026-10-08 / 09) | No trailing whitespace in `docs/`, `architecture/adr/`, `AGENTS.md`, `CLAUDE.md` or `PROGRESS.md`. Every M1 spec has the required sections. The shared-rules blocks in AGENTS.md and CLAUDE.md are identical. The staged architecture files are unchanged. | Script checks by Claude Code, 2026-10-08 |
 | Codex document review | **Passed (2026-10-09).** No blocking issues in the reviewed M0 documents. Codex verified the volume-evidence and replay-ordering fixes, the document structure, dependencies, whitespace, the unchanged SVG and runtime files, and that `.env` and `.claude/` weren't staged. Runtime tests weren't run. | Codex review, relayed by the owner |
 | Pre-commit checks | The staged file list matches the owner-approved set; `git diff --cached --check` is clean | Claude Code, 2026-10-09 |
 | Codex review of commit `906ae85` | **Passed (2026-10-09).** All 38 committed files are the approved documentation; the SVG, runtime code, tests and CI files are unchanged; `.env` and `.claude/` are excluded; the shared rules match. It noted one non-blocking item, the PRD's "review draft" wording, which is fixed on `docs/m0-closeout` (Codex review passed, 2026-10-09). | Codex review, relayed by the owner |
 | Codex review of `docs/m0-closeout` | **Passed (2026-10-09).** Only the two approved files changed; the architecture, SVG, roadmap, M1 specs and runtime files are unchanged; whitespace checks pass. Runtime tests weren't run. | Codex review, relayed by the owner |
-| CI | Not yet run (nothing pushed) | — |
+| CI | **Not yet run** (nothing pushed) | — |
 
 ---
 
 ## Session log
+
+### 2026-10-09: Claude Code (M1-00: package skeleton and baseline)
+- **The owner confirmed OPEN-01 (`investment_engine`) and approved M1-00**, including its local task commit.
+- **Baseline first,** on `main` at `9486f05`, before any change: environment, dev install, pytest in Git Bash and PowerShell, ruff and the clean-install smoke check, all saved in `docs/baselines/`. Both earlier-reported Windows failures were reproduced and are now established, environment-specific failures. They're **not fixed** in this task (out of scope); each would need its own owner-approved task.
+- **Tests first.** `tests/engine/test_layering.py` has 5 tests:
+  - the scan finds the package (so the rules can't pass vacuously);
+  - no `tradingagents` or `cli` imports;
+  - `yfinance` only under `market/importers/`;
+  - `pyarrow` and `duckdb` only under `market/store/`;
+  - the package imports, with `__version__ == "0.0.0"`.
+
+  Before the implementation, the coverage and version tests failed for the right reason.
+- **Implementation:**
+  - `investment_engine/__init__.py`, with `__version__` only;
+  - `pyproject.toml` packages `include` extended with `investment_engine*`;
+  - the CI smoke import extended with `investment_engine`.
+
+  The package name is recorded in `docs/tasks/M1-00.md`.
+- **Checks:** all rerun; no new failures (see "Last check results"). One transient network retry during the smoke install was logged; the install succeeded.
+- **Unresolved:** the two baseline failures above. CI not yet run.
+
 
 ### 2026-10-09: Claude Code (M0 merge and close-out documentation)
 - **M0-10 and M0-11.** Codex's review of `906ae85` passed. With the owner's approval, local `main` was fast-forwarded to `906ae85` (no new commit, nothing pushed, no branches deleted). M0 is complete.

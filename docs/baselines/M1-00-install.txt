@@ -1,0 +1,117 @@
+Obtaining file:///C:/Users/LOQ/TradingAgents
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: langchain-core>=1.6.5 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (1.6.7)
+Requirement already satisfied: langchain-anthropic>=1.7.4 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (1.7.5)
+Requirement already satisfied: langchain-google-genai>=4.4.0 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (4.4.0)
+Requirement already satisfied: langchain-openai>=1.6.6 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (1.6.7)
+Requirement already satisfied: langgraph>=1.2.12 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (1.2.14)
+Requirement already satisfied: langgraph-checkpoint-sqlite>=3.1.1 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (3.1.1)
+Requirement already satisfied: markdown-it-py>=4.0 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (4.2.0)
+Requirement already satisfied: pandas>=3.0.6 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (3.0.6)
+Requirement already satisfied: python-dotenv>=1.0.0 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (1.2.4)
+Requirement already satisfied: pytz>=2025.2 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (2026.5)
+Requirement already satisfied: questionary>=2.1.0 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (2.1.1)
+Requirement already satisfied: requests>=2.32.4 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (2.34.2)
+Requirement already satisfied: rich>=14.0.0 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (15.0.0)
+Requirement already satisfied: typer>=0.21.0 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (0.27.2)
+Requirement already satisfied: stockstats>=0.6.5 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (0.6.9)
+Requirement already satisfied: typing-extensions>=4.14.0 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (4.16.0)
+Requirement already satisfied: yfinance>=1.7.0 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (1.7.0)
+Collecting ruff>=0.16 (from tradingagents==0.6.0)
+  Downloading ruff-0.16.10-py3-none-win_amd64.whl.metadata (21 kB)
+Requirement already satisfied: pytest>=8.0 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (9.1.1)
+Requirement already satisfied: pytest-subtests>=0.13 in .\.venv\Lib\site-packages (from tradingagents==0.6.0) (0.15.0)
+Requirement already satisfied: anthropic<2.0.0,>=0.120.0 in .\.venv\Lib\site-packages (from langchain-anthropic>=1.7.4->tradingagents==0.6.0) (1.11.0)
+Requirement already satisfied: pydantic<3.0.0,>=2.7.4 in .\.venv\Lib\site-packages (from langchain-anthropic>=1.7.4->tradingagents==0.6.0) (2.13.5)
+Requirement already satisfied: anyio<5,>=4.1.0 in .\.venv\Lib\site-packages (from anthropic<2.0.0,>=0.120.0->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (4.15.1)
+Requirement already satisfied: docstring-parser<1,>=0.15 in .\.venv\Lib\site-packages (from anthropic<2.0.0,>=0.120.0->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (0.18.0)
+Requirement already satisfied: httpx2<3,>=2.0.0 in .\.venv\Lib\site-packages (from anthropic<2.0.0,>=0.120.0->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (2.13.1)
+Requirement already satisfied: jiter<1,>=0.4.0 in .\.venv\Lib\site-packages (from anthropic<2.0.0,>=0.120.0->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (0.17.0)
+Requirement already satisfied: sniffio<2,>=1 in .\.venv\Lib\site-packages (from anthropic<2.0.0,>=0.120.0->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (1.3.1)
+Requirement already satisfied: idna>=2.8 in .\.venv\Lib\site-packages (from anyio<5,>=4.1.0->anthropic<2.0.0,>=0.120.0->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (3.20)
+Requirement already satisfied: httpcore2==2.13.1 in .\.venv\Lib\site-packages (from httpx2<3,>=2.0.0->anthropic<2.0.0,>=0.120.0->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (2.13.1)
+Requirement already satisfied: truststore>=0.10 in .\.venv\Lib\site-packages (from httpx2<3,>=2.0.0->anthropic<2.0.0,>=0.120.0->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (0.10.4)
+Requirement already satisfied: h11>=0.16 in .\.venv\Lib\site-packages (from httpcore2==2.13.1->httpx2<3,>=2.0.0->anthropic<2.0.0,>=0.120.0->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (0.16.0)
+Requirement already satisfied: httpx<1.0.0,>=0.23.0 in .\.venv\Lib\site-packages (from langchain-core>=1.6.5->tradingagents==0.6.0) (0.28.1)
+Requirement already satisfied: jsonpatch<2.0.0,>=1.33.0 in .\.venv\Lib\site-packages (from langchain-core>=1.6.5->tradingagents==0.6.0) (1.33)
+Requirement already satisfied: langchain-protocol>=0.0.17 in .\.venv\Lib\site-packages (from langchain-core>=1.6.5->tradingagents==0.6.0) (0.0.19)
+Requirement already satisfied: langsmith<1.0.0,>=0.3.45 in .\.venv\Lib\site-packages (from langchain-core>=1.6.5->tradingagents==0.6.0) (0.14.4)
+Requirement already satisfied: packaging>=23.2.0 in .\.venv\Lib\site-packages (from langchain-core>=1.6.5->tradingagents==0.6.0) (26.3)
+Requirement already satisfied: pyyaml<7.0.0,>=5.3.0 in .\.venv\Lib\site-packages (from langchain-core>=1.6.5->tradingagents==0.6.0) (6.0.3)
+Requirement already satisfied: tenacity!=8.4.0,<10.0.0,>=8.1.0 in .\.venv\Lib\site-packages (from langchain-core>=1.6.5->tradingagents==0.6.0) (9.1.4)
+Requirement already satisfied: uuid-utils<1.0,>=0.12.0 in .\.venv\Lib\site-packages (from langchain-core>=1.6.5->tradingagents==0.6.0) (0.17.1)
+Requirement already satisfied: certifi in .\.venv\Lib\site-packages (from httpx<1.0.0,>=0.23.0->langchain-core>=1.6.5->tradingagents==0.6.0) (2026.7.22)
+Requirement already satisfied: httpcore==1.* in .\.venv\Lib\site-packages (from httpx<1.0.0,>=0.23.0->langchain-core>=1.6.5->tradingagents==0.6.0) (1.0.9)
+Requirement already satisfied: jsonpointer>=1.9 in .\.venv\Lib\site-packages (from jsonpatch<2.0.0,>=1.33.0->langchain-core>=1.6.5->tradingagents==0.6.0) (3.1.1)
+Requirement already satisfied: distro>=1.7.0 in .\.venv\Lib\site-packages (from langsmith<1.0.0,>=0.3.45->langchain-core>=1.6.5->tradingagents==0.6.0) (1.9.0)
+Requirement already satisfied: orjson>=3.9.14 in .\.venv\Lib\site-packages (from langsmith<1.0.0,>=0.3.45->langchain-core>=1.6.5->tradingagents==0.6.0) (3.12.0)
+Requirement already satisfied: requests-toolbelt>=1.0.0 in .\.venv\Lib\site-packages (from langsmith<1.0.0,>=0.3.45->langchain-core>=1.6.5->tradingagents==0.6.0) (1.0.0)
+Requirement already satisfied: websockets>=15.0 in .\.venv\Lib\site-packages (from langsmith<1.0.0,>=0.3.45->langchain-core>=1.6.5->tradingagents==0.6.0) (16.1.1)
+Requirement already satisfied: xxhash>=3.0.0 in .\.venv\Lib\site-packages (from langsmith<1.0.0,>=0.3.45->langchain-core>=1.6.5->tradingagents==0.6.0) (4.0.1)
+Requirement already satisfied: zstandard>=0.23.0 in .\.venv\Lib\site-packages (from langsmith<1.0.0,>=0.3.45->langchain-core>=1.6.5->tradingagents==0.6.0) (0.25.0)
+Requirement already satisfied: annotated-types>=0.6.0 in .\.venv\Lib\site-packages (from pydantic<3.0.0,>=2.7.4->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (0.8.0)
+Requirement already satisfied: pydantic-core==2.46.5 in .\.venv\Lib\site-packages (from pydantic<3.0.0,>=2.7.4->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (2.46.5)
+Requirement already satisfied: typing-inspection>=0.4.2 in .\.venv\Lib\site-packages (from pydantic<3.0.0,>=2.7.4->langchain-anthropic>=1.7.4->tradingagents==0.6.0) (0.4.4)
+Requirement already satisfied: filetype<2.0.0,>=1.2.0 in .\.venv\Lib\site-packages (from langchain-google-genai>=4.4.0->tradingagents==0.6.0) (1.2.0)
+Requirement already satisfied: google-genai<3.0.0,>=2.20.0 in .\.venv\Lib\site-packages (from langchain-google-genai>=4.4.0->tradingagents==0.6.0) (2.28.0)
+Requirement already satisfied: google-auth<3.0.0,>=2.56.0 in .\.venv\Lib\site-packages (from google-auth[requests]<3.0.0,>=2.56.0->google-genai<3.0.0,>=2.20.0->langchain-google-genai>=4.4.0->tradingagents==0.6.0) (2.60.0)
+Requirement already satisfied: pyasn1-modules>=0.2.1 in .\.venv\Lib\site-packages (from google-auth<3.0.0,>=2.56.0->google-auth[requests]<3.0.0,>=2.56.0->google-genai<3.0.0,>=2.20.0->langchain-google-genai>=4.4.0->tradingagents==0.6.0) (0.4.2)
+Requirement already satisfied: cryptography>=38.0.3 in .\.venv\Lib\site-packages (from google-auth<3.0.0,>=2.56.0->google-auth[requests]<3.0.0,>=2.56.0->google-genai<3.0.0,>=2.20.0->langchain-google-genai>=4.4.0->tradingagents==0.6.0) (50.0.2)
+Requirement already satisfied: charset_normalizer<4,>=2 in .\.venv\Lib\site-packages (from requests>=2.32.4->tradingagents==0.6.0) (3.5.2)
+Requirement already satisfied: urllib3<3,>=1.26 in .\.venv\Lib\site-packages (from requests>=2.32.4->tradingagents==0.6.0) (2.8.0)
+Requirement already satisfied: cffi>=2.0.0 in .\.venv\Lib\site-packages (from cryptography>=38.0.3->google-auth<3.0.0,>=2.56.0->google-auth[requests]<3.0.0,>=2.56.0->google-genai<3.0.0,>=2.20.0->langchain-google-genai>=4.4.0->tradingagents==0.6.0) (2.1.1)
+Requirement already satisfied: pycparser in .\.venv\Lib\site-packages (from cffi>=2.0.0->cryptography>=38.0.3->google-auth<3.0.0,>=2.56.0->google-auth[requests]<3.0.0,>=2.56.0->google-genai<3.0.0,>=2.20.0->langchain-google-genai>=4.4.0->tradingagents==0.6.0) (3.0)
+Requirement already satisfied: openai<4.0.0,>=2.45.0 in .\.venv\Lib\site-packages (from langchain-openai>=1.6.6->tradingagents==0.6.0) (3.24.0)
+Requirement already satisfied: tiktoken<1.0.0,>=0.7.0 in .\.venv\Lib\site-packages (from langchain-openai>=1.6.6->tradingagents==0.6.0) (0.14.0)
+Requirement already satisfied: regex in .\.venv\Lib\site-packages (from tiktoken<1.0.0,>=0.7.0->langchain-openai>=1.6.6->tradingagents==0.6.0) (2026.9.29)
+Requirement already satisfied: langgraph-checkpoint<5.0.0,>=4.1.0 in .\.venv\Lib\site-packages (from langgraph>=1.2.12->tradingagents==0.6.0) (4.2.0)
+Requirement already satisfied: langgraph-prebuilt<1.2.0,>=1.1.0 in .\.venv\Lib\site-packages (from langgraph>=1.2.12->tradingagents==0.6.0) (1.1.0)
+Requirement already satisfied: langgraph-sdk<0.5.0,>=0.4.6 in .\.venv\Lib\site-packages (from langgraph>=1.2.12->tradingagents==0.6.0) (0.4.6)
+Requirement already satisfied: ormsgpack>=1.12.0 in .\.venv\Lib\site-packages (from langgraph-checkpoint<5.0.0,>=4.1.0->langgraph>=1.2.12->tradingagents==0.6.0) (1.12.2)
+Requirement already satisfied: aiosqlite>=0.20 in .\.venv\Lib\site-packages (from langgraph-checkpoint-sqlite>=3.1.1->tradingagents==0.6.0) (0.22.1)
+Requirement already satisfied: sqlite-vec>=0.1.6 in .\.venv\Lib\site-packages (from langgraph-checkpoint-sqlite>=3.1.1->tradingagents==0.6.0) (0.1.9)
+Requirement already satisfied: mdurl~=0.1 in .\.venv\Lib\site-packages (from markdown-it-py>=4.0->tradingagents==0.6.0) (0.1.2)
+Requirement already satisfied: numpy>=1.26.0 in .\.venv\Lib\site-packages (from pandas>=3.0.6->tradingagents==0.6.0) (2.4.6)
+Requirement already satisfied: python-dateutil>=2.8.2 in .\.venv\Lib\site-packages (from pandas>=3.0.6->tradingagents==0.6.0) (2.9.0.post0)
+Requirement already satisfied: tzdata in .\.venv\Lib\site-packages (from pandas>=3.0.6->tradingagents==0.6.0) (2026.5)
+Requirement already satisfied: pyasn1<0.7.0,>=0.6.1 in .\.venv\Lib\site-packages (from pyasn1-modules>=0.2.1->google-auth<3.0.0,>=2.56.0->google-auth[requests]<3.0.0,>=2.56.0->google-genai<3.0.0,>=2.20.0->langchain-google-genai>=4.4.0->tradingagents==0.6.0) (0.6.4)
+Requirement already satisfied: colorama>=0.4 in .\.venv\Lib\site-packages (from pytest>=8.0->tradingagents==0.6.0) (0.4.6)
+Requirement already satisfied: iniconfig>=1.0.1 in .\.venv\Lib\site-packages (from pytest>=8.0->tradingagents==0.6.0) (2.3.1)
+Requirement already satisfied: pluggy<2,>=1.5 in .\.venv\Lib\site-packages (from pytest>=8.0->tradingagents==0.6.0) (1.6.0)
+Requirement already satisfied: pygments>=2.7.2 in .\.venv\Lib\site-packages (from pytest>=8.0->tradingagents==0.6.0) (2.21.0)
+Requirement already satisfied: attrs>=19.2.0 in .\.venv\Lib\site-packages (from pytest-subtests>=0.13->tradingagents==0.6.0) (26.1.0)
+Requirement already satisfied: six>=1.5 in .\.venv\Lib\site-packages (from python-dateutil>=2.8.2->pandas>=3.0.6->tradingagents==0.6.0) (1.17.0)
+Requirement already satisfied: prompt_toolkit<4.0,>=2.0 in .\.venv\Lib\site-packages (from questionary>=2.1.0->tradingagents==0.6.0) (3.0.53)
+Requirement already satisfied: wcwidth>=0.1.4 in .\.venv\Lib\site-packages (from prompt_toolkit<4.0,>=2.0->questionary>=2.1.0->tradingagents==0.6.0) (0.9.2)
+Requirement already satisfied: shellingham>=1.3.0 in .\.venv\Lib\site-packages (from typer>=0.21.0->tradingagents==0.6.0) (1.5.4)
+Requirement already satisfied: annotated-doc>=0.0.2 in .\.venv\Lib\site-packages (from typer>=0.21.0->tradingagents==0.6.0) (0.0.5)
+Requirement already satisfied: beautifulsoup4>=4.11.1 in .\.venv\Lib\site-packages (from yfinance>=1.7.0->tradingagents==0.6.0) (4.15.0)
+Requirement already satisfied: curl_cffi>=0.15 in .\.venv\Lib\site-packages (from yfinance>=1.7.0->tradingagents==0.6.0) (0.16.3)
+Requirement already satisfied: lxml>=4.9.0 in .\.venv\Lib\site-packages (from yfinance>=1.7.0->tradingagents==0.6.0) (6.1.3)
+Requirement already satisfied: multitasking>=0.0.7 in .\.venv\Lib\site-packages (from yfinance>=1.7.0->tradingagents==0.6.0) (0.0.13)
+Requirement already satisfied: peewee>=3.16.2 in .\.venv\Lib\site-packages (from yfinance>=1.7.0->tradingagents==0.6.0) (4.5.2)
+Requirement already satisfied: platformdirs>=2.0.0 in .\.venv\Lib\site-packages (from yfinance>=1.7.0->tradingagents==0.6.0) (4.12.3)
+Requirement already satisfied: protobuf>=3.19.0 in .\.venv\Lib\site-packages (from yfinance>=1.7.0->tradingagents==0.6.0) (7.36.2)
+Requirement already satisfied: soupsieve>=1.6.1 in .\.venv\Lib\site-packages (from beautifulsoup4>=4.11.1->yfinance>=1.7.0->tradingagents==0.6.0) (2.10)
+Downloading ruff-0.16.10-py3-none-win_amd64.whl (10.6 MB)
+   ---------------------------------------- 10.6/10.6 MB 1.0 MB/s  0:00:10
+Building wheels for collected packages: tradingagents
+  Building editable for tradingagents (pyproject.toml): started
+  Building editable for tradingagents (pyproject.toml): finished with status 'done'
+  Created wheel for tradingagents: filename=tradingagents-0.6.0-0.editable-py3-none-any.whl size=17729 sha256=3136e6dbbef9cd66f22752ebe43a332186728ce1bd59f7ceae008fa8c71ada24
+  Stored in directory: C:\Users\LOQ\AppData\Local\Temp\pip-ephem-wheel-cache-ajdmibx_\wheels\d2\e2\98\dc481ae1bb6013b71a754c108c1ec0b2e72a441a9d1bfe47bf
+Successfully built tradingagents
+Installing collected packages: ruff, tradingagents
+  Attempting uninstall: tradingagents
+    Found existing installation: tradingagents 0.6.0
+    Uninstalling tradingagents-0.6.0:
+      Successfully uninstalled tradingagents-0.6.0
+
+Successfully installed ruff-0.16.10 tradingagents-0.6.0

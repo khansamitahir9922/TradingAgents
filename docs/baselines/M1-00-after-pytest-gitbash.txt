@@ -1,0 +1,122 @@
+....................................................................sss. [  5%]
+.............................s.......................................... [ 11%]
+........................................................................ [ 17%]
+........................................................................ [ 22%]
+................................................................ [ 27%]
+..................................................................... [ 33%]
+........................................................................ [ 38%]
+........................................................................ [ 44%]
+........................................................ [ 48%]
+........................................................................ [ 54%]
+........................................................................ [ 60%]
+........................................................................ [ 65%]
+........................................................................ [ 71%]
+........................................................................ [ 77%]
+........................................................................ [ 82%]
+...........................................F............................ [ 88%]
+........................................................................ [ 94%]
+........................................................................ [100%]
+================================== FAILURES ===================================
+_____________ test_yfinance_keeps_its_cache_out_of_the_users_home _____________
+
+    @pytest.mark.unit
+    def test_yfinance_keeps_its_cache_out_of_the_users_home():
+        """yfinance caches each symbol's time zone on disk, in the home directory by default."""
+        from pathlib import Path
+
+        from yfinance.cache import _TzDBManager
+
+>       assert not Path(_TzDBManager.get_location()).is_relative_to(Path.home())
+E       AssertionError: assert not True
+E        +  where True = is_relative_to(WindowsPath('C:/Users/LOQ'))
+E        +    where is_relative_to = WindowsPath('C:/Users/LOQ/AppData/Local/Temp/tradingagents-tests-yf-myu6is2f').is_relative_to
+E        +      where WindowsPath('C:/Users/LOQ/AppData/Local/Temp/tradingagents-tests-yf-myu6is2f') = <class 'pathlib.Path'>('C:\\Users\\LOQ\\AppData\\Local\\Temp\\tradingagents-tests-yf-myu6is2f')
+E        +        where 'C:\\Users\\LOQ\\AppData\\Local\\Temp\\tradingagents-tests-yf-myu6is2f' = get_location()
+E        +          where get_location = <class 'yfinance.cache._TzDBManager'>.get_location
+E        +    and   WindowsPath('C:/Users/LOQ') = home()
+E        +      where home = <class 'pathlib.Path'>.home
+
+tests\test_suite_isolation.py:42: AssertionError
+============================== warnings summary ===============================
+tests/test_anthropic_effort.py::TestEffortGate::test_unsupported_models_do_not_receive_effort[claude-haiku-5-0]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-haiku-5-0' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_unsupported_models_do_not_receive_effort[claude-haiku-4-7-preview]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-haiku-4-7-preview' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_unsupported_models_do_not_receive_effort[claude-sonnet-4-5]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-sonnet-4-5' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_unsupported_models_do_not_receive_effort[claude-sonnet-4-0]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-sonnet-4-0' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_current_opus_and_sonnet_receive_effort[claude-opus-4-5]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-opus-4-5' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_current_opus_and_sonnet_receive_effort[claude-opus-4-6]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-opus-4-6' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_current_opus_and_sonnet_receive_effort[claude-sonnet-4-6]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-sonnet-4-6' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_future_opus_sonnet_inherit_effort_via_pattern[claude-opus-5-0]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-opus-5-0' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_future_opus_sonnet_inherit_effort_via_pattern[claude-sonnet-5-0]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-sonnet-5-0' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_claude_5_family_receives_effort[claude-mythos-5]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-mythos-5' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_mythos_preview_receives_effort
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-mythos-preview' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_anthropic_effort.py::TestEffortGate::test_unknown_anthropic_model_does_not_receive_effort
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\anthropic_client.py:61: RuntimeWarning: Model 'claude-experimental-x' is not in the known model list for provider 'anthropic'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_google_thinking_level.py::test_latest_alias_remaps_minimal_to_low[gemini-flash-latest]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\google_client.py:46: RuntimeWarning: Model 'gemini-flash-latest' is not in the known model list for provider 'google'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_google_thinking_level.py::test_latest_alias_remaps_minimal_to_low[gemini-pro-latest]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\google_client.py:46: RuntimeWarning: Model 'gemini-pro-latest' is not in the known model list for provider 'google'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_ollama_base_url.py::test_resolver_does_not_affect_other_providers
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\openai_client.py:279: RuntimeWarning: Model 'm' is not in the known model list for provider 'xai'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_ollama_base_url.py::test_resolver_does_not_affect_other_providers
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\openai_client.py:279: RuntimeWarning: Model 'm' is not in the known model list for provider 'deepseek'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_openai_reasoning_effort.py::test_non_reasoning_model_drops_effort
+tests/test_temperature_config.py::TestTemperatureForwarding::test_temperature_reaches_client_when_set[openai-gpt-4.1]
+tests/test_temperature_config.py::TestTemperatureForwarding::test_temperature_omitted_leaves_provider_default
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\openai_client.py:279: RuntimeWarning: Model 'gpt-4.1' is not in the known model list for provider 'openai'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+tests/test_temperature_config.py::TestTemperatureForwarding::test_temperature_reaches_client_when_set[deepseek-deepseek-chat]
+  C:\Users\LOQ\TradingAgents\tradingagents\llm_clients\openai_client.py:279: RuntimeWarning: Model 'deepseek-chat' is not in the known model list for provider 'deepseek'. Continuing anyway.
+    self.warn_if_unknown_model()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_api_key_env.py:159: POSIX file modes
+SKIPPED [1] tests\test_api_key_env.py:173: POSIX file modes
+SKIPPED [1] tests\test_api_key_env.py:183: POSIX file modes
+SKIPPED [1] tests\test_bedrock_provider.py:74: could not import 'langchain_aws': No module named 'langchain_aws'
+FAILED tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home
+1 failed, 1264 passed, 4 skipped, 1 deselected, 20 warnings, 99 subtests passed in 39.19s

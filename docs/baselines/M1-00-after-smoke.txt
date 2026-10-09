@@ -1,0 +1,11 @@
+$ py -3.11 -m venv <scratch>/smoke-after
+$ <scratch>/smoke-after/Scripts/python.exe -m pip install .
+WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))': /simple/stockstats/
+
+pip exit: 0
+$ python -c "import tradingagents, cli.main, investment_engine; print('clean-install import OK')"   (from the repository root, as in CI)
+clean-install import OK
+exit: 0
+$ (from outside the repository) python -c "import investment_engine, pathlib; print(investment_engine.__version__, pathlib.Path(investment_engine.__file__).parent)"
+0.0.0 C:\Users\LOQ\AppData\Local\Temp\claude\c--Users-LOQ-TradingAgents\225abe54-166d-446e-bbb1-bce4e1695dc3\scratchpad\smoke-after\Lib\site-packages\investment_engine
+exit: 0
