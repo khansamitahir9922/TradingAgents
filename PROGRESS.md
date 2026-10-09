@@ -8,38 +8,81 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 | | |
 |---|---|
-| **Milestone** | **M0 Architecture: Codex document review passed; committed with the owner's approval; awaiting Codex review of the commit (M0-10)**, then the owner-approved merge (M0-11). Not merged. |
-| **M1** | **Not started.** It starts only after M0 closes, with its reviewed, owner-approved merge into `main` (roadmap Section 3). |
-| **Branch** | `m0-architecture`, created from `main` at `559f8c2` |
-| **`main`** | Local `main` is at `559f8c2` (`fix(memory): scope settlement warnings to current ticker`), **1 commit ahead of `origin/main`, not pushed**. Pushing needs the owner's instruction. |
-| **Runtime code** | Unchanged on `m0-architecture`: no changes to `tradingagents/`, `cli/`, tests, `pyproject.toml` or CI. The M0 commit contains documents only. |
-| **Runtime tests** | **Not run for the M0 documentation review or commit.** Only documents changed. See "Last check results". |
+| **Milestone** | **M0 Architecture: complete (locally).** Codex's review of the M0 commit passed with no blocking findings, and the owner approved the merge. |
+| **`main`** | Local `main` was fast-forwarded to **`906ae85`** (`docs: record Architecture v1.0 and M0 working documents`). It's 2 commits ahead of `origin/main`. **Nothing has been pushed.** |
+| **M1** | **Not started. M1-00 is next** (package skeleton and recorded test baseline), on `m1/M1-00-skeleton` from `main`, when the owner starts it. |
+| **Open branch** | `docs/m0-closeout`, from `main` at `906ae85`. It changes **two files only**: this status update and the PRD's "review draft" wording. **Codex review passed (2026-10-09); committed with the owner's approval; awaiting review of that commit and the owner-approved merge.** |
+| **Other branches** | `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
+| **Runtime code** | Unchanged. M0 and this follow-up change documents only. |
+| **Runtime tests** | **Not run** for M0 or this follow-up, because only documents changed. See "Last check results". |
 
-### M0 work items
+### M0 work items (all complete)
 | ID | Item | State |
 |---|---|---|
-| M0-01 | `architecture/architecture-v1.0.md`, `architecture/diagrams/architecture-v1.0.svg`, `architecture/eraser-diagrams.md` | Reviewed; committed. The SVG is unchanged since it was staged. |
-| M0-02 | `docs/PRD.md` (v0.1) | Reviewed; committed |
-| M0-03 | `docs/design-principles.md` (v0.3) | Reviewed; committed |
-| M0-04 | `architecture/adr/README.md`, ADR-001 – ADR-009 | Reviewed; committed |
-| M0-05 | `docs/roadmap.md` (v0.3) | Reviewed; committed |
-| M0-06 | `docs/tasks/README.md` (v0.2), `docs/tasks/M1-00.md` – `M1-17.md` | Reviewed; committed |
-| M0-07 | `AGENTS.md`, `CLAUDE.md` (v0.1) | Reviewed; committed |
-| M0-08 | `PROGRESS.md` (this file) | Reviewed; committed |
-| M0-09 | Commit the M0 set on `m0-architecture` (excluding `.env` and `.claude/`) | **Done, with the owner's approval (2026-10-09)**: commit `docs: record Architecture v1.0 and M0 working documents`. The hash is in `git log`; a file can't contain its own commit's hash. |
-| M0-10 | Codex review of the commit; fixes recommitted; final review | **Next** |
-| M0-11 | Owner approval and merge into `main` (pushing is a separate, owner-instructed step) | Not started |
+| M0-01 – M0-08 | Architecture, diagrams and guide; PRD; design principles; ADR-001 – 009; roadmap; M1 task specs; AGENTS.md / CLAUDE.md; PROGRESS.md | Reviewed by Codex; committed in `906ae85` |
+| M0-09 | Commit, with the owner's approval | Done (2026-10-09): `906ae85` |
+| M0-10 | Codex review of the commit | **Passed** (2026-10-09); no blocking findings |
+| M0-11 | Owner-approved merge into `main` | **Done** (2026-10-09): fast-forward to `906ae85`; **not pushed** |
 
 **Never stage:** `.env`, `.claude/`.
 
 ---
 
 ## Next steps
-1. **M0-10:** Codex reviews the M0 commit on `m0-architecture`. Any fixes go in follow-up commits (with the owner's go-ahead), followed by a final review.
-2. **M0-11:** the owner approves, and `m0-architecture` is merged into `main`. Push only if the owner asks.
-3. Then **M1-00** (package skeleton and recorded test baseline), on `m1/M1-00-skeleton` from the updated `main`. **M1 has not started.**
+1. **`docs/m0-closeout`** (`PROGRESS.md` and `docs/PRD.md` only): Codex review passed; committed with the owner's approval. Next: Codex reviews the commit, then the owner approves the merge into `main`.
+2. **M1-00:** package skeleton and recorded test baseline, on `m1/M1-00-skeleton` from `main`, when the owner starts it.
 
-Parked idea (not scheduled): the owner will share captions from an ML-prediction Instagram account. Claude Code will assess the method against the M2 and M9 promotion rules. Nothing changes in the plan until that assessment is reviewed.
+**Known stale labels, left for a later update.** AGENTS.md, CLAUDE.md, the design principles, the task README, the ADR records and the roadmap's M0 table still say "awaiting review of the M0 commit and merge". They describe the state before M0-10 and M0-11. This file is the current record.
+
+---
+
+## Reviewed ML proposals: future planning, not part of M1
+**Origin.** The owner reviewed an applied-ML creator's techniques (mar_antaya: an NVDA weekly-return model, F1 XGBoost models, leakage guards). Claude Code assessed them, and Codex reviewed the proposal on 2026-10-09.
+
+**Status.** Agreed direction. **Not yet in the roadmap**: the roadmap's provisional M2, M8 and M9 work packages will be updated in a separate, reviewed change, and must be reviewed before any M2 price-indicator work. **M1 is unchanged. No ADR is needed**, because these fit the existing Quant, Evaluation and ML modules and follow ADR-009 (raw history kept, adjustments derived).
+
+**Key conclusions:**
+
+**1. Adjusted view first (M2), the most important finding.**
+- Indicators and return series need a **point-in-time split-adjusted price view** derived from stored CorporateActions. Without it, a split such as NVDA's 10-for-1 on 2024-06-10 would look like a ~90% crash.
+- **Dividend-inclusive (total) returns** are defined and labelled separately.
+- Each strategy or model states which series it uses.
+
+**2. Raw prices stay authoritative** for execution reference prices, fills and accounting.
+
+**3. Point in time.**
+- For a prediction at T, an action applies only if its revision is available by T (`available_from <= T`), and it takes effect by its ex-date.
+- A correction observed after T never changes the inputs of a prediction made at T.
+- Providers stay separate.
+
+**4. Missing data still means ABSTAIN.** Filling gaps (imputation) during research never bypasses Law 9: when required data is missing, the MarketView is `ABSTAIN`.
+
+**5. Strategy outputs.** M2 rule strategies produce **direction and strength** (the MarketView contract). Numeric-return models (linear, gradient-boosted) belong in **M9**, and each task spec fixes the target (split-adjusted or total return) and the horizon.
+
+**6. Leakage.**
+- Inputs must be available before the prediction time.
+- Cleaning, feature selection, tuning and calibration learn only from each walk-forward fold's training period.
+- A training example is used only after its outcome is complete (the label horizon is purged).
+- Chronological order alone isn't enough.
+
+**7. Benchmarks matched to the question:**
+- always-up for direction;
+- zero return for numeric forecasts;
+- buy-and-hold for investment performance.
+
+Report directional accuracy against the base rate, and the information coefficient where relevant. Always state costs, sample sizes and the abstain rate.
+
+**8. Calibration.** A model score becomes `probability_up` only after calibration is tested on separate, appropriately timed data.
+
+**9. Precise claims.** A result is significant only when evaluation shows it. A summary alone establishes neither significance nor the lack of it (e.g. the creator's F1 result).
+
+**10. Dashboard (M8).** A metric registry: key, label, unit, preferred direction and formatter.
+
+**11. Not adopted:**
+- a single train/test split as proof;
+- shuffled splits on time-ordered data;
+- narrative features without walk-forward evidence;
+- choosing instruments by hindsight.
 
 ---
 
@@ -66,11 +109,22 @@ Parked idea (not scheduled): the owner will share captions from an ML-prediction
 | Documentation checks (2026-10-08 / 09) | No trailing whitespace in `docs/`, `architecture/adr/`, `AGENTS.md`, `CLAUDE.md` or `PROGRESS.md`. Every M1 spec has the required sections. The shared-rules blocks in AGENTS.md and CLAUDE.md are identical. The staged architecture files are unchanged. | Script checks by Claude Code, 2026-10-08 |
 | Codex document review | **Passed (2026-10-09).** No blocking issues in the reviewed M0 documents. Codex verified the volume-evidence and replay-ordering fixes, the document structure, dependencies, whitespace, the unchanged SVG and runtime files, and that `.env` and `.claude/` weren't staged. Runtime tests weren't run. | Codex review, relayed by the owner |
 | Pre-commit checks | The staged file list matches the owner-approved set; `git diff --cached --check` is clean | Claude Code, 2026-10-09 |
-| CI | Not yet run for this branch (nothing pushed) | — |
+| Codex review of commit `906ae85` | **Passed (2026-10-09).** All 38 committed files are the approved documentation; the SVG, runtime code, tests and CI files are unchanged; `.env` and `.claude/` are excluded; the shared rules match. It noted one non-blocking item, the PRD's "review draft" wording, which is fixed on `docs/m0-closeout` (Codex review passed, 2026-10-09). | Codex review, relayed by the owner |
+| Codex review of `docs/m0-closeout` | **Passed (2026-10-09).** Only the two approved files changed; the architecture, SVG, roadmap, M1 specs and runtime files are unchanged; whitespace checks pass. Runtime tests weren't run. | Codex review, relayed by the owner |
+| CI | Not yet run (nothing pushed) | — |
 
 ---
 
 ## Session log
+
+### 2026-10-09: Claude Code (M0 merge and close-out documentation)
+- **M0-10 and M0-11.** Codex's review of `906ae85` passed. With the owner's approval, local `main` was fast-forwarded to `906ae85` (no new commit, nothing pushed, no branches deleted). M0 is complete.
+- **Branch `docs/m0-closeout`, from `main`.** Per the owner's scope, it changes **only `PROGRESS.md` and `docs/PRD.md`**:
+  - this status update;
+  - the reviewed ML proposals recorded above, so they're in the shared record and not only in a tool's private memory;
+  - the PRD's two "review draft" references fixed (PRD v0.1.1).
+- **Not changed:** the architecture, SVG, M1 specs and runtime code. Other documents' stale status labels are noted above.
+- **Scope note.** A broader draft (labels across 15 more files, plus the roadmap's ML work packages) was prepared first, then narrowed to the two approved files. That draft wasn't committed; the roadmap update will be redone as its own reviewed change.
 
 ### 2026-10-09: Claude Code (M0 commit)
 - Codex's review passed with no blocking issues, and the owner approved committing the reviewed M0 documents.

@@ -4,7 +4,7 @@
 |---|---|
 | **Product** | **Investment Platform** (working product name; public branding not decided, see OPEN-01) |
 | **Python package** | `investment_engine` (**proposed**; confirmed in M1-00, see OPEN-01) |
-| **Document status** | **Reviewed v0.1.** Codex document review passed (2026-10-09); committed with the owner's approval; awaiting review of the M0 commit and the owner-approved merge into `main`. |
+| **Document status** | **Reviewed v0.1.1** (Codex review passed, 2026-10-09). v0.1: Codex review passed; merged into `main` with the owner's approval (M0, `906ae85`, 2026-10-09). v0.1.1 corrects the references to the design principles, which are no longer a draft. |
 | **Date** | 2026-10-08 |
 | **Product owner** | Repository owner |
 | **Source of truth for architecture** | `architecture/architecture-v1.0.md` (v1.0 FROZEN). This PRD describes *what* to build and *why*; the architecture describes *how* it's structured. If they disagree, the architecture wins until an ADR changes it. |
@@ -123,7 +123,7 @@ Coverage is marked **(partial)** until a use case is complete.
 | **M5 Ledger + reconciliation** | P&L and reconciliation reports | Securities ledger (ADR first), positions, cash, P&L, BrokerSnapshot from the simulator, reconciliation incidents | UC-08; UC-09; UC-11 (partial: evaluation can include ledger P&L) |
 | **M6 TradingAgents adapter** | Research shown alongside the market view | Research Worker, ResearchRecord, ResearchContext, LLM budget | UC-03; UC-10 (complete: research lineage added) |
 | **M7 Paper broker + hosting** | Real orders on a broker's **paper** account | Broker adapter in the Execution Worker (ADR after the jurisdiction check); fills **recorded as the broker reports them**; VPS with process isolation | UC-04 – UC-09 against a real paper account |
-| **M8 API + dashboard** | Web dashboard (see `docs/design-principles.md`, review draft) | FastAPI, WebSocket, login and roles, cockpit-style UI. The dashboard **displays** safety state (kill switch, autonomy level, PAPER mode) and crash-recovery results; **kill-switch writes remain Admin CLI-only**. | UC-01 – UC-05, UC-07 – UC-12 and UC-14 in the UI; UC-06 is **displayed** only (written via the Admin CLI); UC-13 results **displayed** |
+| **M8 API + dashboard** | Web dashboard (see `docs/design-principles.md`) | FastAPI, WebSocket, login and roles, cockpit-style UI. The dashboard **displays** safety state (kill switch, autonomy level, PAPER mode) and crash-recovery results; **kill-switch writes remain Admin CLI-only**. | UC-01 – UC-05, UC-07 – UC-12 and UC-14 in the UI; UC-06 is **displayed** only (written via the Admin CLI); UC-13 results **displayed** |
 | **M9 ML** | Champion / challenger report | Datasets, model registry, calibrated probabilities, **walk-forward evaluation extended to ML models** | UC-11 (extended to ML) |
 | **M10 Live** | — | Only after long paper validation and governance | Not in v1 |
 
@@ -133,7 +133,7 @@ Coverage is marked **(partial)** until a use case is complete.
 
 1. **Paper only in v1.** No live broker connection, no real money. Live levels 3–4 stay disabled. **[Arch B3, L]**
 2. **Always-visible safety state.** Every screen shows PAPER mode, the account's autonomy level and the kill-switch state.
-3. **No invented numbers on screen.** Every displayed number traces to a stored record: ledger, OMS, market data, research, or a **recorded simulator/replay result**. Simulator and replay results are allowed only when **clearly labelled** (e.g. `SIMULATED`, `REPLAY`). Decorative, placeholder or made-up figures are never shown. *(The design and honesty rules are set out in `docs/design-principles.md`, currently a review draft.)*
+3. **No invented numbers on screen.** Every displayed number traces to a stored record: ledger, OMS, market data, research, or a **recorded simulator/replay result**. Simulator and replay results are allowed only when **clearly labelled** (e.g. `SIMULATED`, `REPLAY`). Decorative, placeholder or made-up figures are never shown. *(The design and honesty rules are set out in `docs/design-principles.md`.)*
 4. **Fills are facts, not assumptions.** Next-bar fills, slippage and fee models apply **only** in simulation and evaluation. Fills from a real paper broker are recorded exactly as the broker reports them.
 5. **ABSTAIN / STALE / HALTED are unmissable.** They're the most prominent state on screen when they occur.
 6. **AI output is labelled advisory.** Research shows its generation time, expiry, model and warnings. LLM-suggested price levels are never used as order prices without the risk checks. **[Law 4]**
