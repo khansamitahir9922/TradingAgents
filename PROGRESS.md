@@ -4,17 +4,17 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 ---
 
-## Current state (2026-10-09)
+## Current state (2026-10-10)
 
 | | |
 |---|---|
-| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress**, starting with M1-00. |
-| **`main`** | Local `main` is at **`9486f05`** (`docs: update M0 handoff and record future ML proposals`): the M0 commit `906ae85` plus the reviewed close-out commit, fast-forwarded with the owner's approval. It's 3 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current task** | **M1-00**: package skeleton, layering tests and recorded test baseline. Branch `m1/M1-00-skeleton`, from `main` at `9486f05`. **Implemented and checked; committed with the owner's approval; awaiting Codex review of the commit**, then the owner-approved merge. |
+| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** M1-00 done; M1-01 in review. |
+| **`main`** | Local `main` is at **`f906841`** (`feat: add investment engine package skeleton and baseline`). M1-00 **passed Codex review** and was **fast-forwarded into `main`** with the owner's approval on 2026-10-10. It's 4 commits ahead of `origin/main`. **Nothing has been pushed.** |
+| **Current task** | **M1-01: Clock.** Branch `m1/M1-01-clock`, from `main` at `f906841`. **Implemented and checked; committed with the owner's approval; awaiting Codex review of the commit**, then the owner-approved merge. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
-| **Other branches** | `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
-| **Runtime code** | `tradingagents/` and `cli/` unchanged. M1-00 adds only the empty `investment_engine` package, its tests, the packaging line and the CI smoke-import line. |
-| **Runtime tests** | **Run for M1-00.** The baseline was recorded and compared; see "Last check results" and `docs/baselines/M1-00-baseline.md`. |
+| **Other branches** | `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
+| **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` has `__init__.py` (M1-00) and `clock.py` (M1-01). |
+| **Runtime tests** | **Run for M1-00 and M1-01**, and compared against the recorded baseline (`docs/baselines/M1-00-baseline.md`); see "Last check results". |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -29,8 +29,8 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Codex reviews the M1-00 commit** on `m1/M1-00-skeleton`, then the owner approves the merge into `main`. Push only if the owner asks.
-2. Then **M1-01 (Clock)**, after M1-00 is merged. It isn't started.
+1. **Codex reviews the M1-01 commit** on `m1/M1-01-clock`, then the owner approves the merge into `main`. Push only if the owner asks.
+2. Then **M1-02 (Decimal boundary)** or M1-03 (Instrument): both depend only on M1-00 and can come in either order (roadmap phase B). **Not started.**
 
 **Known stale labels, left for a later update.** AGENTS.md, CLAUDE.md, the design principles, the task README, the ADR records and the roadmap's M0 table still say "awaiting review of the M0 commit and merge". They describe the state before M0-10 and M0-11. This file is the current record.
 
@@ -94,6 +94,7 @@ Report directional accuracy against the base rate, and the information coefficie
 | The per-field Yahoo determination results | Determined in M1-12 | M1-12 / M1-13 |
 | How far back yfinance hourly history reaches | Measured in M1-13 | M1-13 |
 | `pyarrow` / `duckdb` versions with Python 3.11 – 3.14 wheels | Checked in M1-10 | M1-10 |
+| **Time-zone data on Windows (found in M1-01).** `zoneinfo` needs the `tzdata` package on Windows, which has no system time-zone database. Today it's present only **transitively**, because pandas declares it for `win32`. M1-01's tests use it (`America/New_York`); the M1-06 calendar will need it **at runtime**. Proposal for M1-06's review: either declare `tzdata; sys_platform == "win32"` explicitly (a `pyproject.toml` dependency change, which M1-06's spec doesn't currently allow) or accept and document the transitive dependency. | Codex and owner | M1-06 |
 | NVDA's listing date for the seed record | Checked in M1-17 | M1-17 |
 | Whether DataHealth snapshots are persisted for lineage | Decided with lineage | M2 |
 | OPEN-16: proposed order-lifecycle extensions. **Unaccepted**; they need a reviewed, accepted follow-up ADR. | Owner and Codex | Before M4 |
@@ -113,11 +114,32 @@ Report directional accuracy against the base rate, and the information coefficie
 | Pre-commit checks | The staged file list matches the owner-approved set; `git diff --cached --check` is clean | Claude Code, 2026-10-09 |
 | Codex review of commit `906ae85` | **Passed (2026-10-09).** All 38 committed files are the approved documentation; the SVG, runtime code, tests and CI files are unchanged; `.env` and `.claude/` are excluded; the shared rules match. It noted one non-blocking item, the PRD's "review draft" wording, which is fixed on `docs/m0-closeout` (Codex review passed, 2026-10-09). | Codex review, relayed by the owner |
 | Codex review of `docs/m0-closeout` | **Passed (2026-10-09).** Only the two approved files changed; the architecture, SVG, roadmap, M1 specs and runtime files are unchanged; whitespace checks pass. Runtime tests weren't run. | Codex review, relayed by the owner |
+| **M1-01** (`m1/M1-01-clock`) | New tests: `tests/engine/test_clock.py` and `test_no_system_clock.py`. **All 34 engine tests pass** (5 from M1-00 + 29 new). **Git Bash:** 1 failed, **1293 passed** (+29 against M1-00), 4 skipped, 1 deselected; failing set = baseline. **PowerShell:** 2 failed, **1292 passed** (+29), 4 skipped, 1 deselected; failing set = baseline. **No new failures.** `ruff check .` passed. Clean-install smoke (fresh Python 3.11 venv, `pip install .`): `import tradingagents, cli.main, investment_engine` OK from the repository root; from outside it, `investment_engine.clock` imports from `site-packages` and `LiveClock().now()` is UTC. | Commands as in `docs/tasks/README.md`; outputs kept outside the repository (the spec doesn't allow new output files) |
 | CI | **Not yet run** (nothing pushed) | — |
 
 ---
 
 ## Session log
+
+### 2026-10-10: Claude Code (M1-01: Clock)
+- **M1-00** passed Codex review. With the owner's approval, `main` was fast-forwarded to `f906841` (nothing pushed, no branches deleted).
+- **Owner decision.** When the owner pastes a Codex message with suggested approval text, it counts as the owner's approval for exactly that step. Pushes still need an explicit instruction.
+- **Codex correction on provider notes.** Rejecting Public under Law 1 was premature: Law 1 governs how *our* system places orders, not what features a provider offers. All provider recommendations stay as unverified candidates for later review (OPEN-02/03/04, ADR-011).
+- **M1-01, tests first.**
+  - `tests/engine/test_clock.py`:
+    - `LiveClock` returns aware UTC;
+    - `ReplayClock` start, UTC storage, naive-start rejection, forward and same-time `advance_to`, backward and naive-target rejection, `advance_by` including zero and negative rejection;
+    - `ensure_utc` across the New York DST changes, including both folds of the repeated hour, a fixed offset and UTC, plus naive rejection.
+  - `tests/engine/test_no_system_clock.py`: an AST scan that **resolves imports and aliases** (e.g. `from datetime import datetime as dt; dt.now()`) and fails on any reference to the eight system-clock functions outside `clock.py`. Its own tests:
+    - a coverage guard;
+    - a check that `clock.py` really is the sanctioned reader;
+    - eight planted-read cases in a temporary package;
+    - a safe-use case (constructing datetimes and `time.sleep` aren't flagged).
+  - Before the implementation, the clock tests failed on the missing module and the scan's coverage tests failed on the missing `clock.py`.
+- **Implementation:** `investment_engine/clock.py` with `ensure_utc`, the `Clock` protocol, `LiveClock` and a monotonic `ReplayClock`, as specified.
+- **Checks:** see "Last check results". No new failures.
+- **Found:** Windows time-zone data is only a transitive dependency (via pandas). It's raised under "Open issues" for M1-06's review.
+
 
 ### 2026-10-09: Claude Code (M1-00: package skeleton and baseline)
 - **The owner confirmed OPEN-01 (`investment_engine`) and approved M1-00**, including its local task commit.
