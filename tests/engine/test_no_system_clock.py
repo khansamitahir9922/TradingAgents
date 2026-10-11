@@ -29,6 +29,7 @@ SYSTEM_CLOCK = {
 
 
 _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 
 
 class _Scope:
@@ -51,9 +52,38 @@ class _Scope:
         return name in self.imports or name in self.other
 
 
+def _outside_comprehensions(scope: _Scope) -> _Scope:
+    while isinstance(scope.node, _COMPREHENSIONS):
+        scope = scope.parent
+    return scope
+
+
+def _comprehension_parts(node: ast.AST) -> tuple[ast.AST, list[ast.AST]]:
+    """Split a comprehension into its first iterable (evaluated in the
+    enclosing scope) and everything else (evaluated in its own scope)."""
+    first, *rest = node.generators
+    inner: list[ast.AST] = [first.target, *first.ifs]
+    for gen in rest:
+        inner += [gen.target, gen.iter, *gen.ifs]
+    inner += [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
+    return first.iter, inner
+
+
 def _bind(node: ast.AST, scope: _Scope, module: _Scope) -> None:
     for child in ast.iter_child_nodes(node):
-        if isinstance(child, _SCOPE_NODES):
+        if isinstance(child, _COMPREHENSIONS):
+            first_iter, inner_parts = _comprehension_parts(child)
+            _bind_node(first_iter, scope, module)
+            inner = scope.children[child] = _Scope(child, scope)
+            for part in inner_parts:
+                _bind_node(part, inner, module)
+        elif isinstance(child, ast.NamedExpr):
+            # `x := …` binds in the enclosing function, even from inside a
+            # comprehension.
+            target = _outside_comprehensions(scope)
+            (module if child.target.id in target.globals else target).other.add(child.target.id)
+            _bind_node(child.value, scope, module)
+        elif isinstance(child, _SCOPE_NODES):
             scope.other.add(child.name)
             inner = scope.children[child] = _Scope(child, scope)
             if not isinstance(child, ast.ClassDef):
@@ -81,6 +111,12 @@ def _bind(node: ast.AST, scope: _Scope, module: _Scope) -> None:
             _bind(child, scope, module)
 
 
+def _bind_node(node: ast.AST, scope: _Scope, module: _Scope) -> None:
+    """Bind `node` itself as well as its children (`_bind` covers children only)."""
+    holder = ast.Expr(value=node) if isinstance(node, ast.expr) else ast.Module(body=[node], type_ignores=[])
+    _bind(holder, scope, module)
+
+
 def _candidates(scope: _Scope, module: _Scope, name: str) -> set[str]:
     """What `name` may refer to in `scope`, resolved as Python does (LEGB).
 
@@ -97,6 +133,12 @@ def _candidates(scope: _Scope, module: _Scope, name: str) -> set[str]:
 
 
 def _visit(node: ast.AST, scope: _Scope, module: _Scope, found: list[str]) -> None:
+    if isinstance(node, _COMPREHENSIONS) and node in scope.children:
+        first_iter, inner_parts = _comprehension_parts(node)
+        _visit(first_iter, scope, module, found)
+        for part in inner_parts:
+            _visit(part, scope.children[node], module, found)
+        return
     if node in scope.children:
         # A def or class: decorators, defaults, annotations and base classes
         # are evaluated in the enclosing scope; only the body runs in its own.
@@ -277,13 +319,88 @@ def test_a_local_rebinding_is_not_mistaken_for_a_read(tmp_path):
         ("import time\ndef deco(f):\n    return f\n@deco\ndef g(x=time.time()):\n    return x\n", ["time.time"]),
         # A parameter shadows a module-level import.
         ("from datetime import datetime\ndef f(datetime):\n    return datetime.now()\n", []),
+        # Nested comprehensions: an inner loop variable shadows only inside it...
+        (
+            "from datetime import datetime as dt\ndef f(vs):\n"
+            "    x = [[dt for dt in row] for row in vs]\n    return dt.now()\n",
+            ["datetime.datetime.now"],
+        ),
+        # ...and an outer loop variable is visible to the inner one.
+        ("from datetime import datetime as dt\ndef f(vs):\n    return [[dt.now() for _ in row] for dt in vs]\n", []),
+        # A later `for` clause's iterable sees earlier loop variables.
+        ("from datetime import datetime as dt\ndef f(vs):\n    return [x for dt in vs for x in dt.now()]\n", []),
+        # `:=` inside a comprehension binds in the enclosing function.
+        ("from datetime import datetime as dt\ndef f(vs):\n    [(dt := v) for v in vs]\n    return dt.now()\n", []),
+        # A comprehension in a class body sees module-level imports.
+        ("from datetime import datetime as dt\nclass C:\n    xs = [dt.now() for _ in range(1)]\n", ["datetime.datetime.now"]),
     ],
-    ids=["global", "class-body", "method-param", "nested", "default-arg", "param-shadow"],
+    ids=[
+        "global", "class-body", "method-param", "nested", "default-arg", "param-shadow",
+        "nested-comp-inner", "nested-comp-outer", "later-for-clause", "walrus", "class-comp",
+    ],
 )
 def test_the_scan_follows_python_scoping(tmp_path, source, expected):
     path = tmp_path / "module.py"
     path.write_text(source, encoding="utf-8")
     assert [ref.split(": ")[1] for ref in _system_clock_references(path)] == expected
+
+
+COMPREHENSIONS = {
+    "list": "[{elt} for {var} in {it}{cond}]",
+    "set": "{{{elt} for {var} in {it}{cond}}}",
+    "dict": "{{{var}: {elt} for {var} in {it}{cond}}}",
+    "generator": "list({elt} for {var} in {it}{cond})",
+}
+
+
+def _comprehension_module(kind: str, *, elt: str, var: str, it: str, cond: str = "", after: str = "") -> str:
+    expr = COMPREHENSIONS[kind].format(elt=elt, var=var, it=it, cond=cond)
+    return (
+        "from datetime import datetime as dt\n\n"
+        "def stamp(values):\n"
+        f"    labels = {expr}\n"
+        f"    return {after or 'labels'}\n"
+    )
+
+
+def _scan_source(tmp_path, source: str) -> list[str]:
+    path = tmp_path / "module.py"
+    path.write_text(source, encoding="utf-8")
+    return [ref.split(": ")[1] for ref in _system_clock_references(path)]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("kind", list(COMPREHENSIONS))
+def test_a_comprehension_variable_cannot_hide_an_enclosing_import(tmp_path, kind):
+    # Codex finding on M1-01: the iteration variable `dt` belongs to the
+    # comprehension, not the function, so `dt.now()` afterwards is still
+    # datetime.now.
+    source = _comprehension_module(kind, elt="dt.isoformat()", var="dt", it="values", after="dt.now()")
+    assert _scan_source(tmp_path, source) == ["datetime.datetime.now"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("kind", list(COMPREHENSIONS))
+@pytest.mark.parametrize(
+    ("place", "parts"),
+    [
+        ("element", {"elt": "dt.now()", "var": "v", "it": "values"}),
+        ("condition", {"elt": "v", "var": "v", "it": "values", "cond": " if dt.now()"}),
+        # The first iterable is evaluated in the enclosing scope, so even a
+        # loop variable named `dt` doesn't hide the import there.
+        ("first-iterable", {"elt": "dt", "var": "dt", "it": "[dt.now()]"}),
+    ],
+)
+def test_a_read_inside_a_comprehension_is_still_caught(tmp_path, kind, place, parts):
+    assert _scan_source(tmp_path, _comprehension_module(kind, **parts)) == ["datetime.datetime.now"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("kind", list(COMPREHENSIONS))
+def test_a_comprehension_variable_shadows_inside_its_own_scope(tmp_path, kind):
+    # Inside the comprehension `dt` is each value, not the datetime class.
+    source = _comprehension_module(kind, elt="dt.now()", var="dt", it="values")
+    assert _scan_source(tmp_path, source) == []
 
 
 @pytest.mark.unit

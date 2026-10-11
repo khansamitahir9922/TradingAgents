@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** M1-00 done; M1-01 in review. |
 | **`main`** | Local `main` is at **`f906841`** (`feat: add investment engine package skeleton and baseline`). M1-00 **passed Codex review** and was **fast-forwarded into `main`** with the owner's approval on 2026-10-10. It's 4 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current task** | **M1-01: Clock.** Branch `m1/M1-01-clock`, from `main` at `f906841`. The first commit `8c36fb4` was reviewed by Codex, which found **one blocking issue** in the system-clock scan; it's fixed in a **follow-up commit, awaiting Codex review**, then the owner-approved merge. |
+| **Current task** | **M1-01: Clock.** Branch `m1/M1-01-clock`, from `main` at `f906841`. Codex's reviews found two blocking gaps in the system-clock scan, not in the Clock:<br>• imports in one function hiding a read in another (fixed in `dec5070`);<br>• comprehension loop variables hiding an enclosing import (fixed in the latest follow-up commit).<br>**Awaiting Codex review** of the latest commit, then the owner-approved merge. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` has `__init__.py` (M1-00) and `clock.py` (M1-01). |
@@ -29,8 +29,24 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Codex reviews the M1-01 commit** on `m1/M1-01-clock`, then the owner approves the merge into `main`. Push only if the owner asks.
-2. Then **M1-02 (Decimal boundary)** or M1-03 (Instrument): both depend only on M1-00 and can come in either order (roadmap phase B). **Not started.**
+1. **Codex reviews the latest M1-01 follow-up commit** on `m1/M1-01-clock`, then the owner approves the merge into `main`. Push only if the owner asks.
+2. Then the **batch workflow** (agreed in principle, below): its documentation commit first, reviewed by Codex and approved by the owner, then **batch 1 (M1-02 – M1-05)**. **Not started.**
+
+**Agreed in principle (Codex, 2026-10-11); needs the owner's approval of the documentation change:**
+- **One-month goal:** finish **M1**. **M2 is a stretch goal**, and still needs reviewed specs (including the agreed adjusted-price view and leakage protections).
+- **Batches:**
+  - 1: **M1-02 – M1-05** (money types, instruments, symbol mappings, SQLite);
+  - 2: **M1-06 – M1-11** (calendars, candles, corporate actions, storage);
+  - 3: **M1-12 – M1-13** (Yahoo verification and import; **a firm checkpoint**);
+  - 4: **M1-14 – M1-17** (replay, resampling, data health, NVDA report).
+- **Rules per batch:**
+  - every task keeps its own commit, tests and `PROGRESS.md` entry;
+  - every commit is reviewed before the batch merges;
+  - a checked earlier task on the same branch can satisfy a dependency without a separate merge (to be documented);
+  - PowerShell and a fresh-install check run before each batch merge, and earlier when dependencies or packaging change. Cached downloads are fine.
+- **Stop rules:** stop mid-batch on a new test failure, a spec gap needing an architecture or ADR change, a blocked Yahoo verification, or any required file change outside the approved scope.
+- **Workflow documentation** (`AGENTS.md`/`CLAUDE.md` §4, `docs/tasks/README.md`, roadmap §1.1): the first commit on the batch branch, followed by a quick Codex review, **before any batch coding**.
+- **`tzdata`:** declare it explicitly. **M1-06's permitted files are updated first** (in the workflow documentation commit), then the dependency is added in M1-06.
 
 **Known stale labels, left for a later update.** AGENTS.md, CLAUDE.md, the design principles, the task README, the ADR records and the roadmap's M0 table still say "awaiting review of the M0 commit and merge". They describe the state before M0-10 and M0-11. This file is the current record.
 
@@ -94,7 +110,7 @@ Report directional accuracy against the base rate, and the information coefficie
 | The per-field Yahoo determination results | Determined in M1-12 | M1-12 / M1-13 |
 | How far back yfinance hourly history reaches | Measured in M1-13 | M1-13 |
 | `pyarrow` / `duckdb` versions with Python 3.11 – 3.14 wheels | Checked in M1-10 | M1-10 |
-| **Time-zone data on Windows (found in M1-01).** `zoneinfo` needs the `tzdata` package on Windows, which has no system time-zone database. Today it's present only **transitively**, because pandas declares it for `win32`. M1-01's tests use it (`America/New_York`); the M1-06 calendar will need it **at runtime**. Proposal for M1-06's review: either declare `tzdata; sys_platform == "win32"` explicitly (a `pyproject.toml` dependency change, which M1-06's spec doesn't currently allow) or accept and document the transitive dependency. | Codex and owner | M1-06 |
+| **Time-zone data on Windows (found in M1-01). Decided (Codex, 2026-10-11): declare `tzdata` explicitly; update M1-06's permitted files first.** `zoneinfo` needs the `tzdata` package on Windows, which has no system time-zone database. Today it's present only **transitively**, because pandas declares it for `win32`. M1-01's tests use it (`America/New_York`); the M1-06 calendar will need it **at runtime**. Proposal for M1-06's review: either declare `tzdata; sys_platform == "win32"` explicitly (a `pyproject.toml` dependency change, which M1-06's spec doesn't currently allow) or accept and document the transitive dependency. | Codex and owner | M1-06 |
 | NVDA's listing date for the seed record | Checked in M1-17 | M1-17 |
 | Whether DataHealth snapshots are persisted for lineage | Decided with lineage | M2 |
 | OPEN-16: proposed order-lifecycle extensions. **Unaccepted**; they need a reviewed, accepted follow-up ADR. | Owner and Codex | Before M4 |
@@ -114,12 +130,26 @@ Report directional accuracy against the base rate, and the information coefficie
 | Pre-commit checks | The staged file list matches the owner-approved set; `git diff --cached --check` is clean | Claude Code, 2026-10-09 |
 | Codex review of commit `906ae85` | **Passed (2026-10-09).** All 38 committed files are the approved documentation; the SVG, runtime code, tests and CI files are unchanged; `.env` and `.claude/` are excluded; the shared rules match. It noted one non-blocking item, the PRD's "review draft" wording, which is fixed on `docs/m0-closeout` (Codex review passed, 2026-10-09). | Codex review, relayed by the owner |
 | Codex review of `docs/m0-closeout` | **Passed (2026-10-09).** Only the two approved files changed; the architecture, SVG, roadmap, M1 specs and runtime files are unchanged; whitespace checks pass. Runtime tests weren't run. | Codex review, relayed by the owner |
-| **M1-01** (`m1/M1-01-clock`), after the Codex fix | **Engine tests: 45 passed.** That's 5 from M1-00, plus 40 for M1-01: the original 29, plus 4 regression cases for Codex's finding, 1 safe-rebinding case and 6 Python-scoping cases.<br>**Git Bash:** 1 failed, **1304 passed**, 4 skipped, 1 deselected; failing set = baseline (`test_yfinance_keeps_its_cache_out_of_the_users_home`).<br>**PowerShell:** 2 failed, **1303 passed**, 4 skipped, 1 deselected; failing set = baseline (also `test_every_command_is_registered_when_run_as_a_module`).<br>**No new failures.** `ruff check .`: all checks passed.<br>**Clean-install smoke: passed (the CI import succeeded from the repository root; from outside it, investment_engine.clock loaded from site-packages and LiveClock().now() was UTC).** The first M1-01 commit `8c36fb4` had also passed: 1293 / 1292 passed, same failing sets.<br><br>**Exact commands**, from the repository root:<br>1. `.venv/Scripts/python.exe -m pytest -q tests/engine` (Git Bash)<br>2. `.venv/Scripts/python.exe -m pytest -q` (Git Bash)<br>3. `& .venv\Scripts\python.exe -m pytest -q \| Out-File -Encoding utf8 <scratch>\m101b-powershell.txt` (PowerShell)<br>4. `.venv/Scripts/python.exe -m ruff check .` (Git Bash)<br>5. Smoke: `py -3.11 -m venv <scratch>/smoke-m101b`; `<scratch>/smoke-m101b/Scripts/python.exe -m pip install -q .`; then, from the repository root, `<scratch>/smoke-m101b/Scripts/python.exe -c "import tradingagents, cli.main, investment_engine; print('clean-install import OK')"`; then, from outside the repository, `<scratch>/smoke-m101b/Scripts/python.exe -c "import investment_engine.clock as c; print(c.LiveClock().now().tzinfo, c.__file__)"` | Full outputs kept in Claude Code's scratch folder, outside the repository (the spec doesn't allow new output files) |
+| **M1-01** (`m1/M1-01-clock`), after the second Codex fix | **Engine tests: 70 passed.** That's 5 from M1-00, plus 65 for M1-01: the original 29; then, for the first finding, 4 regression cases, 1 safe-rebinding case and 6 scoping cases; then, for the second finding, 4 comprehension-variable regressions, 12 reads-still-caught cases (element, condition and first iterable, across list, set, dict and generator), 4 own-scope shadowing cases and 5 more scoping cases.<br>**Git Bash:** 1 failed, **1329 passed**, 4 skipped, 1 deselected; failing set = baseline (`test_yfinance_keeps_its_cache_out_of_the_users_home`).<br>**PowerShell:** 2 failed, **1328 passed**, 4 skipped, 1 deselected; failing set = baseline (also `test_every_command_is_registered_when_run_as_a_module`).<br>**No new failures.** `ruff check .`: all checks passed.<br>**Clean-install smoke: passed (the CI import succeeded from the repository root; from outside it, investment_engine.clock loaded from site-packages and LiveClock().now() was UTC).** Earlier M1-01 commits had also passed: `8c36fb4` with 1293 / 1292 passed and `dec5070` with 1304 / 1303 passed, the same failing sets each time.<br><br>**Exact commands**, from the repository root:<br>1. `.venv/Scripts/python.exe -m pytest -q tests/engine` (Git Bash)<br>2. `.venv/Scripts/python.exe -m pytest -q` (Git Bash)<br>3. `& .venv\Scripts\python.exe -m pytest -q \| Out-File -Encoding utf8 <scratch>\m101c-powershell.txt` (PowerShell)<br>4. `.venv/Scripts/python.exe -m ruff check .` (Git Bash)<br>5. Smoke: `py -3.11 -m venv <scratch>/smoke-m101c`; `<scratch>/smoke-m101c/Scripts/python.exe -m pip install -q .`; then, from the repository root, `<scratch>/smoke-m101c/Scripts/python.exe -c "import tradingagents, cli.main, investment_engine; print('clean-install import OK')"`; then, from outside the repository, `<scratch>/smoke-m101c/Scripts/python.exe -c "import investment_engine.clock as c; print(c.LiveClock().now().tzinfo, c.__file__)"` | Full outputs kept in Claude Code's scratch folder, outside the repository (the spec doesn't allow new output files) |
 | CI | **Not yet run** (nothing pushed) | — |
 
 ---
 
 ## Session log
+
+### 2026-10-11: Claude Code (M1-01, second fix: comprehension scopes)
+- **Codex finding (blocking).** A comprehension's loop variable was treated as belonging to the whole function, so `[dt.isoformat() for dt in values]` hid a module-level `from datetime import datetime as dt`, and a later `dt.now()` went unreported. Codex reproduced it for list, set and dict comprehensions and generator expressions.
+- **Regression tests first,** across all four comprehension kinds:
+  - the loop variable can't hide the enclosing import (Codex's example);
+  - reads inside a comprehension are still caught: in the element, in a condition, and in the **first iterable**, which Python evaluates in the enclosing scope, so even `[dt for dt in [dt.now()]]` is caught;
+  - inside its own scope, the loop variable does shadow the import.
+
+  Before the fix, 8 failed (Codex's example ×4, first iterable ×4).
+- **Fix.** Each comprehension is its own scope. The first iterable is analysed in the enclosing scope, everything else in the comprehension's scope. A `:=` (walrus) binds in the enclosing function, as in Python.
+- **Probed before committing.** Nine more edge cases: nested comprehensions both ways, a later `for` clause seeing earlier variables, walrus, a comprehension in a class body, and lambdas. Five became permanent scoping tests.
+- **Known conservative limit.** Lambdas aren't modelled as scopes. A lambda parameter that shares an import's name (`lambda dt: dt.now()`) is **flagged**: a possible false alarm, never a miss.
+- **Codex's answers on planning** are recorded under "Next steps" (batches, rules, `tzdata`, the one-month goal).
+
 
 ### 2026-10-11: Claude Code (M1-01 fix for Codex's finding)
 - **Codex finding (blocking).** The system-clock scan used one alias table for the whole file, so an import in one function could hide a forbidden read in another. Codex reproduced two cases.
