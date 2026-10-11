@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Document status** | **Reviewed v0.3.** Codex document review passed (2026-10-09); committed with the owner's approval; awaiting review of the M0 commit and the owner-approved merge into `main`.<br>v0.2 applied Codex's first roadmap review: workflow, baseline, Yahoo verification, availability.<br>v0.3 applies the M1 spec review: complete split history, per-field verification, replay timing, provider separation, the resampler cutoff, the frozen DataHealth states, and blocking on failed verification. |
+| **Document status** | **v0.4, for review.** v0.3: Codex review passed; merged into `main` with the owner's approval (M0, `906ae85`, 2026-10-09). v0.4 adopts the **batch workflow** (§1.1, §4.3), records the owner's one-month window, and updates M0's completed status. Earlier notes:<br>v0.2 applied Codex's first roadmap review: workflow, baseline, Yahoo verification, availability.<br>v0.3 applies the M1 spec review: complete split history, per-field verification, replay timing, provider separation, the resampler cutoff, the frozen DataHealth states, and blocking on failed verification. |
 | **Date** | 2026-10-08 |
 | **Sources** | `architecture/architecture-v1.0.md` Part K (milestones and promotion gates; v1.0 FROZEN), `docs/PRD.md` (milestone table, OPEN-01 – OPEN-17), `architecture/adr/`. Where this roadmap and the architecture disagree, the architecture wins. |
 | **Estimates** | **M1 is detailed**, with a spec per task in `docs/tasks/`. Everything for M2 – M10 is **provisional**: listed as work packages that are split into 1–3 hour tasks, with specs, before implementation. |
@@ -13,24 +13,37 @@ This roadmap splits the frozen milestones into **tasks of about 1–3 hours** ea
 
 ## 1. How work proceeds
 
-### 1.1 Life of a task
+### 1.1 Life of a task: tasks in reviewed batches
 ```
-spec → tests → implementation → checks → PROGRESS.md → commit
-     → Codex review → fixes and recommit → final review → owner approval → merge
+owner approves the batch → per task: spec → tests → implementation → task checks → PROGRESS.md → task commit
+  → batch checks → Claude Code self-review → Codex reviews every commit → fixes as follow-up commits
+  → final review → owner approval → one fast-forward merge into main
 ```
-1. **Spec.** `docs/tasks/<ID>.md` states the goal, dependencies, allowed files, contracts, implementation choices, acceptance tests and what's out of scope. The owner approves it before work starts.
-2. **Tests.** On the task's own branch (`m1/<ID>-<short-name>`, created from `main`), the acceptance tests are written first and fail for the right reason.
-3. **Implementation.** Only files the spec allows are changed.
-4. **Checks.** The commands in `docs/tasks/README.md` are run, and their exact results recorded: the task's tests, the full suite, `ruff check .` and the clean-install smoke import.
-5. **PROGRESS.md.** Updated with what was done, the check results (commands and outcomes), open issues and what's next.
-6. **Commit** on the task branch.
-7. **Codex review** of the commit against the spec, the architecture laws and the ADRs.
-8. **Fixes and recommit** for each finding, or a written justification where a finding is declined.
-9. **Final review** by Codex.
-10. **Owner approval.**
-11. **Merge** into `main`. Only the owner approves merges. **Nothing is pushed** without the owner's explicit instruction.
+Adopted on 2026-10-12 (Codex agreed, owner approved), replacing review-and-merge per task. **The safeguards are unchanged**; there are fewer round trips.
 
-A task counts as **done only after its merge**. Before then, its state is "in progress", "committed, in review" or "approved, awaiting merge".
+1. **Batch approval.** The owner approves a batch (§4.3). That covers implementing and locally committing its tasks on one branch, `m1/batch-<N>`, from `main`.
+2. **Per task:**
+   - the spec (`docs/tasks/<ID>.md`, already reviewed);
+   - acceptance tests written first, failing for the right reason;
+   - the implementation, in allowed files only;
+   - the **task checks** (`docs/tasks/README.md`);
+   - a `PROGRESS.md` entry;
+   - **one commit per task.**
+
+   A task may build on an earlier task **in the same batch branch** once that task is committed and checked. Dependencies outside the batch must be merged.
+3. **Batch checks:** the PowerShell full suite and the clean-install smoke check. The smoke check also runs inside any task that changes dependencies or packaging.
+4. **Self-review.** Claude Code reviews the whole batch against the specs and laws, including adversarial edge-case probes.
+5. **Codex review of every commit**, and of the batch as a whole.
+6. **Fixes** as follow-up commits, or a written justification where a finding is declined. Then a **final review.**
+7. **Owner approval** and **one fast-forward merge** into `main`. **Nothing is pushed** without the owner's explicit instruction.
+
+**Stop rules:** a batch stops and is reported to the owner on:
+- a new test failure;
+- a needed file change outside a spec's allowed files;
+- a spec gap needing an architecture or ADR change;
+- a blocked verification checkpoint (Yahoo field verification in M1-12 is a firm checkpoint).
+
+A task counts as **done only when its batch is merged**.
 
 ### 1.2 Rules that apply to every task
 - **No architecture change without an accepted ADR** (Part P). If a task finds it needs one, it stops, a proposed ADR is written, and nothing is adopted until the ADR is reviewed and accepted.
@@ -91,7 +104,7 @@ Strictly, M6 needs only M1 and M2, so it could run earlier. The roadmap keeps th
 
 ---
 
-## 3. M0 — Architecture (in progress)
+## 3. M0 — Architecture (complete)
 
 | ID | Work | State |
 |---|---|---|
@@ -104,10 +117,10 @@ Strictly, M6 needs only M1 and M2, so it could run earlier. The roadmap keeps th
 | M0-07 | `AGENTS.md` (Codex) and `CLAUDE.md` (Claude Code): the same rules for both tools | Reviewed; committed (M0-09) |
 | M0-08 | `PROGRESS.md`: the handoff log | Reviewed; committed (M0-09) |
 | M0-09 | **Commit** the M0 set on `m0-architecture`, with the owner's go-ahead (excluding `.env` and `.claude/`) | Done, with the owner's approval (2026-10-09): commit `docs: record Architecture v1.0 and M0 working documents` |
-| M0-10 | **Codex review** of the commit; fixes recommitted; **final review** | **Next** |
-| M0-11 | **Owner approval** and **merge** of `m0-architecture` into `main`. Pushing is a separate step, only on the owner's instruction. | Not started |
+| M0-10 | **Codex review** of the commit; fixes recommitted; **final review** | **Passed** (2026-10-09) |
+| M0-11 | **Owner approval** and **merge** of `m0-architecture` into `main`. Pushing is a separate step, only on the owner's instruction. | **Done** (2026-10-09): `906ae85`, followed by the close-out commit `9486f05`. Not pushed. |
 
-**M0 closes only after M0-11:** its reviewed, owner-approved merge into `main`. Being committed isn't enough. **M1-00 starts after that**, on a branch from the updated `main`.
+**M0 closed on 2026-10-09** with its reviewed, owner-approved merge into `main`.
 
 ---
 
@@ -116,6 +129,8 @@ Strictly, M6 needs only M1 and M2, so it could run earlier. The roadmap keeps th
 **Goal (Part K):** Instrument + SymbolMapping, Clock, Calendar, Candle, CorporateAction, revisions, replay feed, resampler, DataHealth, on SQLite.
 **Visible result:** a CLI command that replays **NVDA** (the frozen M1 baseline, PRD OPEN-05) and prints clean daily and hourly candles plus a data-health report.
 **Not in M1:** indicators, MarketView, orders, outbox infrastructure (M4; ADR-005), PostgreSQL (M3; ADR-008), live market data (M7).
+
+**Owner's time window (2026-10-11):** one month. **The goal is to finish M1.** M2 is a **stretch goal**, and it still needs reviewed specs, including the agreed adjusted-price view and leakage protections.
 
 ### 4.1 Rules that shape M1
 
@@ -197,8 +212,18 @@ Section 4.4 lists the decisions still open.
   - M1-17 and M1-16 now depend on M1-05.
 - **v0.3:** M1-13 now depends on M1-11, which provides the stored split history. The phases are unchanged.
 
-### 4.3 Order of work
-Each phase needs only tasks from earlier phases. Tasks within a phase can be done in any order.
+### 4.3 Order of work and batches
+**Batches** (agreed with Codex on 2026-10-11). Each batch is one branch, reviewed commit by commit, and merged once:
+
+| Batch | Tasks | Purpose | Task order inside the batch | Needs merged first | Notes |
+|---|---|---|---|---|---|
+| — | M1-00, M1-01 | Skeleton, baseline, Clock | — | — | **Done** (merged task by task: `f906841`, `a8f338b`) |
+| **1** | M1-02 – M1-05 | Money types, instruments, symbol mappings, SQLite | 02, 03, then 04 (uses 03), then 05 (uses 03 and 04) | M1-00 | M1-05 adds package data: run the smoke check within the task |
+| **2** | M1-06 – M1-11 | Calendars, candles, corporate actions, storage | 06, 07 (uses 06), 08, 09 (uses 08), 10 (uses 08, 09), 11 (uses 10) | M1-01, M1-02, M1-03 (batch 1) | M1-06 adds `tzdata`, M1-07 calendar data and M1-10 optional dependencies: smoke checks within those tasks |
+| **3** | M1-12 – M1-13 | Yahoo verification and import | 12, then 13 | Batches 1 and 2 | **Firm checkpoint.** If verification blocks a field, the batch stops (§4.1, rule 3). |
+| **4** | M1-14 – M1-17 | Replay, resampling, data health, NVDA report | 14, 15, 16, then 17 | Batches 1 – 3 | M1-17 adds package data: smoke check within the task |
+
+The dependency **phases** below still hold, and every batch's order follows them. Each phase needs only tasks from earlier phases:
 
 | Phase | Tasks |
 |---|---|

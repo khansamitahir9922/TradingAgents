@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Document status** | **Reviewed v0.1.** Codex document review passed (2026-10-09); committed with the owner's approval; awaiting review of the M0 commit and the owner-approved merge into `main`. |
+| **Document status** | **v0.2, for review.** v0.1: Codex review passed; merged into `main` with the owner's approval (M0, `906ae85`, 2026-10-09). v0.2 replaces the per-task workflow with the agreed **batch workflow** (shared rules §4 and §6). |
 | **Applies to** | Codex working in this repository: the TradingAgents fork plus the platform being built beside it (`architecture/architecture-v1.0.md`) |
 | **Twin file** | `CLAUDE.md` holds the same shared rules for Claude Code. The section between the `SHARED RULES` markers must stay identical in both files. |
 
@@ -10,7 +10,7 @@
 You are the **independent reviewer**, and the **backup implementer** when Claude Code is unavailable.
 
 ### When reviewing
-Review the actual files or commit, not a summary of them. Check:
+Review the actual files or commits, not a summary of them. In the batch workflow, review **every commit** in the batch, plus the batch as a whole. Check:
 1. **Spec conformance:**
    - every acceptance test exists, tests what the spec says, and passes;
    - only allowed files changed;
@@ -74,14 +74,24 @@ If documents disagree, the precedence is: **architecture > accepted ADRs > task 
   - the ledger is double-entry and append-only;
   - every decision is reconstructable.
 
-### 4. Workflow for every task
+### 4. Workflow: tasks in reviewed batches
+Tasks are built in **batches** of related tasks (listed in `docs/roadmap.md` §4.3). Each task keeps its own discipline; review and merge happen once per batch.
 ```
-spec → tests → implementation → checks → PROGRESS.md → commit
-     → Codex review → fixes and recommit → final review → owner approval → merge
+owner approves the batch → per task: spec → tests → implementation → task checks → PROGRESS.md → task commit
+  → batch checks → Claude Code self-review → Codex reviews every commit → fixes as follow-up commits
+  → final review → owner approval → one fast-forward merge into main
 ```
-- Work on a task branch (`m1/<ID>-<short-name>`) created from `main`. A task is **done only when merged**.
-- Change **only the files the spec allows**. If another file needs changing, stop and ask.
-- `tradingagents/`, `cli/` and existing tests stay unchanged unless a spec lists the exact change. `pyproject.toml` and `.github/workflows/ci.yml` change only in the sections a spec names.
+- **One branch per batch** (`m1/batch-<N>`), created from `main`. The owner's approval at the start of a batch covers implementing and **locally committing** that batch's tasks. The **merge needs its own approval.**
+- **One commit per task**, each with its own tests and `PROGRESS.md` entry, so every commit can be reviewed on its own. Review fixes go in follow-up commits.
+- **Dependencies inside a batch.** A task may build on an **earlier task in the same batch branch** once that task is committed and its task checks have passed; it doesn't need to be merged first. Dependencies outside the batch must already be merged into `main`.
+- **Review.** Before asking for review, Claude Code self-reviews the whole batch against the specs and laws, including adversarial edge-case probes. Codex then reviews **every commit** before the batch can merge.
+- **Done.** A task is **done only when its batch is merged**. Before that it's "in progress", "committed (checked)", "in review" or "approved, awaiting merge".
+- **Stop rules.** Stop the batch and report to the owner when:
+  - a check shows a **new test failure**;
+  - a task needs a **file change outside its spec's allowed files**;
+  - a **spec gap would need an architecture or ADR change**;
+  - a verification checkpoint **blocks** (e.g. Yahoo field verification, M1-12, which is a firm checkpoint).
+- Change **only the files the spec allows**. `tradingagents/`, `cli/` and existing tests stay unchanged unless a spec lists the exact change. `pyproject.toml` and `.github/workflows/ci.yml` change only in the sections a spec names.
 
 ### 5. Git and secrets
 - **Never commit, push or merge** without the owner's explicit instruction for that action. Approval of one action doesn't carry over to the next.
@@ -89,12 +99,11 @@ spec → tests → implementation → checks → PROGRESS.md → commit
 - No destructive git operations (`reset --hard`, force-push, deleting branches, rewriting history) without explicit permission.
 
 ### 6. Checks and honest reporting
-Run the checks in `docs/tasks/README.md` and record **the exact commands and their result summaries** in `PROGRESS.md`:
-- the task's tests;
-- the full suite;
-- `ruff check .`;
-- the clean-install smoke import.
+The commands are in `docs/tasks/README.md`. Record **the exact commands and their result summaries** in `PROGRESS.md`.
+- **For every task, before its commit:** the task's tests, the full suite (Git Bash) and `ruff check .`. If the task changes **dependencies or packaging**, also run the clean-install smoke check then.
+- **For every batch, before review and merge:** the full suite in **PowerShell** and the **clean-install smoke check** in a fresh venv. Cached package downloads are fine.
 
+Reporting rules:
 - Every test that passed in the recorded baseline (`docs/baselines/`, created by M1-00) must still pass. List every failure by test ID, as "recorded in the baseline" or "new". **A new failure blocks the task.**
 - Never claim a result that wasn't observed. If something wasn't run, say "not run". CI runs only when the owner pushes, so until then report "CI not yet run".
 - Report unresolved issues explicitly. Don't hide them, and don't weaken tests to make them pass.

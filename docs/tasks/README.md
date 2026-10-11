@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Document status** | **Reviewed v0.2.** Codex document review passed (2026-10-09); committed with the owner's approval; awaiting review of the M0 commit and the owner-approved merge into `main`. v0.2 applies Codex's M1 spec review. |
+| **Document status** | **v0.3, for review.** v0.2: Codex review passed; merged into `main` with the owner's approval (M0, `906ae85`, 2026-10-09). v0.3 introduces the agreed **batch workflow** and splits the checks into per-task and per-batch checks. |
 | **Date** | 2026-10-08 |
 | **Sources** | `architecture/architecture-v1.0.md` (v1.0 FROZEN), `architecture/adr/`, `docs/roadmap.md`, `docs/PRD.md`, `docs/design-principles.md`. Where a spec and the architecture disagree, the architecture wins. A spec that needs an architecture change stops and proposes an ADR. |
 
@@ -10,7 +10,7 @@ Each task has one spec here (`M1-00.md` … `M1-17.md`). A spec is the contract 
 
 ## Sections in every spec
 1. **Goal**: what the task delivers.
-2. **Dependencies**: tasks that must be merged first.
+2. **Dependencies**: tasks that must be done first. Merged into `main`, or committed and checked earlier on the same batch branch (see Workflow).
 3. **Allowed files**: the only files the task may create or change. Anything else means stop and ask.
 4. **Contracts**: types, fields, functions and rules other tasks rely on.
 5. **Implementation choices**: **Resolved** choices (decided here, with the reason) and **Unresolved** decisions (marked, with who decides and what happens meanwhile).
@@ -19,22 +19,37 @@ Each task has one spec here (`M1-00.md` … `M1-17.md`). A spec is the contract 
 
 ## Workflow (roadmap Section 1.1)
 ```
-spec → tests → implementation → checks → PROGRESS.md → commit
-     → Codex review → fixes and recommit → final review → owner approval → merge
+owner approves the batch → per task: spec → tests → implementation → task checks → PROGRESS.md → task commit
+  → batch checks → Claude Code self-review → Codex reviews every commit → fixes as follow-up commits
+  → final review → owner approval → one fast-forward merge into main
 ```
-- **Branch:** `m1/<ID>-<short-name>`, created from `main` after the previous dependencies are merged.
-- **Done** means merged. Before that, a task is "in progress", "committed, in review" or "approved, awaiting merge".
+- **Batches:** listed in `docs/roadmap.md` §4.3. **One branch per batch:** `m1/batch-<N>`, from `main`. The `Branch` line in each M1 spec is **superseded** by its batch branch; M1-00 and M1-01 used their own branches.
+- **Approvals:** the owner's approval at the start of a batch covers implementing and locally committing its tasks. The merge needs a separate approval.
+- **One commit per task**, with its own tests and `PROGRESS.md` entry. Review fixes go in follow-up commits.
+- **Dependencies:** a task may build on an earlier task in the same batch branch once that task is committed and its task checks have passed. Dependencies outside the batch must be merged into `main`.
+- **Review:** Claude Code self-reviews the batch, including adversarial edge-case probes. Codex reviews **every commit** before the merge.
+- **Done** means the batch is merged. Before that, a task is "in progress", "committed (checked)", "in review" or "approved, awaiting merge".
+- **Stop rules:** stop and report on a new test failure, a needed file change outside the spec's allowed files, a spec gap needing an architecture or ADR change, or a blocked verification checkpoint (M1-12 is a firm checkpoint).
 - **Nothing is pushed** without the owner's explicit instruction. `.env` and `.claude/` are never staged.
 
-## Checks every task runs and records
+## Checks
 Run from the repository root with the project venv. Record the **exact command and its result summary** in `PROGRESS.md`.
+
+**Task checks: every task, before its commit**
 
 | # | Command (Git Bash) | Must show |
 |---|---|---|
 | 1 | `.venv/Scripts/python.exe -m pytest -q tests/engine/<this task's test files>` | All of this task's acceptance tests pass |
 | 2 | `.venv/Scripts/python.exe -m pytest -q` | Every test that passed in the **M1-00 recorded baseline** still passes. Any failure is listed by test ID as "recorded in the baseline" or "new". **A new failure blocks the task.** |
 | 3 | `.venv/Scripts/python.exe -m ruff check .` | `All checks passed!` |
-| 4 | Clean-install smoke (`docs/baselines/M1-00-baseline.md` gives the exact commands) | The imports in the CI smoke step succeed without dev extras |
+| 4 | Clean-install smoke, **only if the task changes dependencies or packaging** (e.g. M1-05, M1-06, M1-07, M1-10, M1-17) | As in batch check B2 |
+
+**Batch checks: every batch, before review and merge**
+
+| # | Command | Must show |
+|---|---|---|
+| B1 | PowerShell: `& .venv\Scripts\python.exe -m pytest -q` | The PowerShell baseline failing set, and nothing new |
+| B2 | Clean-install smoke: `py -3.11 -m venv <scratch>`; `<scratch>/Scripts/python.exe -m pip install .`; from the repository root, `python -c "import tradingagents, cli.main, investment_engine; print('clean-install import OK')"`; and from **outside** the repository, an import of the batch's new modules, to prove they're packaged. Cached downloads are fine. | Both imports succeed without dev extras |
 
 **CI:** the GitHub workflow runs only when the owner pushes or opens a pull request. Until then, a task reports **"CI not yet run"**. It never claims a CI result it didn't see. Python 3.12 – 3.13 and the `TZ=America/New_York` job can't be reproduced on this Windows machine and stay unverified until CI runs. Python 3.11 is the venv; 3.14 is available through `py -3.14` for optional local runs.
 
