@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** M1-00 done; M1-01 in review. |
 | **`main`** | Local `main` is at **`f906841`** (`feat: add investment engine package skeleton and baseline`). M1-00 **passed Codex review** and was **fast-forwarded into `main`** with the owner's approval on 2026-10-10. It's 4 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current task** | **M1-01: Clock.** Branch `m1/M1-01-clock`, from `main` at `f906841`. **Implemented and checked; committed with the owner's approval; awaiting Codex review of the commit**, then the owner-approved merge. |
+| **Current task** | **M1-01: Clock.** Branch `m1/M1-01-clock`, from `main` at `f906841`. The first commit `8c36fb4` was reviewed by Codex, which found **one blocking issue** in the system-clock scan; it's fixed in a **follow-up commit, awaiting Codex review**, then the owner-approved merge. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` has `__init__.py` (M1-00) and `clock.py` (M1-01). |
@@ -114,12 +114,31 @@ Report directional accuracy against the base rate, and the information coefficie
 | Pre-commit checks | The staged file list matches the owner-approved set; `git diff --cached --check` is clean | Claude Code, 2026-10-09 |
 | Codex review of commit `906ae85` | **Passed (2026-10-09).** All 38 committed files are the approved documentation; the SVG, runtime code, tests and CI files are unchanged; `.env` and `.claude/` are excluded; the shared rules match. It noted one non-blocking item, the PRD's "review draft" wording, which is fixed on `docs/m0-closeout` (Codex review passed, 2026-10-09). | Codex review, relayed by the owner |
 | Codex review of `docs/m0-closeout` | **Passed (2026-10-09).** Only the two approved files changed; the architecture, SVG, roadmap, M1 specs and runtime files are unchanged; whitespace checks pass. Runtime tests weren't run. | Codex review, relayed by the owner |
-| **M1-01** (`m1/M1-01-clock`) | New tests: `tests/engine/test_clock.py` and `test_no_system_clock.py`. **All 34 engine tests pass** (5 from M1-00 + 29 new). **Git Bash:** 1 failed, **1293 passed** (+29 against M1-00), 4 skipped, 1 deselected; failing set = baseline. **PowerShell:** 2 failed, **1292 passed** (+29), 4 skipped, 1 deselected; failing set = baseline. **No new failures.** `ruff check .` passed. Clean-install smoke (fresh Python 3.11 venv, `pip install .`): `import tradingagents, cli.main, investment_engine` OK from the repository root; from outside it, `investment_engine.clock` imports from `site-packages` and `LiveClock().now()` is UTC. | Commands as in `docs/tasks/README.md`; outputs kept outside the repository (the spec doesn't allow new output files) |
+| **M1-01** (`m1/M1-01-clock`), after the Codex fix | **Engine tests: 45 passed.** That's 5 from M1-00, plus 40 for M1-01: the original 29, plus 4 regression cases for Codex's finding, 1 safe-rebinding case and 6 Python-scoping cases.<br>**Git Bash:** 1 failed, **1304 passed**, 4 skipped, 1 deselected; failing set = baseline (`test_yfinance_keeps_its_cache_out_of_the_users_home`).<br>**PowerShell:** 2 failed, **1303 passed**, 4 skipped, 1 deselected; failing set = baseline (also `test_every_command_is_registered_when_run_as_a_module`).<br>**No new failures.** `ruff check .`: all checks passed.<br>**Clean-install smoke: passed (the CI import succeeded from the repository root; from outside it, investment_engine.clock loaded from site-packages and LiveClock().now() was UTC).** The first M1-01 commit `8c36fb4` had also passed: 1293 / 1292 passed, same failing sets.<br><br>**Exact commands**, from the repository root:<br>1. `.venv/Scripts/python.exe -m pytest -q tests/engine` (Git Bash)<br>2. `.venv/Scripts/python.exe -m pytest -q` (Git Bash)<br>3. `& .venv\Scripts\python.exe -m pytest -q \| Out-File -Encoding utf8 <scratch>\m101b-powershell.txt` (PowerShell)<br>4. `.venv/Scripts/python.exe -m ruff check .` (Git Bash)<br>5. Smoke: `py -3.11 -m venv <scratch>/smoke-m101b`; `<scratch>/smoke-m101b/Scripts/python.exe -m pip install -q .`; then, from the repository root, `<scratch>/smoke-m101b/Scripts/python.exe -c "import tradingagents, cli.main, investment_engine; print('clean-install import OK')"`; then, from outside the repository, `<scratch>/smoke-m101b/Scripts/python.exe -c "import investment_engine.clock as c; print(c.LiveClock().now().tzinfo, c.__file__)"` | Full outputs kept in Claude Code's scratch folder, outside the repository (the spec doesn't allow new output files) |
 | CI | **Not yet run** (nothing pushed) | — |
 
 ---
 
 ## Session log
+
+### 2026-10-11: Claude Code (M1-01 fix for Codex's finding)
+- **Codex finding (blocking).** The system-clock scan used one alias table for the whole file, so an import in one function could hide a forbidden read in another. Codex reproduced two cases.
+- **Regression tests first.** Two parametrized tests, each in both orders:
+  - Codex's `bad()` / `format_timestamp()` example;
+  - a module-level `from datetime import datetime` read in one function, while another function does a local `import datetime`.
+
+  Before the fix, 3 of the 4 cases failed on the old scanner. The fourth passed only by accident of ordering.
+- **Fix.** The scanner is now scope-aware:
+  - one binding table per module, function and class scope;
+  - names are resolved as Python does: local, then enclosing, then module, with class bodies not visible from methods;
+  - `global` declarations are honoured;
+  - decorators, default arguments and base classes are evaluated in the enclosing scope;
+  - when a scope binds a name more than once, every import candidate is checked, so the scan errs towards flagging.
+- **Bug in my own fix, caught before committing.** An ad-hoc probe of six scoping edge cases showed that a function body directly inside another scope (a method, a nested function) was being analysed in the outer scope. I restructured the walk, and the six probes are now permanent tests (`test_the_scan_follows_python_scoping`), plus a safe-rebinding test.
+- **Kept:** all 8 forbidden-function planted cases and the safe-use test.
+- **Checks:** see "Last check results", with the exact commands. No new failures.
+- **Time-zone note** stays deferred to M1-06, as Codex agreed.
+
 
 ### 2026-10-10: Claude Code (M1-01: Clock)
 - **M1-00** passed Codex review. With the owner's approval, `main` was fast-forwarded to `f906841` (nothing pushed, no branches deleted).
