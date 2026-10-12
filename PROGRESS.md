@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
 | **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | Batch 2 (M1-06 – M1-11) on `m1/batch-2`: Codex's four review findings fixed in follow-up commits; batch checks passed again. Ready for Codex's re-review, then the owner-approved merge. Batch 3 not started. |
+| **Current work** | Batch 2 (M1-06 – M1-11) on `m1/batch-2`: Codex's re-review finding fixed in `c637a75`; batch checks passed again. Ready for Codex's re-review, then the owner-approved merge. Batch 3 not started. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
@@ -29,7 +29,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Batch 2 (M1-06 – M1-11)** on `m1/batch-2`: Codex's review found four issues; all are fixed in follow-up commits (`a10bd73`, `3eafd38`) and the batch checks passed again. **Next: Codex re-reviews the fix commits**, then the owner approves one fast-forward merge.
+1. **Batch 2 (M1-06 – M1-11)** on `m1/batch-2`: Codex's four review findings are fixed (`a10bd73`, `3eafd38`). Its re-review finding (correction validation) is fixed in `c637a75`, and the batch checks passed again. **Next: Codex re-reviews `c637a75`**, then the owner approves one fast-forward merge.
 2. Then **batch 3 (M1-12 – M1-13: Yahoo verification and import, a firm checkpoint)**, after a new owner approval. **Not started.**
 
 **Owner's conditions for batch 2 (2026-10-12):**
@@ -140,6 +140,35 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 2: fix for Codex's re-review; ready for re-review)
+**Codex re-reviewed `a10bd73` to `30353a1`.** The four original findings are addressed, and Codex confirmed that DuckDB still expands an explicit file list, so files are opened directly. **One new blocking finding:** `a10bd73` validated *every* observation as a first import. That refused a genuine correction because of a backfill time the correction never uses, which contradicts M1-10 ("Any backfill time supplied is ignored").
+
+**Fix (`c637a75`, M1-10):**
+- An identity **already stored** is validated in full as the **`OBSERVED` next revision** it would become, at its own receipt time. That one record is used both for the unchanged check and as the correction written. Its backfill time is ignored.
+- A **first-seen** identity keeps the first-import checks, backfill time included.
+- **Duplicate validation is kept:** an invalid duplicate is still refused, and a valid one still writes nothing.
+
+**Regression tests first:** 3 of 4 new tests failed before the fix.
+- A candle correction with a backfill time before the bar's end is **accepted** as revision 2, `OBSERVED` at receipt.
+- A dividend correction with a backfill time that isn't the ex-date start is likewise accepted as revision 2, `OBSERVED` at receipt.
+- A duplicate carrying such a backfill time is **unchanged**, and nothing is written.
+- The same bad backfill times are **still refused on a first import** (passed before and after).
+
+**One existing test case changed, to follow the spec:** in `test_an_invalid_duplicate_action_is_refused_not_counted_unchanged`, the case "backfill not at the ex-date start" became "naive `processed_at`". A duplicate also ignores the backfill time, so that case no longer describes an invalid duplicate. The other three cases are unchanged.
+
+**Checks on `c637a75`:**
+- Task checks:
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine`: **527 passed**;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1786 passed**, 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed.
+- **B1, PowerShell:** `& .venv\Scripts\python.exe -m pytest -q`: 2 failed, **1785 passed**, 4 skipped, 1 deselected. The failing set equals the PowerShell baseline.
+- **B2, clean install, both variants:** both passed on `c637a75`, each in a fresh Python 3.11 venv using that venv's own Python, run from outside the repo and from its root.
+  - **Base:** the package loads from `site-packages`, and the installed calendar gives 2025-01-09 closed and 252 sessions in 2024. `pyarrow` and `duckdb` are neither installed nor loaded.
+  - **`engine` extra:** both libraries are installed but not loaded on import. A write-then-read in a store at `market[x]`, with a decoy `marketx` beside it, returns only its own closes; revision [1] is visible before the correction and [2] after.
+- **CI:** not yet run.
+
+**Files changed:** `market/store/writer.py`, `tests/engine/test_store_write.py` (M1-10 allowed files) and `PROGRESS.md`.
 
 ### 2026-10-12: Claude Code (batch 2: fixes for Codex's review; ready for re-review)
 **Codex reviewed all eight batch-2 commits. Verdict: fixes needed, four findings, no ADR needed.** All four are fixed in follow-up commits. Regression tests came first: 17 of the new tests failed on the unfixed code.
