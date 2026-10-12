@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **12 of 18 tasks done** (M1-00 – M1-11). |
 | **`main`** | Local `main` is at **`0661d46`** (`docs: record the batch 2 re-review fix and checks`). **Batch 2 passed Codex's review** (after two rounds of follow-up fixes) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12; batch 1 (`109a72d`) before it. `main` is 29 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 3 partial implementation** on `m1/batch-3`: M1-12 daily semantics/actions **`fcd8457`**, M1-13 daily bars **`d93e47e`**. Codex implemented while Claude was unavailable. Final self-review numeric-boundary follow-up and batch checks in progress, then Claude independent review. **Hourly prices/volume remain BLOCKED; no merge, push or batch 4.** |
+| **Current work** | **Batch 3 partial implementation, awaiting Claude independent review** on `m1/batch-3`: M1-12 daily semantics/actions **`fcd8457`**, M1-13 daily bars **`d93e47e`**, numeric-boundary follow-up **`f1ebc7b`**, plus this handoff record. Codex implemented during Claude's usage limit. All authorized daily checks pass relative to baseline. **Hourly prices/volume remain BLOCKED; no merge, push or batch 4.** |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules plus `market/calendar/` (US equities, cited 2019 – 2026 data), `market/availability.py`, `market/candles.py`, `market/corporate_actions.py` and `market/store/` (schema, append-only writer, point-in-time reader). The `engine` extra adds `pyarrow` and `duckdb`. |
@@ -29,7 +29,9 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Batch 3:** Codex implements the approved M1-12 and daily-only M1-13 under the same task/batch checks and separate local commits. Claude Code independently reviews Codex's work when its usage limit resets. **Do not declare batch 3 or M1 complete:** hourly verification remains blocked. Stop before merging, pushing or batch 4.
+1. **Claude Code independent review**, when available: read its shared rules, this handoff and M1-12/M1-13; review **every commit from `0661d46` to the current `m1/batch-3` head**, plus the combined change, against specs and frozen laws. Codex implemented these commits and has self-reviewed them; it **does not claim independent approval of its own work**. Findings and fixes remain on this branch. Owner approval is still required for any merge; nothing is pushed without owner approval.
+   - The approved daily implementation is finished and checked. **Hourly remains paused** pending comparable independent evidence; hourly acceptance cases and M1/batch-3 completion remain open.
+   - Codex returns to independent reviewing for subsequent Claude implementations after this handoff. No new implementation batch is authorized by this review request.
 2. Then **batch 4 (M1-14 – M1-17)**, after a new owner approval. **Not started.**
 
 **Owner's conditions for batch 2 (2026-10-12):**
@@ -110,9 +112,9 @@ Report directional accuracy against the base rate, and the information coefficie
 | Item | Owner | Needed by |
 |---|---|---|
 | ~~OPEN-01: package name~~ **Resolved:** `investment_engine`, confirmed by the owner on 2026-10-09 | Owner | Done |
-| **No comparable independent hourly reference for NVDA**, so **hourly volume is blocked** and **hourly prices are pending** (169 of 728 sessions where hourly highs and lows differ from daily; investigated in round 3, about 150 still unexplained, including the 2026-02-09 spike). One owner action would address both: a one-off verification pull of an independent vendor's **unadjusted** hourly and daily bars (e.g. Massive's API; needs an account; not a runtime dependency). Until then, M1-13's hourly import, and M1 completion, are blocked | Owner (account or source), then Codex | M1-12, M1-13 |
+| **Hourly verification still blocks M1-12/M1-13 and M1 completion.** Recorded high/low differences: **169 sessions in vendor units**, **181 under raw reconstruction**, plus **35 missing expected hourly starts**. No comparable independent hourly reference yet. A proposed vendor must actually provide the needed historical, unadjusted data with matching bar/session/auction/late-trade coverage; an account alone does not establish access or settle the evidence. No additional provider integration or account purchase is authorized here. | Owner/source decision, then reviewed evidence | Hourly M1-12/M1-13 |
 | ~~Q1-2021 exact reference close~~ **Resolved for the acceptance test:** owner approved option B, **2021-07-01 <= date < 2021-07-20**, including the independently cited July 19 close $751.19 and excluding the split date. Q1 recording remains the date-filtered-history counterexample; MarketWatch archives remain supporting material only. | Owner/Codex | M1-13 |
-| Which independent sources count as anchors for as-traded prices, volumes and dividends | **Accepted by Codex with conditions (2026-10-12):** independent vendors' dated publications of explicitly unadjusted values (e.g. Massive), dated financial articles with an exact value and trading date, and NVIDIA's own announcements for splits and dividends. Owner approval follows Codex's review of the v0.3.1 draft. | M1-12 |
+| Which independent sources count as anchors | **Accepted with conditions in the owner-approved daily scope:** independent vendors' dated publications of explicitly unadjusted values, dated financial articles with exact value/trading date, and company announcements for splits/dividends. Primary daily decisions use July/Massive and NVIDIA anchors; retained MarketWatch archives are supporting only. | M1-12 daily scope implemented |
 | The per-field Yahoo determination results | Determined in M1-12 | M1-12 / M1-13 |
 | How far back yfinance hourly history reaches | Measured in M1-13 | M1-13 |
 | `pyarrow` / `duckdb` versions with Python 3.11 – 3.14 wheels | Checked in M1-10 | M1-10 |
@@ -142,6 +144,37 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Codex ? final daily-only batch 3 handoff for Claude review
+**Approved implementation finished.** Code commits: **`fcd8457`** (M1-12 partial: verified daily semantics and actions), **`d93e47e`** (M1-13 partial: daily bars), **`f1ebc7b`** (self-review Boolean fix). This documentation commit records final checks/handoff. Review range starts at **`0661d46`**. `main` remains **`0661d46`**; nothing merged or pushed, no branches deleted, batch 4 not started. The 12 merged tasks remain the done count; these partial tasks are **committed (checked), awaiting independent review**, not done.
+
+**Final checks on `f1ebc7b`:**
+- Git Bash: `.venv/Scripts/python.exe -m pytest -q tests/engine/test_yahoo_semantics.py tests/engine/test_yfinance_actions.py tests/engine/test_yfinance_bars.py` ? **104 passed, 2 deselected** (the two new live integration checks were not run).
+- Git Bash: `.venv/Scripts/python.exe -m pytest -q` ? **1890 passed, 1 failed, 4 skipped, 3 deselected**, 99 subtests passed; output `%TEMP%/codex-b3-followup-full.txt`.
+- PowerShell: `& .venv/Scripts/python.exe -m pytest -q` ? **1890 passed, 1 failed, 4 skipped, 3 deselected**, 99 subtests passed; output `%TEMP%/codex-b3-powershell-final.txt`.
+- **Only observed failure in both shells:** `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home` ? **recorded in baseline**. **No new failures.** The second historically recorded PowerShell failure (`tests/test_cli_commands.py::test_every_command_is_registered_when_run_as_a_module`) did not reproduce in Codex's environment; its assertion was not changed or skipped.
+- `.venv/Scripts/python.exe -m ruff check .` ? **All checks passed**; `git diff --check` and staged whitespace check ? clean.
+- **Fresh base/engine install: passed**, Python 3.11, no dev extras. Actual commands and saved artifacts below. Base installation imports all three importer modules **from site-packages outside the repo**, with neither `pyarrow` nor `duckdb` installed/loaded; installed final Boolean guard rejects True. The repository-root CI-style import (`tradingagents, cli.main, investment_engine`) succeeds with that fresh Python.
+- After installing the engine extra in the same fresh environment, an **outside-repo installed-copy synthetic check** applies schema version 1, imports actions, reconstructs the July close **751.1900**, verifies repeat import writes nothing, writes one observed correction to **751.5900**, proves an earlier visible-at read still returns original revision 1, and confirms hourly import is blocked. The store path includes `[x]`; no network was called.
+- **CI, live Yahoo checks and Python 3.12?3.14 runs: not run.** No push.
+
+**Fresh install command/artifact record:**
+`<scratch> = C:/Users/LOQ/AppData/Local/Temp/codex-b3-smoke-3cd36c230dd742dc89c13eb2c4cfb0d8` (created new for this check).
+1. `py -3.11 -m venv <scratch>`.
+2. `<scratch>/Scripts/python.exe -m pip install .` (repository root). After the self-review fix, ran the same command again so the installed copy contains the final code. Logs: `install-base.txt`, `install-base-final.txt` under scratch.
+3. From repository root: `<scratch>/Scripts/python.exe -c "import tradingagents, cli.main, investment_engine; print('clean-install import OK')"` ? passed.
+4. From scratch (outside repository), exact command: `<scratch>/Scripts/python.exe -c "import importlib, importlib.util, sys; from pathlib import Path; names=('investment_engine.market.importers.yahoo_semantics','investment_engine.market.importers.yfinance_actions','investment_engine.market.importers.yfinance_bars'); mods=[importlib.import_module(n) for n in names]; assert all(Path(m.__file__).is_relative_to(Path(sys.prefix)/'Lib'/'site-packages') for m in mods); assert all(importlib.util.find_spec(n) is None for n in ('pyarrow','duckdb')); print('installed importer paths verified; storage extra neither installed nor loaded'); from investment_engine.market.importers.yahoo_semantics import decimal_value; rejected=False; exec('try:\n decimal_value(True)\nexcept TypeError:\n rejected=True'); assert rejected; print('installed final boolean guard OK')"` ? passed. Equivalent assertions are preserved in `<scratch>/smoke_base.py` for reproduction **before** installing the extra; that script itself was not the command run. Item 4 passed before item 5 installed storage libraries.
+5. `<scratch>/Scripts/python.exe -m pip install ".[engine]"` (repository root) ? passed; `install-engine.txt`.
+6. From scratch: `<scratch>/Scripts/python.exe <scratch>/smoke_engine.py` ? **installed-copy synthetic actions/daily reconstruction/idempotence/PIT correction/hourly guard OK**. Script is retained outside the repository. It uses synthetic data; it is not additional historical evidence.
+
+**Self-review:** exact current split citations, range guards, pre-range exclusion, end-exclusive dates, provider/Decimal/Clock boundaries, out-of-request/non-session/forming handling, revised-action availability, no duplicate files, schema/package imports and blocked hourly paths checked. Evidence IDs are defined; source counts/precision and actual error are explicit. Each commit changes only its task's allowed files; no runtime `tradingagents/`/`cli/`, existing tests, architecture, SVG, dependencies or CI changed. `.env` stays ignored; `.claude/` is the only untracked item and never staged.
+
+**Not completed:** independent review; any merge/push; hourly evidence, hourly ingestion or its remaining acceptance cases; M1 completion; batch 4. Existing hourly fixture differences remain unexplained. No fabricated bars or prices were introduced.
+
+**Claude review prompt:**
+> Read CLAUDE.md, PROGRESS.md, docs/tasks/README.md and M1-12/M1-13. Codex implemented the approved daily-only work while you were unavailable. Independently review EVERY commit from 0661d46 to the current m1/batch-3 head and the combined change against the specs/laws. Report blocking findings with file:line, failure scenario and fix, separate from suggestions. Keep hourly blocked. Do not merge, push or start batch 4. Coordinate fixes on this branch; Codex resumes reviewing your later implementations.
+
+**Owner workflow preference:** use longer uninterrupted runs for clearly approved related tasks, while preserving separate task tests/commits, explicit stop rules and independent reviews. Future milestone groupings are planning proposals, not authorization to combine M1?M4 into one unreviewed implementation or begin new work.
 
 ### 2026-10-12: Codex ? numeric-boundary self-review follow-up
 After the two task commits, adversarial self-review found that the generic `__index__` fallback accepted Python/NumPy booleans as financial numbers. Two Python-boolean tests failed first (no TypeError); the fix restricts integer conversion to non-boolean `numbers.Integral` and removes the permissive fallback. Tests now cover both Python booleans, both NumPy booleans, valid NumPy int64 and float64 reconstruction. This preserves the explicit M1-02 conversion boundary.
