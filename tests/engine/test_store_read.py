@@ -284,3 +284,73 @@ def test_a_crafted_provider_or_instrument_cannot_read_outside_the_store(store, s
         reader.candles_latest(source, instrument_id, D1, WEEK_START, WEEK_END)
     with pytest.raises(ValueError):
         reader.actions_latest(source, instrument_id, date(2024, 1, 1), date(2025, 1, 1))
+
+
+# ---------------------------------------------------------------- Codex review fixes
+
+
+@pytest.mark.unit
+def test_a_store_root_with_glob_characters_reads_only_its_own_files(tmp_path):
+    # Codex review of batch 2: DuckDB expanded '[x]' in the path, so reading
+    # 'market[x]' returned the data in 'marketx'.
+    seen = utc(2026, 10, 10)
+    other, own = tmp_path / "marketx", tmp_path / "market[x]"
+    window = (date(2024, 6, 1), date(2024, 7, 1))
+    MarketDataWriter(other).write_candles([candle_obs(close="1149.0000", received_at=seen)], import_id="i1")
+    MarketDataWriter(other).write_corporate_actions([action_obs(amount="0.0200", received_at=seen)], import_id="a1")
+    reader = MarketDataReader(own)
+    assert reader.candles_latest("yfinance", NVDA, D1, WEEK_START, WEEK_END) == []
+    assert reader.actions_latest("yfinance", NVDA, *window) == []
+
+    MarketDataWriter(own).write_candles([candle_obs(received_at=seen)], import_id="i1")
+    MarketDataWriter(own).write_corporate_actions([action_obs(received_at=seen)], import_id="a1")
+    assert [c.close for c in reader.candles_latest("yfinance", NVDA, D1, WEEK_START, WEEK_END)] == [
+        Decimal("1150.0000")
+    ]
+    assert [c.close for c in reader.candle_revisions_available_between(
+        "yfinance", NVDA, D1, utc(2024, 1, 1), utc(2025, 1, 1))] == [Decimal("1150.0000")]
+    assert [a.amount.amount for a in reader.actions_latest("yfinance", NVDA, *window)] == [Decimal("0.0100")]
+    assert [a.amount.amount for a in reader.action_revisions_available_between(
+        "yfinance", NVDA, utc(2024, 1, 1), utc(2025, 1, 1))] == [Decimal("0.0100")]
+
+
+NAIVE = datetime(2024, 6, 4)
+WINDOW = (date(2024, 6, 1), date(2024, 7, 1))
+BAD_CALLS = {
+    "candles_latest-naive-start": lambda r: r.candles_latest("yfinance", NVDA, D1, NAIVE, WEEK_END),
+    "candles_latest-bad-timeframe": lambda r: r.candles_latest("yfinance", NVDA, "X9", WEEK_START, WEEK_END),
+    "candles_visible_at-naive-at": lambda r: r.candles_visible_at(
+        "yfinance", NVDA, D1, WEEK_START, WEEK_END, NAIVE),
+    "candles_recorded_by-naive-at": lambda r: r.candles_recorded_by(
+        "yfinance", NVDA, D1, WEEK_START, WEEK_END, NAIVE),
+    "candle_revision_history-naive-end": lambda r: r.candle_revision_history(
+        "yfinance", NVDA, D1, WEEK_START, NAIVE),
+    "candle_revisions_available_between-naive": lambda r: r.candle_revisions_available_between(
+        "yfinance", NVDA, D1, NAIVE, WEEK_END),
+    "candle_revisions_available_between-bad-timeframe": lambda r: r.candle_revisions_available_between(
+        "yfinance", NVDA, "X9", WEEK_START, WEEK_END),
+    "actions_latest-datetime-start": lambda r: r.actions_latest("yfinance", NVDA, WEEK_START, date(2024, 7, 1)),
+    "actions_latest-bad-type": lambda r: r.actions_latest("yfinance", NVDA, *WINDOW, types={"BOGUS"}),
+    "actions_visible_at-naive-at": lambda r: r.actions_visible_at("yfinance", NVDA, *WINDOW, NAIVE),
+    "actions_recorded_by-naive-at": lambda r: r.actions_recorded_by("yfinance", NVDA, *WINDOW, NAIVE),
+    "action_revision_history-datetime-end": lambda r: r.action_revision_history(
+        "yfinance", NVDA, date(2024, 6, 1), WEEK_END),
+    "action_revisions_available_between-naive": lambda r: r.action_revisions_available_between(
+        "yfinance", NVDA, NAIVE, WEEK_END),
+    "action_revisions_available_between-bad-type": lambda r: r.action_revisions_available_between(
+        "yfinance", NVDA, WEEK_START, WEEK_END, types={"BOGUS"}),
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("populated", [False, True], ids=["empty", "populated"])
+@pytest.mark.parametrize("call", list(BAD_CALLS))
+def test_bad_arguments_are_refused_whether_or_not_there_is_data(store, populated, call):
+    # Codex review of batch 2: an empty store returned [] before checking.
+    writer, reader = store
+    if populated:
+        seen = utc(2026, 10, 10)
+        writer.write_candles([candle_obs(received_at=seen)], import_id="i1")
+        writer.write_corporate_actions([action_obs(received_at=seen)], import_id="a1")
+    with pytest.raises((ValueError, TypeError)):
+        BAD_CALLS[call](reader)

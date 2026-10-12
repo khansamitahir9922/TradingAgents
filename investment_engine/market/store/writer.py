@@ -3,10 +3,11 @@
 This is the one place that assigns revision numbers, per identity:
 - an identity not stored before becomes revision 1: BACKFILL_ASSUMED at the
   observation's backfill time if it has one, otherwise OBSERVED at receipt;
-- identical compared values write nothing;
+- identical compared values write nothing (the observation is still fully
+  validated first, so an invalid duplicate is refused, not skipped);
 - changed values become the next revision, always OBSERVED and available from
-  their own receipt. A backfill time on a correction is ignored, so a
-  correction is never backdated.
+  their own receipt. A backfill time on a correction is validated but never
+  used, so a correction is never backdated.
 
 Identities include the provider, so one provider's value is never another's
 correction. Every write creates new files only: each partition's new rows go
@@ -190,16 +191,27 @@ class MarketDataWriter:
                         latest[key] = record
                 loaded.add(folder)
 
+            fields_ = {f.name: getattr(obs, f.name) for f in fields(obs) if f.name != "backfill_available_from"}
+
+            def as_record(revision, basis, available_from, fields_=fields_):
+                return build(**fields_, import_id=import_id, revision=revision,
+                             available_from=available_from, availability_basis=basis)
+
+            # Every observation is validated in full, as the record it would be
+            # if first seen, before deciding whether it's new, a correction or
+            # unchanged; the checks then run on what it claims, not on a
+            # comparison of a few values.
+            if obs.backfill_available_from is not None:
+                first_seen = as_record(1, AvailabilityBasis.BACKFILL_ASSUMED, obs.backfill_available_from)
+            else:
+                first_seen = as_record(1, AvailabilityBasis.OBSERVED, obs.received_at)
+
             key = identity(obs)
             previous = latest.get(key)
             if previous is None:
-                revision = 1
-                if obs.backfill_available_from is not None:
-                    basis, available_from = AvailabilityBasis.BACKFILL_ASSUMED, obs.backfill_available_from
-                else:
-                    basis, available_from = AvailabilityBasis.OBSERVED, obs.received_at
+                new = first_seen
                 new_records += 1
-            elif values(previous) == values(obs):
+            elif values(previous) == values(first_seen):
                 unchanged += 1
                 continue
             else:
@@ -209,20 +221,11 @@ class MarketDataWriter:
                         f"({previous.received_at}); revisions are observed in time order"
                     )
                 # A correction: always observed at its own receipt, never backdated.
-                revision = previous.revision + 1
-                basis, available_from = AvailabilityBasis.OBSERVED, obs.received_at
+                new = as_record(previous.revision + 1, AvailabilityBasis.OBSERVED, obs.received_at)
                 new_revisions += 1
 
-            fields_ = {f.name: getattr(obs, f.name) for f in fields(obs) if f.name != "backfill_available_from"}
-            record = build(
-                **fields_,
-                import_id=import_id,
-                revision=revision,
-                available_from=available_from,
-                availability_basis=basis,
-            )
-            latest[key] = record
-            pending[folder].append(to_row(record))
+            latest[key] = new
+            pending[folder].append(to_row(new))
 
         # Validate every table and every target before writing anything.
         tables = {folder: to_table(rows, schema) for folder, rows in pending.items()}

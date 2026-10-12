@@ -300,6 +300,30 @@ def test_two_providers_actions_never_correct_each_other(writer):
     assert result.new_records == 1 and result.new_revisions == 0
 
 
+
+@pytest.mark.unit
+def test_correcting_one_provider_leaves_the_other_unchanged(writer):
+    # Codex review of batch 2: the spec's later correction for two providers.
+    writer.write_corporate_actions([dividend_obs()], import_id="y1")
+    writer.write_corporate_actions(
+        [dividend_obs(source="testvendor", amount=Money(Decimal("0.0200"), "USD"))], import_id="t1"
+    )
+    yfinance_files = {k: v for k, v in digests(writer.root).items() if "source=yfinance" in k}
+    result = writer.write_corporate_actions(
+        [dividend_obs(source="testvendor", amount=Money(Decimal("0.0300"), "USD"),
+                      received_at=LATER, processed_at=LATER)],
+        import_id="t2",
+    )
+    assert (result.new_records, result.new_revisions, result.unchanged) == (0, 1, 0)
+    rows = stored(writer.root, "corporate_actions")
+    by_source = {s: sorted((r["revision"], r["amount"]) for r in rows if r["source"] == s)
+                 for s in ("yfinance", "testvendor")}
+    assert by_source == {
+        "yfinance": [(1, Decimal("0.0100"))],
+        "testvendor": [(1, Decimal("0.0200")), (2, Decimal("0.0300"))],
+    }
+    assert {k: v for k, v in digests(writer.root).items() if "source=yfinance" in k} == yfinance_files
+
 @pytest.mark.unit
 def test_split_ratios_round_trip_and_excess_precision_is_refused(writer):
     split = dividend_obs(action_type=ActionType.SPLIT, ratio=Decimal("1.5"), amount=None, amount_basis=None)
@@ -335,3 +359,63 @@ def test_a_correction_cannot_be_received_before_what_it_corrects(writer):
         writer.write_candles([candle_obs(close=Decimal("1151.0000"), received_at=LATER - timedelta(hours=1))],
                              import_id="i2")
     assert [r["revision"] for r in stored(writer.root, "candles")] == [1]
+
+
+# ---------------------------------------------------------------- Codex review fixes
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"state": BarState.FORMING},
+        {"close": 1150.0},
+        {"received_at": FETCHED.replace(tzinfo=None)},
+        {"processed_at": FETCHED.replace(tzinfo=None)},
+    ],
+    ids=["forming", "float-price", "naive-received_at", "naive-processed_at"],
+)
+def test_an_invalid_duplicate_candle_is_refused_not_counted_unchanged(writer, changes):
+    # Codex review of batch 2: matching values skipped validation.
+    writer.write_candles([candle_obs()], import_id="i1")
+    before = digests(writer.root)
+    with pytest.raises((ValueError, TypeError)):
+        writer.write_candles([candle_obs(**changes)], import_id="i2")
+    assert digests(writer.root) == before
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"currency": "EUR"},
+        {"exchange_timezone": "America/New York"},
+        {"received_at": FETCHED.replace(tzinfo=None)},
+        {"backfill_available_from": ex_date_start(EX_DATE, "America/New_York") + timedelta(hours=1)},
+    ],
+    ids=["currency-mismatch", "bad-timezone", "naive-received_at", "backfill-not-at-ex-date-start"],
+)
+def test_an_invalid_duplicate_action_is_refused_not_counted_unchanged(writer, changes):
+    writer.write_corporate_actions([dividend_obs()], import_id="a1")
+    before = digests(writer.root)
+    with pytest.raises((ValueError, TypeError)):
+        writer.write_corporate_actions([dividend_obs(**changes)], import_id="a2")
+    assert digests(writer.root) == before
+
+
+@pytest.mark.unit
+def test_a_valid_duplicate_still_writes_no_file(writer):
+    writer.write_candles([candle_obs()], import_id="i1")
+    writer.write_corporate_actions([dividend_obs()], import_id="a1")
+    before = digests(writer.root)
+    assert writer.write_candles([candle_obs(received_at=LATER, processed_at=LATER)], import_id="i2").unchanged == 1
+    assert writer.write_corporate_actions([dividend_obs(received_at=LATER)], import_id="a2").unchanged == 1
+    assert digests(writer.root) == before
+
+
+@pytest.mark.unit
+def test_a_store_root_with_glob_characters_reads_only_its_own_files(tmp_path):
+    # Codex review of batch 2: 'market[x]' must never pick up 'marketx'.
+    MarketDataWriter(tmp_path / "marketx").write_candles([candle_obs()], import_id="i1")
+    result = MarketDataWriter(tmp_path / "market[x]").write_candles([candle_obs()], import_id="i1")
+    assert result.new_records == 1 and result.unchanged == 0

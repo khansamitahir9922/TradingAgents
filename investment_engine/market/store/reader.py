@@ -13,8 +13,12 @@ key that includes the record's full identity plus revision, so the order
 never depends on file or row order; action types rank in their declaration
 order (SPLIT, DIVIDEND, SYMBOL_CHANGE, DELISTING).
 
-Queries run in DuckDB over the provider's Parquet files and come back as
-Arrow tables, converted by the same schema functions the writer uses.
+Every argument is checked before the store is looked at, so a bad call
+fails the same way whether or not there's data. The partition's files are
+listed by pathlib and read by pyarrow from open file objects; DuckDB queries
+the resulting Arrow table and never sees a path, so characters such as `[`
+or `*` in a folder name can't make it read another folder's files. Results
+are converted by the same schema functions the writer uses.
 """
 
 from collections.abc import Collection
@@ -22,6 +26,8 @@ from datetime import date, datetime
 from pathlib import Path
 
 import duckdb
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from investment_engine.market.availability import check_instrument_id, check_provider, check_utc
 from investment_engine.market.candles import Candle, Timeframe
@@ -71,17 +77,17 @@ class MarketDataReader:
     def candle_revisions_available_between(self, source: str, instrument_id: str, timeframe: Timeframe,
                                            available_start: datetime, available_end: datetime) -> list[Candle]:
         """Every revision, of any bar, with available_from in [available_start, available_end)."""
-        files = self._candle_files(source, instrument_id, timeframe)
-        if files is None:
+        params = [source, instrument_id, str(Timeframe(timeframe)),
+                  check_utc(available_start, "available_start"), check_utc(available_end, "available_end")]
+        records = self._candle_records(source, instrument_id, timeframe)
+        if records is None:
             return []
         sql = (
-            f"SELECT * FROM {files} WHERE source = ? AND instrument_id = ? AND timeframe = ?"
+            "SELECT * FROM records WHERE source = ? AND instrument_id = ? AND timeframe = ?"
             " AND available_from >= ? AND available_from < ?"
             " ORDER BY available_from, start_time, revision"
         )
-        params = [source, instrument_id, str(Timeframe(timeframe)),
-                  check_utc(available_start, "available_start"), check_utc(available_end, "available_end")]
-        return [row_to_candle(row) for row in self._query(sql, params)]
+        return [row_to_candle(row) for row in self._query(records, sql, params)]
 
     # ---------------------------------------------------------------- corporate actions
 
@@ -106,56 +112,56 @@ class MarketDataReader:
     def action_revisions_available_between(self, source: str, instrument_id: str,
                                            available_start: datetime, available_end: datetime,
                                            types: Collection[ActionType] | None = None) -> list[CorporateAction]:
-        files = self._action_files(source, instrument_id)
-        if files is None:
-            return []
         type_sql, type_params = self._types(types)
+        params = [source, instrument_id, check_utc(available_start, "available_start"),
+                  check_utc(available_end, "available_end"), *type_params]
+        records = self._action_records(source, instrument_id)
+        if records is None:
+            return []
         sql = (
-            f"SELECT * FROM {files} WHERE source = ? AND instrument_id = ?"
+            "SELECT * FROM records WHERE source = ? AND instrument_id = ?"
             f" AND available_from >= ? AND available_from < ? {type_sql}"
             f" ORDER BY available_from, ex_date, {_ACTION_RANK}, revision"
         )
-        params = [source, instrument_id, check_utc(available_start, "available_start"),
-                  check_utc(available_end, "available_end"), *type_params]
-        return [row_to_action(row) for row in self._query(sql, params)]
+        return [row_to_action(row) for row in self._query(records, sql, params)]
 
     # ---------------------------------------------------------------- internals
 
     def _candles(self, source, instrument_id, timeframe, start, end, *, extra, params=(), one_per_bar):
-        files = self._candle_files(source, instrument_id, timeframe)
-        if files is None:
+        args = [source, instrument_id, str(Timeframe(timeframe)), check_utc(start, "start"),
+                check_utc(end, "end"), *params]
+        records = self._candle_records(source, instrument_id, timeframe)
+        if records is None:
             return []
         where = (
             "source = ? AND instrument_id = ? AND timeframe = ? AND start_time >= ? AND start_time < ? " + extra
         )
-        args = [source, instrument_id, str(Timeframe(timeframe)), check_utc(start, "start"),
-                check_utc(end, "end"), *params]
         if one_per_bar:
             sql = (
                 f"SELECT * EXCLUDE (_rank) FROM (SELECT *, row_number() OVER"
-                f" (PARTITION BY start_time ORDER BY revision DESC) AS _rank FROM {files} WHERE {where})"
+                f" (PARTITION BY start_time ORDER BY revision DESC) AS _rank FROM records WHERE {where})"
                 " WHERE _rank = 1 ORDER BY start_time"
             )
         else:
-            sql = f"SELECT * FROM {files} WHERE {where} ORDER BY start_time, revision"
-        return [row_to_candle(row) for row in self._query(sql, args)]
+            sql = f"SELECT * FROM records WHERE {where} ORDER BY start_time, revision"
+        return [row_to_candle(row) for row in self._query(records, sql, args)]
 
     def _actions(self, source, instrument_id, start, end, types, *, extra, params=(), one_per_record):
-        files = self._action_files(source, instrument_id)
-        if files is None:
-            return []
         type_sql, type_params = self._types(types)
-        where = f"source = ? AND instrument_id = ? AND ex_date >= ? AND ex_date < ? {extra} {type_sql}"
         args = [source, instrument_id, _plain_date(start, "start"), _plain_date(end, "end"), *params, *type_params]
+        records = self._action_records(source, instrument_id)
+        if records is None:
+            return []
+        where = f"source = ? AND instrument_id = ? AND ex_date >= ? AND ex_date < ? {extra} {type_sql}"
         if one_per_record:
             sql = (
                 f"SELECT * EXCLUDE (_rank) FROM (SELECT *, row_number() OVER"
-                f" (PARTITION BY action_type, ex_date ORDER BY revision DESC) AS _rank FROM {files} WHERE {where})"
+                f" (PARTITION BY action_type, ex_date ORDER BY revision DESC) AS _rank FROM records WHERE {where})"
                 f" WHERE _rank = 1 ORDER BY ex_date, {_ACTION_RANK}"
             )
         else:
-            sql = f"SELECT * FROM {files} WHERE {where} ORDER BY ex_date, {_ACTION_RANK}, revision"
-        return [row_to_action(row) for row in self._query(sql, args)]
+            sql = f"SELECT * FROM records WHERE {where} ORDER BY ex_date, {_ACTION_RANK}, revision"
+        return [row_to_action(row) for row in self._query(records, sql, args)]
 
     @staticmethod
     def _types(types):
@@ -166,17 +172,19 @@ class MarketDataReader:
             return "AND FALSE", []
         return f"AND action_type IN ({', '.join('?' for _ in values)})", values
 
-    def _candle_files(self, source, instrument_id, timeframe) -> str | None:
+    def _candle_records(self, source, instrument_id, timeframe) -> pa.Table | None:
         check_provider(source)
         check_instrument_id(instrument_id)
         folder = (self.root / "candles" / f"source={source}" / f"instrument_id={instrument_id}"
                   / f"timeframe={Timeframe(timeframe)}")
-        return self._files(self._inside(folder))
+        return self._records(self._inside(folder))
 
-    def _action_files(self, source, instrument_id) -> str | None:
+    def _action_records(self, source, instrument_id) -> pa.Table | None:
         check_provider(source)
         check_instrument_id(instrument_id)
-        return self._files(self._inside(self.root / "corporate_actions" / f"source={source}" / f"instrument_id={instrument_id}"))
+        return self._records(
+            self._inside(self.root / "corporate_actions" / f"source={source}" / f"instrument_id={instrument_id}")
+        )
 
     def _inside(self, folder: Path) -> Path:
         """`folder`, refusing any path that resolves outside the store's root."""
@@ -185,14 +193,25 @@ class MarketDataReader:
         return folder
 
     @staticmethod
-    def _files(folder: Path) -> str | None:
-        """A read_parquet() over one provider partition's files, or None if there are none."""
-        if not folder.is_dir() or not any(folder.glob("import=*.parquet")):
+    def _records(folder: Path) -> pa.Table | None:
+        """One provider partition's rows, or None if it has no files.
+
+        pathlib lists the files (the folder itself is taken literally, never
+        as a pattern), and each is read from an open file object, so no
+        library ever expands a path. Passing DuckDB an explicit list of paths
+        isn't enough: it still expands `[x]` in each one.
+        """
+        paths = sorted(folder.glob("import=*.parquet")) if folder.is_dir() else []
+        if not paths:
             return None
-        pattern = (folder / "import=*.parquet").as_posix().replace("'", "''")
-        return f"read_parquet('{pattern}', hive_partitioning = false)"
+        tables = []
+        for path in paths:
+            with path.open("rb") as file:
+                tables.append(pq.read_table(file))
+        return pa.concat_tables(tables)
 
     @staticmethod
-    def _query(sql: str, params: list) -> list[dict]:
+    def _query(records: pa.Table, sql: str, params: list) -> list[dict]:
         with duckdb.connect(":memory:") as conn:
+            conn.register("records", records)
             return conn.execute(sql, params).fetch_arrow_table().to_pylist()
