@@ -10,7 +10,8 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from functools import cache
+from zoneinfo import available_timezones
 
 
 class AssetClass(StrEnum):
@@ -29,6 +30,14 @@ _ID = re.compile(r"(?P<asset>EQ|ETF)_[A-Z]{2}_[A-Z0-9]+(_[0-9]+)?")
 _ID_PREFIX = {AssetClass.EQUITY: "EQ", AssetClass.ETF: "ETF"}
 _CURRENCY = re.compile(r"[A-Z]{3}")  # ISO 4217
 _MIC = re.compile(r"[A-Z0-9]{4}")  # ISO 10383 market identifier code
+
+
+@cache
+def _timezone_names() -> frozenset[str]:
+    # Exact, case-sensitive IANA keys. ZoneInfo() alone isn't enough: on
+    # Windows its file lookup ignores case and trailing spaces, so it would
+    # accept names that fail on Linux.
+    return frozenset(available_timezones())
 
 
 def _plain_date(value: object, what: str) -> date:
@@ -63,10 +72,8 @@ class Instrument:
             raise ValueError(f"currency must be an ISO 4217 code like 'USD', not {self.currency!r}")
         if not isinstance(self.exchange, str) or not _MIC.fullmatch(self.exchange):
             raise ValueError(f"exchange must be an ISO 10383 MIC like 'XNAS', not {self.exchange!r}")
-        try:
-            ZoneInfo(self.timezone)
-        except (ZoneInfoNotFoundError, ValueError, TypeError) as exc:
-            raise ValueError(f"timezone must be an IANA name, not {self.timezone!r}") from exc
+        if self.timezone not in _timezone_names():
+            raise ValueError(f"timezone must be an exact IANA name like 'America/New_York', not {self.timezone!r}")
 
         _plain_date(self.active_from, "active_from")
         if self.active_to is not None:

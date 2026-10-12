@@ -94,6 +94,16 @@ def test_an_invalid_timezone_is_refused(timezone):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("timezone", ["America/New_York ", "america/new_york", "AMERICA/NEW_YORK"])
+def test_a_timezone_must_be_an_exact_canonical_name(timezone):
+    # Batch-1 self-review: Windows file lookups ignore case and trailing
+    # spaces, so ZoneInfo() accepted these here while Linux would refuse them.
+    # The check must behave the same on every platform.
+    with pytest.raises(ValueError):
+        nvda(timezone=timezone)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("currency", ["usd", "US", "DOLLAR", ""])
 def test_an_invalid_currency_is_refused(currency):
     with pytest.raises(ValueError):
