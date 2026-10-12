@@ -167,13 +167,37 @@ def test_every_covered_year_has_its_standard_closures(year):
     )
 
 
+# Expected sessions per year, worked out by hand from the cited schedules
+# (Codex review of batch 2): weekdays in the year less the weekday closures
+# the sources list. Saturday holidays observed on Friday count as weekday
+# closures; New Year's Day 2022 (a Saturday) wasn't observed, per NYSE rule.
+#   year  weekdays  closures  sessions
+#   2019    261        9        252
+#   2020    262        9        253
+#   2021    261        9        252   (Juneteenth not yet a market holiday)
+#   2022    260        9        251
+#   2023    260       10        250
+#   2024    262       10        252
+#   2025    261       11        250   (includes the 2025-01-09 national day of mourning)
+#   2026    261       10        251
+EXPECTED_SESSIONS = {2019: 252, 2020: 253, 2021: 252, 2022: 251, 2023: 250, 2024: 252, 2025: 250, 2026: 251}
+
+
 @pytest.mark.unit
-def test_sessions_per_year_are_recorded_for_review(cal):
-    # Not an assertion against a source (the sources give dates, not counts):
-    # the totals are printed so a reviewer can compare them with published
-    # trading-day counts.
+def test_sessions_per_year_match_the_cited_schedules(cal):
     counts = {
         year: len(cal.sessions_between(date(year, 1, 1), date(year, 12, 31))) for year in YEARS
     }
-    print("sessions per year:", counts)
-    assert all(245 <= n <= 254 for n in counts.values()), counts
+    assert counts == EXPECTED_SESSIONS
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("year", YEARS)
+def test_the_expected_counts_are_weekdays_less_weekday_closures(year):
+    # Ties the hand-worked table to the data: a missing or extra closure
+    # changes the count and fails one of these tests.
+    days = (date(year, 1, 1) + timedelta(days=n) for n in range(366))
+    weekdays = sum(1 for day in days if day.year == year and day.weekday() < 5)
+    closures = [e for e in DATA["closures"] if e["date"].startswith(str(year))]
+    assert all(date.fromisoformat(e["date"]).weekday() < 5 for e in closures)
+    assert weekdays - len(closures) == EXPECTED_SESSIONS[year]
