@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **2 of 18 tasks done** (M1-00, M1-01). |
 | **`main`** | Local `main` is at **`a8f338b`** (`test: give comprehensions their own scope in the system-clock scan`). **M1-01 passed Codex review** (no blocking findings at `a8f338b`) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 7 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**, approved by the owner. **M1-02 – M1-05 committed (checked)**, plus two self-review fixes (M1-02, M1-03). Final batch checks running. No Codex review yet. |
+| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**: all four tasks committed and checked, plus two self-review fixes; batch checks passed. **Ready for Codex's review of every commit**, then the owner-approved merge. Batch 2 not started. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` has `__init__.py` (M1-00) and `clock.py` (M1-01). |
@@ -29,8 +29,8 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Codex quick-reviews the workflow documentation commits** on `m1/batch-1`: `d9ab307`, then the follow-up fixing Codex's two findings (the smoke-check commands must use the fresh environment's Python; the outdated `tzdata` alternatives are removed).
-2. **Batch 1 (M1-02 – M1-05)** on the same branch, once the documentation commit has passed review. Coding starts only then. The owner's batch approval covers implementing and locally committing the four tasks. Then the batch checks, Claude Code's self-review, Codex's review of every commit, and **one owner-approved merge** of the whole branch.
+1. **Codex reviews every commit of batch 1** on `m1/batch-1`, from `b4c3ee2` to the batch-record commit (the workflow documentation commits `d9ab307` and `f4313cb` already passed). Then fixes if needed, a final review, and **one owner-approved fast-forward merge** of the whole branch into `main`.
+2. Then **batch 2 (M1-06 – M1-11)**, after a new owner approval. **Not started.**
 
 **Batch workflow (adopted 2026-10-12, documented in this commit):** `AGENTS.md`/`CLAUDE.md` shared rules §4 and §6, `docs/tasks/README.md` (Workflow, Checks) and `docs/roadmap.md` (§1.1, §4.3).
 - **One-month goal:** finish **M1**. **M2 is a stretch goal**, and still needs reviewed specs (including the agreed adjusted-price view and leakage protections).
@@ -132,6 +132,41 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 1: batch checks and self-review; ready for Codex review)
+**Commits on `m1/batch-1`, after `f4313cb`:**
+
+| Commit | What |
+|---|---|
+| `b4c3ee2` | M1-02 Decimal boundary |
+| `ef32f14` | M1-03 Instrument |
+| `bb2feaa` | M1-04 SymbolMapping |
+| `a5c1636` | M1-05 SQLite store and config |
+| `5fbf486` | Self-review fix (M1-02): numpy `float64` |
+| `6ef26f2` | Self-review fix (M1-03): exact time-zone names |
+| (this commit) | Batch record |
+
+**Batch checks on the final code state, `6ef26f2`:**
+- **B1, PowerShell:** `& .venv\Scripts\python.exe -m pytest -q`: 2 failed, **1495 passed**, 4 skipped, 1 deselected. The failing set equals the PowerShell baseline.
+- **B2, clean-install smoke:** `py -3.11 -m venv <scratch>/smoke-b1-6ef26f2`; `<scratch>/smoke-b1-6ef26f2/Scripts/python.exe -m pip install .`; from the repository root, `<scratch>/…/python.exe -c "import tradingagents, cli.main, investment_engine; …"`: OK. From outside the repository, with the same fresh Python, the installed package:
+  - applied **schema version 1** (from `site-packages`);
+  - added NVDA and resolved `yfinance:NVDA` → `EQ_US_NVDA`;
+  - converted `np.float64(1208.88)` → `1208.8800`;
+  - **refused** `"America/New_York "`.
+- **Latest task-level run (Git Bash, `6ef26f2`):** 1 failed, **1496 passed**; failing set = baseline. `ruff check .`: all checks passed.
+- **CI:** not yet run. Python 3.12 – 3.14 and the `TZ=America/New_York` job are unverified.
+
+**Self-review (Claude Code)**, against the specs, the laws and adversarial probes:
+- **Two real defects found and fixed** in follow-up commits, each with a regression test written first:
+  1. `from_float64` crashed on numpy `float64` (pandas data);
+  2. time-zone validation depended on Windows file lookup.
+- **Probed and fine:** equal `Money` amounts hash alike; ordering against plain numbers and non-finite amounts (including `sNaN`) are refused; both resolvers refuse a string date the same way; `update_lifecycle` accepts status strings; no transaction is left open after errors; re-applying the schema to a populated database is a no-op; the SQLite contract class is collected and runs all 13 M1-04 cases.
+- **Known limits, accepted and noted:**
+  - `quantize` of a value beyond Decimal's 28-digit context raises `decimal.InvalidOperation` rather than `ValueError`; it's unreachable for real prices;
+  - a **relative** `INVESTMENT_ENGINE_DATA_DIR` is used as given (relative to the working directory);
+  - time-zone data on Windows still comes **transitively** via pandas until M1-06 declares `tzdata` (decided); M1-03's validation already relies on it at runtime.
+- **Choices outside the specs,** each recorded in its task entry: equality across currencies is `False` while ordering raises; `datetime` is refused for dates; enum strings are converted; SUSPENDED is allowed with or without an end date; an identical overlapping mapping is refused; an empty data-directory variable counts as unset; the "not under home" test is adapted to this machine.
+- **Scope:** every commit changed only its spec's allowed files. No architecture, runtime TradingAgents code, existing tests or CI changed. `pyproject.toml` changed only in `[tool.setuptools.package-data]` (M1-05). **No stop rule was triggered.**
 
 ### 2026-10-12: Claude Code (batch 1 self-review: M1-03 follow-up fix)
 - **Found by the batch self-review (adversarial probe).** `Instrument` accepted the time zone `"America/New_York "` (a trailing space). It validated with `ZoneInfo()`, whose file lookup on Windows ignores trailing spaces, and can ignore case. Linux would refuse the same name, so an instrument stored on Windows could fail on Linux.
