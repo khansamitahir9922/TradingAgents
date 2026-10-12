@@ -8,13 +8,13 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 | | |
 |---|---|
-| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **2 of 18 tasks done** (M1-00, M1-01). |
-| **`main`** | Local `main` is at **`a8f338b`** (`test: give comprehensions their own scope in the system-clock scan`). **M1-01 passed Codex review** (no blocking findings at `a8f338b`) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 7 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**: all four tasks committed and checked, plus two self-review fixes; batch checks passed. **Ready for Codex's review of every commit**, then the owner-approved merge. Batch 2 not started. |
+| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
+| **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
+| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **M1-06 committed (checked)**; M1-07 next. No batch review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
-| **Other branches** | `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
-| **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` has `__init__.py` (M1-00) and `clock.py` (M1-01). |
-| **Runtime tests** | **Run for M1-00 and M1-01**, and compared against the recorded baseline (`docs/baselines/M1-00-baseline.md`); see "Last check results". |
+| **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
+| **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
+| **Runtime tests** | Run for every task and batch, and compared against the recorded baseline (`docs/baselines/M1-00-baseline.md`). On `main` (`109a72d`): **237 engine tests**; Git Bash **1496 passed**, PowerShell **1495 passed**, failing sets = baseline. Codex independently reran the engine tests, the Git Bash suite and ruff for batch 1. CI not yet run. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -29,8 +29,16 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Codex reviews every commit of batch 1** on `m1/batch-1`, from `b4c3ee2` to the batch-record commit (the workflow documentation commits `d9ab307` and `f4313cb` already passed). Then fixes if needed, a final review, and **one owner-approved fast-forward merge** of the whole branch into `main`.
-2. Then **batch 2 (M1-06 – M1-11)**, after a new owner approval. **Not started.**
+1. **Batch 2 (M1-06 – M1-11)** on `m1/batch-2`: the tasks one commit at a time, then the batch checks (PowerShell, plus a clean install both **without and with the `engine` extra**), Claude Code's adversarial self-review, Codex's review of every commit, and one owner-approved merge.
+2. Then **batch 3 (M1-12 – M1-13: Yahoo verification and import, a firm checkpoint)**, after a new owner approval. **Not started.**
+
+**Owner's conditions for batch 2 (2026-10-12):**
+- complete **2019 – 2026** calendar coverage from **cited official exchange sources**, special closures included;
+- verify the `pyarrow` and `duckdb` wheels as M1-10 requires;
+- **corporate actions take explicit instrument context** to check currency and exchange-local dates; the choice is recorded rather than defaults assumed;
+- check both the base installation and the `engine` extra.
+
+**Uncommitted local change, never stage it:** the owner's working copy of `.env.example` has a local edit. It isn't part of any task, and every commit stages named files only.
 
 **Batch workflow (adopted 2026-10-12, documented in this commit):** `AGENTS.md`/`CLAUDE.md` shared rules §4 and §6, `docs/tasks/README.md` (Workflow, Checks) and `docs/roadmap.md` (§1.1, §4.3).
 - **One-month goal:** finish **M1**. **M2 is a stretch goal**, and still needs reviewed specs (including the agreed adjusted-price view and leakage protections).
@@ -42,7 +50,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 - **Per task:** its own tests, task checks (task tests, full suite in Git Bash, ruff; plus the smoke check if dependencies or packaging change), `PROGRESS.md` entry and commit. Within a batch, a committed and checked earlier task can satisfy a dependency.
 - **Per batch:** the PowerShell full suite, the clean-install smoke check, Claude Code's self-review, Codex's review of **every commit**, then one owner-approved merge.
 - **Stop rules:** a new test failure; a file change outside a spec's allowed files; a spec gap needing an architecture or ADR change; a blocked verification checkpoint.
-- **`tzdata`:** M1-06's allowed files permit adding it to `[project] dependencies`. **Codex accepted the unconditional, explicit declaration** (2026-10-12). It's added only when M1-06 is implemented, in batch 2.
+- **`tzdata`:** declared explicitly and unconditionally in M1-06 (`tzdata>=2026.5`, the installed version), as Codex accepted on 2026-10-12.
 
 **Known stale labels, left for a later update.** The status lines in `docs/design-principles.md` and the ADR records (`architecture/adr/`) still say "awaiting review of the M0 commit and merge". They describe the state before M0's merge on 2026-10-09. The AGENTS.md, CLAUDE.md, task README and roadmap labels were fixed in the batch-1 documentation commit. This file is the current record.
 
@@ -106,7 +114,7 @@ Report directional accuracy against the base rate, and the information coefficie
 | The per-field Yahoo determination results | Determined in M1-12 | M1-12 / M1-13 |
 | How far back yfinance hourly history reaches | Measured in M1-13 | M1-13 |
 | `pyarrow` / `duckdb` versions with Python 3.11 – 3.14 wheels | Checked in M1-10 | M1-10 |
-| **Time-zone data (found in M1-01). Decided:** `tzdata` is declared **explicitly and unconditionally** (for all platforms) in `[project] dependencies` when M1-06 is implemented. The M1-06 spec permits exactly that one entry, and **Codex accepted the unconditional declaration** (2026-10-12). Background: `zoneinfo` needs `tzdata` wherever there's no system time-zone database (Windows, some slim containers); until M1-06 it's present only transitively, via pandas on Windows. | Codex and owner | **Decided**; implemented in M1-06 (batch 2) |
+| **Time-zone data (found in M1-01). Done in M1-06:** `tzdata>=2026.5` is declared explicitly and unconditionally in `[project] dependencies`, as M1-06 permits and Codex accepted. | — | **Done** (batch 2) |
 | NVDA's listing date for the seed record | Checked in M1-17 | M1-17 |
 | Whether DataHealth snapshots are persisted for lineage | Decided with lineage | M2 |
 | OPEN-16: proposed order-lifecycle extensions. **Unaccepted**; they need a reviewed, accepted follow-up ADR. | Owner and Codex | Before M4 |
@@ -132,6 +140,32 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 2, M1-06: trading calendar 1, plus the batch-2 start)
+- **Batch 1 is merged** (Codex's review of every commit passed; `main` at `109a72d`; 6 of 18 tasks done). **The owner approved batch 2**, and `m1/batch-2` was created from `109a72d`.
+- **Documentation-only exception approved by the owner:** `docs/tasks/M1-02.md` is clarified (v0.1.1). Ordering comparisons reject mixed currencies or units, and equality returns `False`. The contract comments and acceptance wording are made consistent, as Codex suggested.
+- **Tests first.** `tests/engine/test_calendar_sessions.py` has 23 tests:
+  - the port is satisfied;
+  - opens and closes around both 2024 DST changes, including the Friday before the November change;
+  - weekends;
+  - inclusive `sessions_between` (weekend skipped, a weekend-only range is empty, a reversed range refused);
+  - `next_session` and `previous_session` across the weekend, strictly after or before;
+  - every method refuses out-of-range dates, and `next`/`previous` never guess past coverage;
+  - supplied holidays and half-days are honoured (half-day close 13:00 EDT = 17:00 UTC);
+  - inconsistent closures refused (outside coverage, weekends, half-day close outside regular hours, a date both closed and half-day);
+  - coverage validation; dates, not datetimes; immutable sessions.
+
+  Before the implementation, collection failed on the missing package. One test of mine assumed a holiday the test calendar hadn't been given; fixed in the test.
+- **Implementation:**
+  - `investment_engine/market/calendar/base.py`: `Session`, `CalendarRangeError(LookupError)` and a `runtime_checkable` `TradingCalendar` protocol;
+  - `us_equities.py`: `UsEquitiesCalendar` (09:30 – 16:00 `America/New_York` via `zoneinfo`; holidays and half-days supplied by the caller, validated);
+  - `__init__.py`.
+- **Dependency:** `pyproject.toml` `[project] dependencies` gains **`tzdata>=2026.5`** (the installed version), unconditional, as M1-06 permits and Codex accepted.
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_calendar_sessions.py`: 23 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1519 passed** (+23), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed;
+  - **smoke** (a dependency change): fresh `py -3.11` venv, `<scratch>/Scripts/python.exe -m pip install .`, **`tzdata` 2026.5 installed**, the CI import OK; from outside the repository, the installed calendar gave the 2024-03-11 session as 13:30 – 20:00 UTC.
 
 ### 2026-10-12: Claude Code (batch 1: batch checks and self-review; ready for Codex review)
 **Commits on `m1/batch-1`, after `f4313cb`:**
