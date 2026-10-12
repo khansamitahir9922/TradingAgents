@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **2 of 18 tasks done** (M1-00, M1-01). |
 | **`main`** | Local `main` is at **`a8f338b`** (`test: give comprehensions their own scope in the system-clock scan`). **M1-01 passed Codex review** (no blocking findings at `a8f338b`) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 7 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**, approved by the owner. **M1-02 committed (checked)**; M1-03 next. No batch review yet. |
+| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**, approved by the owner. **M1-02 and M1-03 committed (checked)**; M1-04 next. No batch review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` has `__init__.py` (M1-00) and `clock.py` (M1-01). |
@@ -132,6 +132,38 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 1, M1-03: Instrument)
+- **Tests first.** `tests/engine/test_instruments.py` has 41 tests:
+  - a valid `EQ_US_NVDA`;
+  - five valid ID shapes, including the `_2` suffix and `ETF_` prefix;
+  - eight malformed IDs;
+  - the prefix matching the asset class;
+  - `CRYPTO` refused;
+  - enum values given as strings accepted;
+  - invalid time zones, currencies and MIC exchange codes refused;
+  - each lifecycle rule (ACTIVE has no end date, DELISTED needs one, the end follows the start, SUSPENDED may have either form);
+  - `datetime` refused where a `date` is expected;
+  - half-open `is_active_on` at both boundaries;
+  - immutability;
+  - the registry's get, duplicate refusal and absence of any removal method.
+
+  Before the implementation, collection failed on the missing module.
+- **Implementation:**
+  - `investment_engine/market/__init__.py` (docstring only);
+  - `investment_engine/market/instruments.py`: `AssetClass` (EQUITY, ETF), `InstrumentStatus`, a frozen `Instrument` with full validation, and `InstrumentRegistry` (add, get; no removal).
+- **Choices not stated in the spec, recorded for review:**
+  - **`datetime` is refused** where a lifecycle `date` is expected (Python's `datetime` is a subclass of `date`, which would blur boundaries);
+  - **enum values given as plain strings are converted** (needed for the M1-05 SQLite round trip);
+  - **SUSPENDED is allowed with or without `active_to`** (the spec constrains only ACTIVE and DELISTED);
+  - the exchange is validated as an **ISO 10383 MIC shape** (four characters `[A-Z0-9]`).
+- **Portability:** the invalid-timezone test cases avoid names whose validity could differ between the `tzdata` package and a system time-zone database.
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_instruments.py`: 41 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1426 passed** (+41), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed.
+
+  No dependency or packaging change.
 
 ### 2026-10-12: Claude Code (batch 1, M1-02: Decimal boundary)
 - **The owner approved batch 1** (M1-02 – M1-05) on `m1/batch-1` at `f4313cb`, after Codex's review of the workflow documentation passed.
