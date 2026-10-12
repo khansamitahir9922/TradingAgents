@@ -165,6 +165,9 @@ Claude Code independently reviewed `0661d46..62118a2`: one blocking finding (B1)
 - **After the fix:** the same scratch runner with `1.7.1` → **59 passed**.
 - **Checks:** the three importer test files → 124 passed, 2 deselected. Full suite (Git Bash) → **1910 passed, 1 failed** (the same baseline failure), 4 skipped, 3 deselected. Ruff then flagged import order in the two edited test files; `ruff check --select I001 --fix` sorted them (import order only), after which `ruff check .` → All checks passed and the two files → 59 passed.
 
+**Fix 4: an unsupported claim is removed from `docs/data-provenance/yfinance.md`.** The sentence "typical quoted historical price increments are about 0.001 …" had no source. The measured errors ($0.0029 after quantization; about $0.00291343 before) and the rounding explanation (`F × u`) stay.
+- **Checks:** `tests/engine/test_yahoo_semantics.py` (which checks that the document mirrors the record) → 65 passed. Documentation only; the full suite runs in the batch checks below.
+
 ### 2026-10-12: Codex ? final daily-only batch 3 handoff for Claude review
 **Approved implementation finished.** Code commits: **`fcd8457`** (M1-12 partial: verified daily semantics and actions), **`d93e47e`** (M1-13 partial: daily bars), **`f1ebc7b`** (self-review Boolean fix). This documentation commit records final checks/handoff. Review range starts at **`0661d46`**. `main` remains **`0661d46`**; nothing merged or pushed, no branches deleted, batch 4 not started. The 12 merged tasks remain the done count; these partial tasks are **committed (checked), awaiting independent review**, not done.
 
