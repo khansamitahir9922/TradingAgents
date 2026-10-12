@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
 | **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **M1-06 – M1-10 committed (checked)**; M1-11 next. No batch review yet. |
+| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **All six tasks committed (checked)**; batch self-review in progress. No Codex review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
@@ -140,6 +140,27 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 2, M1-11: market-data store, point-in-time reads)
+- **Tests first.** `tests/engine/test_store_read.py` has 23 tests, with data written through the real `MarketDataWriter`:
+  - **the Friday correction:** `visible_at` returns revision 1 at Monday's close and on Thursday, revision 2 from Friday 21:00 UTC, and no bar before Monday's close. Also `latest`, the full history, and `revisions_available_between` (Friday → revision 2, Monday → revision 1, in between → none);
+  - **observation vs availability:** a backfill imported on 2026-10-10 isn't in `recorded_by(2024-06-04)` but is in `visible_at(2024-06-04)` as BACKFILL_ASSUMED; `recorded_by` follows each revision's receipt;
+  - half-open, sorted bar ranges; exact contract objects back (Decimal exponent, UTC tzinfo, enums); an empty store gives empty lists; naive times refused; **no default view method exists**;
+  - **two providers** read independently, with independent histories;
+  - **corporate actions:** all five views; a backfilled split visible from its ex-date start and not a microsecond before; the `types` filter; **a same-day split and dividend come back split first whichever was written first**, in `latest`, the history and the availability window (M1-11 v0.3 ordering).
+
+  Before the implementation, collection failed on the missing module. One test of mine used unrealistic data: a backfill received *before* its ex-date, corrected before the ex-date. The reader was right; the test now models a real historical download and a later correction.
+- **Implementation:** `investment_engine/market/store/reader.py` (`MarketDataReader`):
+  - every method takes the provider first, and DuckDB reads **only that provider's partition** (`read_parquet` over `import=*.parquet`, with Hive partitioning off), filtering on the identity columns as well;
+  - the one-per-record views use `row_number()` over the identity, by revision descending;
+  - **total sort keys** from the spec's table; the action-type rank is a `CASE` in `ActionType` declaration order, never a string comparison;
+  - results are fetched **as Arrow** and converted with the writer's own `schema` functions. That avoids DuckDB's timezone conversion, which needs `pytz` (not declared by the `engine` extra), and keeps a single conversion path.
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_store_read.py`: 23 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1709 passed** (+23), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed.
+
+  No dependency or packaging change.
 
 ### 2026-10-12: Claude Code (batch 2, M1-10: market-data store, append-only writes)
 - **Wheels verified before any dependency change** (the spec's stop condition). Checked with pip's resolver (`pip install --dry-run --only-binary=:all: --no-deps --python-version <v> --platform <p>`) for Python 3.11, 3.12, 3.13 and 3.14, each on `win_amd64` and `manylinux_2_28_x86_64`. **All 16 combinations have wheels:** `pyarrow` 26.0.0 and `duckdb` 1.5.6. These are now the floors.
