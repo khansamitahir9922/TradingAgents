@@ -18,6 +18,10 @@ from investment_engine.market.availability import AvailabilityBasis
 from investment_engine.market.calendar.us_equities import load_us_equities_calendar
 from investment_engine.market.candles import PriceBasis, Timeframe, VolumeBasis
 from investment_engine.market.corporate_actions import ActionType
+from investment_engine.market.importers import (
+    yfinance_actions as actions_module,
+    yfinance_bars as bars_module,
+)
 from investment_engine.market.importers.yahoo_semantics import (
     YAHOO_VERIFICATION,
     FieldBlocked,
@@ -43,6 +47,22 @@ from investment_engine.storage.sqlite import (
 
 FIXTURES = Path(__file__).parent / "fixtures" / "yfinance"
 NOW = datetime(2026, 10, 12, 9, tzinfo=UTC)
+
+
+def installed(yfinance_version):
+    """A stand-in for importlib.metadata.version that reports `yfinance_version`."""
+    def version(name):
+        assert name == "yfinance"
+        return yfinance_version
+    return version
+
+
+@pytest.fixture(autouse=True)
+def verified_yfinance(monkeypatch):
+    """Recorded-data tests run as if the verified yfinance were installed, whatever actually is."""
+    for module in (actions_module, bars_module):
+        monkeypatch.setattr(module, "version", installed(YAHOO_VERIFICATION.yfinance_version))
+
 
 
 def frame(name="nvda_1d_2019_2026.json"):
@@ -450,3 +470,25 @@ def test_bar_factors_use_the_importers_verification_record(market, monkeypatch):
     monkeypatch.setattr(module, "factor_from_history", spy)
     run(market, verification=record)
     assert len(seen) == 12 and all(v is record for v in seen)
+
+
+@pytest.mark.unit
+def test_an_unverified_installed_yfinance_is_refused_before_fetching(market, monkeypatch):
+    monkeypatch.setattr(bars_module, "version", installed("1.7.1"))
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("an unverified yfinance must not fetch")
+
+    with pytest.raises(VersionMismatch, match="1.7.1"):
+        import_bars("EQ_US_NVDA", Timeframe.D1, date(2021, 7, 1), date(2021, 7, 20), **market,
+                    fetch_bars=forbidden, fetch_split_history=forbidden)
+    assert rows(market) == []
+
+
+@pytest.mark.unit
+def test_the_importers_read_the_installed_yfinance_version(monkeypatch):
+    # The real check stays in place: the other tests replace only this lookup.
+    from importlib.metadata import version
+
+    monkeypatch.undo()  # remove the autouse stand-in
+    assert actions_module.version is version and bars_module.version is version

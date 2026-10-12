@@ -158,6 +158,13 @@ Claude Code independently reviewed `0661d46..62118a2`: one blocking finding (B1)
 - **Tests (written first; 13 failed before the fix):** equality with `split_factor` on six dates; the record is required; pre-range date and entry refused; the given record's range is the one applied; duplicates and datetimes refused; spies confirm both importers pass their record (31 dividend and 12 bar calls).
 - **Checks:** the three importer test files → 121 passed, 2 deselected. Full suite (Git Bash) → **1907 passed, 1 failed** (the same baseline failure), 4 skipped, 3 deselected. `ruff check .` → All checks passed.
 
+**Fix 3: the recorded-data tests no longer depend on the installed yfinance.** The importers read the installed version (`importlib.metadata.version`), and the tests assumed 1.7.0, while `pyproject.toml` allows `>=1.7.0`.
+- **Before the fix:** running the two importer test files with the version lookup reporting `1.7.1` (scratch runner) → **16 failed, 4 passed, 36 errors**.
+- **Fix:** each importer test file has an autouse fixture that makes the lookup report `YAHOO_VERIFICATION.yfinance_version`. The importers' real check is unchanged, and **dependency requirements are unchanged**.
+- **New tests:** an unverified installed version (`1.7.1`) is refused with `VersionMismatch` **before any fetch**, with nothing written, for both importers; and the importers still use the real `importlib.metadata.version`.
+- **After the fix:** the same scratch runner with `1.7.1` → **59 passed**.
+- **Checks:** the three importer test files → 124 passed, 2 deselected. Full suite (Git Bash) → **1910 passed, 1 failed** (the same baseline failure), 4 skipped, 3 deselected. Ruff then flagged import order in the two edited test files; `ruff check --select I001 --fix` sorted them (import order only), after which `ruff check .` → All checks passed and the two files → 59 passed.
+
 ### 2026-10-12: Codex ? final daily-only batch 3 handoff for Claude review
 **Approved implementation finished.** Code commits: **`fcd8457`** (M1-12 partial: verified daily semantics and actions), **`d93e47e`** (M1-13 partial: daily bars), **`f1ebc7b`** (self-review Boolean fix). This documentation commit records final checks/handoff. Review range starts at **`0661d46`**. `main` remains **`0661d46`**; nothing merged or pushed, no branches deleted, batch 4 not started. The 12 merged tasks remain the done count; these partial tasks are **committed (checked), awaiting independent review**, not done.
 
