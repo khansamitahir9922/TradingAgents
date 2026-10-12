@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **12 of 18 tasks done** (M1-00 – M1-11). |
 | **`main`** | Local `main` is at **`0661d46`** (`docs: record the batch 2 re-review fix and checks`). **Batch 2 passed Codex's review** (after two rounds of follow-up fixes) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12; batch 1 (`109a72d`) before it. `main` is 29 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 3 (M1-12 ? M1-13)** on `m1/batch-3` (from `0661d46`). Owner approved the exact round-3 contract/reporting corrections and July acceptance window, then **Codex takeover** when Claude reached its usage limit. **M1-12 verified actions/daily semantics implemented and checked, ready for its local task commit; M1-13 daily implementation next. Hourly prices and volume remain BLOCKED.** No merge or push. |
+| **Current work** | **Batch 3 (M1-12 ? M1-13)** on `m1/batch-3` (from `0661d46`). Owner approved the exact round-3 contract/reporting corrections and July acceptance window, then **Codex takeover** when Claude reached its usage limit. **M1-12 verified actions/daily semantics committed (`fcd8457`); M1-13 daily implementation checked and ready for its task commit. Claude independent review follows batch checks. Hourly prices and volume remain BLOCKED.** No merge or push. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules plus `market/calendar/` (US equities, cited 2019 – 2026 data), `market/availability.py`, `market/candles.py`, `market/corporate_actions.py` and `market/store/` (schema, append-only writer, point-in-time reader). The `engine` extra adds `pyarrow` and `duckdb`. |
@@ -142,6 +142,22 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Codex ? M1-13 daily implementation, before task commit
+M1-12's partial implementation is committed as **`fcd8457`** with its own task checks; M1-13 builds on that checked commit, under the owner-approved takeover. Tests were written first and failed to collect because `yfinance_bars.py` did not exist. **Hourly is not implemented**: the real record blocks both fields before fetch; synthetic verification cannot enable the paused hourly implementation either.
+
+The daily importer uses explicit instrument context, exact pinned-version/field guards, before/after full-history fetches per symbol segment, cited and stored split equality over the same range, later-split reconstruction, per-field bases and calendar UTC sessions. `end` is exclusive. The approved July window imports **12 sessions** with factor 40 and the independently cited **$751.1900** July 19 close, excluding July 20. The Q1 counterexample remains separate. Required response columns/timestamps/values are validated before writing, forming rows counted, rejected dates reported, and corrections never backdated.
+
+Self-review added tests proving an uncited split fails even when storage agrees, missing/changed stored splits fail, historical corrections preserve visible-at views, a hypothetical reviewed later split creates no false revisions, dated symbol changes split requests and a mapping ending on the excluded date is sufficient. **Two tests first failed** on calendar-closed symbol segments: weekend-only segments incorrectly fetched empty bars. The importer now skips segments with no sessions, reports no coverage for an entirely closed window, and retains explicit errors for an empty response on a segment with sessions.
+
+**M1-13 task checks (Codex):**
+- Git Bash: `.venv/Scripts/python.exe -m pytest -q tests/engine/test_yfinance_bars.py` ? **31 passed, 1 deselected** (live check excluded).
+- Git Bash: `.venv/Scripts/python.exe -m pytest -q` ? **1885 passed, 1 failed, 4 skipped, 3 deselected**. Only failure: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, **recorded in baseline**. **No new failures.** Output: `%TEMP%/codex-b3-m113-full.txt`.
+- `.venv/Scripts/python.exe -m ruff check .` ? **All checks passed**.
+- `git diff --check` ? clean. Only M1-13 allowed files changed (new importer/test, its own spec, Bars provenance section, PROGRESS).
+- No dependency/packaging settings changed; fresh-install validation follows as a batch check. CI/live integration **not run**.
+
+**Pending before review handoff:** PowerShell full suite and fresh base/engine install checks. Existing source, architecture, CI and dependencies remain unchanged. Task remains partial; hourly boundaries and live hourly evidence are pending, and batch 3 must not be declared complete.
 
 ### 2026-10-12: Codex takeover ? approved daily-only batch 3 work
 The owner asked Codex to implement while Claude Code is unavailable (usage limit), then return to independent reviewing when Claude can work again. Approval covers the exact `ActionImportReport`/reporting corrections, the July 1?20 **end-exclusive** window, M1-12 and verified daily M1-13, separate local task commits and required checks. **No merge, push or batch 4.** Claude independently reviews these Codex implementations before any merge.
