@@ -270,3 +270,17 @@ def test_a_same_day_split_and_dividend_always_come_back_split_first(store, split
     start = ex_date_start(ex, "America/New_York")
     assert [a.action_type for a in reader.action_revisions_available_between(
         "yfinance", NVDA, start, start + timedelta(seconds=1))] == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("source", "instrument_id"),
+    [("yfinance", "../../../ESCAPED"), ("yfinance", "EQ_US_NVDA/../../x"), ("../yfinance", NVDA), ("YF", NVDA)],
+)
+def test_a_crafted_provider_or_instrument_cannot_read_outside_the_store(store, source, instrument_id):
+    # Batch-2 self-review: reads build folder paths from these arguments too.
+    _, reader = store
+    with pytest.raises(ValueError):
+        reader.candles_latest(source, instrument_id, D1, WEEK_START, WEEK_END)
+    with pytest.raises(ValueError):
+        reader.actions_latest(source, instrument_id, date(2024, 1, 1), date(2025, 1, 1))

@@ -23,7 +23,7 @@ from pathlib import Path
 
 import duckdb
 
-from investment_engine.market.availability import check_utc
+from investment_engine.market.availability import check_instrument_id, check_provider, check_utc
 from investment_engine.market.candles import Candle, Timeframe
 from investment_engine.market.corporate_actions import ActionType, CorporateAction
 from investment_engine.market.store.schema import row_to_action, row_to_candle
@@ -167,12 +167,22 @@ class MarketDataReader:
         return f"AND action_type IN ({', '.join('?' for _ in values)})", values
 
     def _candle_files(self, source, instrument_id, timeframe) -> str | None:
+        check_provider(source)
+        check_instrument_id(instrument_id)
         folder = (self.root / "candles" / f"source={source}" / f"instrument_id={instrument_id}"
                   / f"timeframe={Timeframe(timeframe)}")
-        return self._files(folder)
+        return self._files(self._inside(folder))
 
     def _action_files(self, source, instrument_id) -> str | None:
-        return self._files(self.root / "corporate_actions" / f"source={source}" / f"instrument_id={instrument_id}")
+        check_provider(source)
+        check_instrument_id(instrument_id)
+        return self._files(self._inside(self.root / "corporate_actions" / f"source={source}" / f"instrument_id={instrument_id}"))
+
+    def _inside(self, folder: Path) -> Path:
+        """`folder`, refusing any path that resolves outside the store's root."""
+        if not folder.resolve().is_relative_to(self.root.resolve()):
+            raise ValueError(f"{folder} is outside the market-data store at {self.root}")
+        return folder
 
     @staticmethod
     def _files(folder: Path) -> str | None:

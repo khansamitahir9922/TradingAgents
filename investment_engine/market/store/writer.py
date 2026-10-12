@@ -28,7 +28,11 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from investment_engine.market.availability import AvailabilityBasis
+from investment_engine.market.availability import (
+    AvailabilityBasis,
+    check_instrument_id,
+    check_provider,
+)
 from investment_engine.market.candles import BarState, Candle, PriceBasis, Timeframe, VolumeBasis
 from investment_engine.market.corporate_actions import ActionType, AmountBasis, CorporateAction
 from investment_engine.market.store.schema import (
@@ -107,6 +111,13 @@ def _action_values(a: CorporateAction | ActionObservation) -> tuple:
     return (a.ratio, a.amount, amount_basis, a.new_symbol)
 
 
+def _inside(root: Path, folder: Path) -> Path:
+    """`folder`, refusing any path that resolves outside the store's root."""
+    if not folder.resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"{folder} is outside the market-data store at {root}")
+    return folder
+
+
 class MarketDataWriter:
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
@@ -169,7 +180,9 @@ class MarketDataWriter:
         for obs in observations:
             if not isinstance(obs, observation_type):
                 raise TypeError(f"expected {observation_type.__name__}, not {type(obs).__name__}")
-            folder = self.root / kind / Path(*partition(obs))
+            check_provider(obs.source)
+            check_instrument_id(obs.instrument_id)
+            folder = _inside(self.root, self.root / kind / Path(*partition(obs)))
             if folder not in loaded:
                 for record in self._read_partition(folder, from_row):
                     key = identity(record)
@@ -190,6 +203,11 @@ class MarketDataWriter:
                 unchanged += 1
                 continue
             else:
+                if obs.received_at < previous.received_at:
+                    raise ValueError(
+                        f"a correction received at {obs.received_at} is earlier than the revision it corrects "
+                        f"({previous.received_at}); revisions are observed in time order"
+                    )
                 # A correction: always observed at its own receipt, never backdated.
                 revision = previous.revision + 1
                 basis, available_from = AvailabilityBasis.OBSERVED, obs.received_at

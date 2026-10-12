@@ -17,8 +17,11 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 
 PROVIDER_ID_PATTERN = r"^[a-z][a-z0-9_]*$"  # e.g. "yfinance"; same values as SymbolMapping.provider
+# The same rule as Instrument (M1-03); tests/engine/test_availability.py keeps the two in step.
+INSTRUMENT_ID_PATTERN = r"^(EQ|ETF)_[A-Z]{2}_[A-Z0-9]+(_[0-9]+)?$"
 
 _PROVIDER = re.compile(PROVIDER_ID_PATTERN)
+_INSTRUMENT_ID = re.compile(INSTRUMENT_ID_PATTERN)
 
 
 class AvailabilityBasis(StrEnum):
@@ -41,6 +44,13 @@ def check_provider(source: object) -> str:
     if not isinstance(source, str) or not _PROVIDER.fullmatch(source):
         raise ValueError(f"source must be a provider id like 'yfinance', not {source!r}")
     return source
+
+
+def check_instrument_id(instrument_id: object) -> str:
+    """A well-formed instrument ID. The store builds folder paths from it, so nothing else is accepted."""
+    if not isinstance(instrument_id, str) or not _INSTRUMENT_ID.fullmatch(instrument_id):
+        raise ValueError(f"instrument_id must look like EQ_US_NVDA, not {instrument_id!r}")
+    return instrument_id
 
 
 def check_name(value: object, what: str) -> str:

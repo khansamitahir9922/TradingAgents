@@ -255,3 +255,11 @@ def test_enum_values_given_as_strings_are_converted():
 def test_actions_are_immutable():
     with pytest.raises(AttributeError):
         replace(action(), ratio=Decimal("4")).ratio = Decimal("2")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("instrument_id", ["../../ESCAPED", "EQ_US_NVDA/../x", "NVDA"])
+def test_the_instrument_id_must_be_well_formed(instrument_id):
+    # Batch-2 self-review: the store builds folder paths from instrument_id.
+    with pytest.raises(ValueError):
+        action(instrument_id=instrument_id)

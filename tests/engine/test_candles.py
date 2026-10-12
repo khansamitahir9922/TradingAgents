@@ -268,3 +268,15 @@ def test_other_fields_are_validated(changes):
 def test_candles_are_immutable():
     with pytest.raises(AttributeError):
         bar().close = Decimal("1")
+
+
+# ---------------------------------------------------------------- self-review: instrument IDs are safe
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("instrument_id", ["../../ESCAPED", "EQ_US_NVDA/../x", "NVDA", "eq_us_nvda", "EQ_US_NV DA"])
+def test_the_instrument_id_must_be_a_well_formed_instrument_id(instrument_id):
+    # Batch-2 self-review: the store builds folder paths from instrument_id,
+    # so a malformed one must never reach it.
+    with pytest.raises(ValueError):
+        bar(instrument_id=instrument_id)

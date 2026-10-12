@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
 | **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **All six tasks committed (checked)**; batch self-review in progress. No Codex review yet. |
+| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**: all six tasks committed (checked), plus one self-review fix (store path safety). Final batch checks running. No Codex review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
@@ -140,6 +140,31 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 2 self-review fix: store path safety and observation order; M1-08 to M1-11 files)
+- **Found by the batch self-review (adversarial probe): a path-traversal bug.** The candle and action contracts checked `instrument_id` only for "non-empty, no surrounding spaces", and the store builds folder paths from it. Reproduced: an observation with `instrument_id='../../../../../ESCAPED'` made the writer create a Parquet file **outside** the store's root (`store/ESCAPED/…` beside `store/market`). Real data comes from SymbolMapping, so this wasn't reachable through normal use, but a store must not trust paths built from data.
+- **Also hardened:** the writer accepted a correction **received before** the revision it corrects, which would put a record's history out of time order.
+- **Regression tests first,** 25 tests; all failed before the fix:
+  - `test_candles.py` (5) and `test_corporate_actions.py` (3): malformed instrument IDs refused;
+  - `test_availability.py` (9): **the contracts' instrument-ID check agrees exactly with `Instrument`'s** (M1-03) on valid and invalid IDs;
+  - `test_store_write.py`: three crafted IDs write **no file anywhere**; an out-of-order correction is refused, leaving revision 1 only;
+  - `test_store_read.py` (4): crafted providers or IDs are refused by reads.
+- **Fix:**
+  - `availability.py` adds `INSTRUMENT_ID_PATTERN` and `check_instrument_id` (the same rule as `Instrument`), used by `Candle` and `CorporateAction`;
+  - the writer and reader validate the provider and instrument ID **and** refuse any folder that resolves outside the store's root (defence in depth);
+  - the writer refuses a correction whose `received_at` is earlier than the stored revision's.
+- **Existing tests adjusted for the new rule:** nine `test_store_write.py` tests had "corrections" received in 2024 for backfills received in 2026, which is unrealistic data. The correction time is now `LATER` (2026-10-11), after the backfill. No assertion about behaviour changed.
+- **Probe after the fix:** the original attack is refused, and no file is written.
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine`: 475 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1734 passed** (+25), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed.
+- **Files changed,** all within batch-2 tasks' allowed files:
+  - M1-08: `availability.py`, `candles.py` and their tests;
+  - M1-09: `corporate_actions.py` and its tests;
+  - M1-10: `writer.py`, `test_store_write.py`;
+  - M1-11: `reader.py`, `test_store_read.py`;
+  - `PROGRESS.md`.
 
 ### 2026-10-12: Claude Code (batch 2, M1-11: market-data store, point-in-time reads)
 - **Tests first.** `tests/engine/test_store_read.py` has 23 tests, with data written through the real `MarketDataWriter`:

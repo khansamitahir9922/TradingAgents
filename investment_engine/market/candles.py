@@ -15,6 +15,7 @@ from enum import StrEnum
 from investment_engine.market.availability import (
     AvailabilityBasis,
     check_availability,
+    check_instrument_id,
     check_name,
     check_provider,
     check_revision,
@@ -95,7 +96,7 @@ class Candle:
 
         # Rule 9: the source is a provider id, so derived bars can't pose as provider data.
         check_provider(self.source)
-        check_name(self.instrument_id, "instrument_id")
+        check_instrument_id(self.instrument_id)
         check_name(self.source_version, "source_version")
         check_name(self.import_id, "import_id")
         if not isinstance(self.currency, str) or not _CURRENCY.fullmatch(self.currency):

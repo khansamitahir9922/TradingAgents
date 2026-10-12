@@ -28,7 +28,7 @@ from investment_engine.money import Money
 START = datetime(2024, 6, 3, 13, 30, tzinfo=UTC)
 END = datetime(2024, 6, 3, 20, 0, tzinfo=UTC)
 FETCHED = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
-FRIDAY = datetime(2024, 6, 7, 21, 0, tzinfo=UTC)
+LATER = datetime(2026, 10, 11, 9, 0, tzinfo=UTC)  # a later import, after the backfill
 EX_DATE = date(2024, 6, 10)
 
 
@@ -130,7 +130,7 @@ def test_the_file_layout_puts_the_provider_first(writer):
 def test_an_identical_rewrite_changes_nothing(writer):
     writer.write_candles([candle_obs()], import_id="import-1")
     before = digests(writer.root)
-    result = writer.write_candles([candle_obs(received_at=FRIDAY, processed_at=FRIDAY, source_version="1.8.0")],
+    result = writer.write_candles([candle_obs(received_at=LATER, processed_at=LATER, source_version="1.8.0")],
                                   import_id="import-2")
     assert result == WriteResult(new_records=0, new_revisions=0, unchanged=1, import_id="import-2")
     assert digests(writer.root) == before
@@ -142,7 +142,7 @@ def test_a_changed_value_is_an_observed_correction_never_backdated(writer):
     first_files = digests(writer.root)
     # The correction arrives with a backfill time attached; it must be ignored.
     result = writer.write_candles(
-        [candle_obs(close=Decimal("1151.0000"), received_at=FRIDAY, processed_at=FRIDAY)], import_id="import-2"
+        [candle_obs(close=Decimal("1151.0000"), received_at=LATER, processed_at=LATER)], import_id="import-2"
     )
     assert result == WriteResult(new_records=0, new_revisions=1, unchanged=0, import_id="import-2")
     rows = sorted(stored(writer.root, "candles"), key=lambda r: r["revision"])
@@ -150,7 +150,7 @@ def test_a_changed_value_is_an_observed_correction_never_backdated(writer):
     assert rows[0]["close"] == Decimal("1150.0000")                     # revision 1 kept, unchanged
     assert rows[1]["close"] == Decimal("1151.0000")
     assert rows[1]["availability_basis"] == "OBSERVED"
-    assert rows[1]["available_from"] == FRIDAY == rows[1]["received_at"]
+    assert rows[1]["available_from"] == LATER == rows[1]["received_at"]
     for name, digest in first_files.items():                            # existing files untouched
         assert digests(writer.root)[name] == digest
 
@@ -158,8 +158,8 @@ def test_a_changed_value_is_an_observed_correction_never_backdated(writer):
 @pytest.mark.unit
 def test_each_further_change_is_the_next_revision(writer):
     writer.write_candles([candle_obs()], import_id="i1")
-    writer.write_candles([candle_obs(close=Decimal("1151.0000"), received_at=FRIDAY)], import_id="i2")
-    later = FRIDAY + timedelta(days=3)
+    writer.write_candles([candle_obs(close=Decimal("1151.0000"), received_at=LATER)], import_id="i2")
+    later = LATER + timedelta(days=3)
     writer.write_candles([candle_obs(close=Decimal("1152.0000"), received_at=later)], import_id="i3")
     revisions = sorted((r["revision"], r["close"]) for r in stored(writer.root, "candles"))
     assert revisions == [(1, Decimal("1150.0000")), (2, Decimal("1151.0000")), (3, Decimal("1152.0000"))]
@@ -176,7 +176,7 @@ def test_each_further_change_is_the_next_revision(writer):
 )
 def test_volume_and_basis_changes_are_corrections_too(writer, changes):
     writer.write_candles([candle_obs()], import_id="i1")
-    result = writer.write_candles([candle_obs(received_at=FRIDAY, **changes)], import_id="i2")
+    result = writer.write_candles([candle_obs(received_at=LATER, **changes)], import_id="i2")
     assert result.new_revisions == 1
 
 
@@ -185,7 +185,7 @@ def test_two_providers_never_correct_each_other(writer):
     writer.write_candles([candle_obs()], import_id="y1")
     result = writer.write_candles([candle_obs(source="testvendor", close=Decimal("1149.0000"))], import_id="t1")
     assert result.new_records == 1 and result.new_revisions == 0
-    writer.write_candles([candle_obs(source="testvendor", close=Decimal("1148.0000"), received_at=FRIDAY)],
+    writer.write_candles([candle_obs(source="testvendor", close=Decimal("1148.0000"), received_at=LATER)],
                          import_id="t2")
     by_source = {}
     for row in stored(writer.root, "candles"):
@@ -236,7 +236,7 @@ def test_an_existing_file_is_never_overwritten(writer):
     writer.write_candles([candle_obs()], import_id="same")
     before = digests(writer.root)
     with pytest.raises(FileExistsError):
-        writer.write_candles([candle_obs(close=Decimal("1151.0000"), received_at=FRIDAY)], import_id="same")
+        writer.write_candles([candle_obs(close=Decimal("1151.0000"), received_at=LATER)], import_id="same")
     assert digests(writer.root) == before
     assert not [p for p in writer.root.rglob("*") if p.name.endswith(".tmp")]
 
@@ -251,7 +251,7 @@ def test_an_import_id_must_be_a_safe_file_name(writer, import_id):
 @pytest.mark.unit
 def test_two_observations_of_one_bar_in_one_batch_are_ordered(writer):
     result = writer.write_candles(
-        [candle_obs(), candle_obs(close=Decimal("1151.0000"), received_at=FRIDAY)], import_id="i1"
+        [candle_obs(), candle_obs(close=Decimal("1151.0000"), received_at=LATER)], import_id="i1"
     )
     assert result == WriteResult(new_records=1, new_revisions=1, unchanged=0, import_id="i1")
     assert sorted(r["revision"] for r in stored(writer.root, "candles")) == [1, 2]
@@ -275,19 +275,19 @@ def test_a_first_seen_dividend_is_backfill_from_the_ex_date_start(writer):
 def test_a_changed_dividend_amount_is_an_observed_correction(writer):
     writer.write_corporate_actions([dividend_obs()], import_id="a1")
     result = writer.write_corporate_actions(
-        [dividend_obs(amount=Money(Decimal("0.0200"), "USD"), received_at=FRIDAY, processed_at=FRIDAY)],
+        [dividend_obs(amount=Money(Decimal("0.0200"), "USD"), received_at=LATER, processed_at=LATER)],
         import_id="a2",
     )
     assert result.new_revisions == 1
     rows = sorted(stored(writer.root, "corporate_actions"), key=lambda r: r["revision"])
     assert [(r["revision"], r["amount"]) for r in rows] == [(1, Decimal("0.0100")), (2, Decimal("0.0200"))]
-    assert rows[1]["availability_basis"] == "OBSERVED" and rows[1]["available_from"] == FRIDAY
+    assert rows[1]["availability_basis"] == "OBSERVED" and rows[1]["available_from"] == LATER
 
 
 @pytest.mark.unit
 def test_an_identical_action_rewrite_changes_nothing(writer):
     writer.write_corporate_actions([dividend_obs()], import_id="a1")
-    result = writer.write_corporate_actions([dividend_obs(received_at=FRIDAY)], import_id="a2")
+    result = writer.write_corporate_actions([dividend_obs(received_at=LATER)], import_id="a2")
     assert result.unchanged == 1 and result.new_records == result.new_revisions == 0
 
 
@@ -310,3 +310,28 @@ def test_split_ratios_round_trip_and_excess_precision_is_refused(writer):
         writer.write_corporate_actions([replace(split, ex_date=date(2024, 7, 1),
                                                 backfill_available_from=ex_date_start(date(2024, 7, 1), "America/New_York"),
                                                 ratio=Decimal("1.0000000000001"))], import_id="s2")
+
+
+# ---------------------------------------------------------------- self-review fixes
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("instrument_id", ["../../../../../ESCAPED", "../../../ESCAPED", "EQ_US_NVDA/../../x"])
+def test_a_crafted_instrument_id_cannot_write_outside_the_store(tmp_path, instrument_id):
+    # Batch-2 self-review: before the fix, '../../../../../ESCAPED' wrote a
+    # Parquet file outside the store's root folder.
+    root = tmp_path / "store" / "market"
+    with pytest.raises(ValueError):
+        MarketDataWriter(root).write_candles([candle_obs(instrument_id=instrument_id)], import_id="probe")
+    assert list(tmp_path.rglob("*.parquet")) == []
+
+
+@pytest.mark.unit
+def test_a_correction_cannot_be_received_before_what_it_corrects(writer):
+    # Batch-2 self-review: revisions are observed in time order; a "correction"
+    # received before the stored revision would put the history out of order.
+    writer.write_candles([candle_obs(received_at=LATER)], import_id="i1")
+    with pytest.raises(ValueError):
+        writer.write_candles([candle_obs(close=Decimal("1151.0000"), received_at=LATER - timedelta(hours=1))],
+                             import_id="i2")
+    assert [r["revision"] for r in stored(writer.root, "candles")] == [1]
