@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **12 of 18 tasks done** (M1-00 – M1-11). |
 | **`main`** | Local `main` is at **`0661d46`** (`docs: record the batch 2 re-review fix and checks`). **Batch 2 passed Codex's review** (after two rounds of follow-up fixes) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12; batch 1 (`109a72d`) before it. `main` is 29 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 3 (M1-12 ? M1-13)** on `m1/batch-3` (from `0661d46`). Owner approved the exact round-3 contract/reporting corrections and July acceptance window, then **Codex takeover** when Claude reached its usage limit. **M1-12 verified actions/daily semantics committed (`fcd8457`); M1-13 daily implementation checked and ready for its task commit. Claude independent review follows batch checks. Hourly prices and volume remain BLOCKED.** No merge or push. |
+| **Current work** | **Batch 3 partial implementation** on `m1/batch-3`: M1-12 daily semantics/actions **`fcd8457`**, M1-13 daily bars **`d93e47e`**. Codex implemented while Claude was unavailable. Final self-review numeric-boundary follow-up and batch checks in progress, then Claude independent review. **Hourly prices/volume remain BLOCKED; no merge, push or batch 4.** |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules plus `market/calendar/` (US equities, cited 2019 – 2026 data), `market/availability.py`, `market/candles.py`, `market/corporate_actions.py` and `market/store/` (schema, append-only writer, point-in-time reader). The `engine` extra adds `pyarrow` and `duckdb`. |
@@ -142,6 +142,16 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Codex ? numeric-boundary self-review follow-up
+After the two task commits, adversarial self-review found that the generic `__index__` fallback accepted Python/NumPy booleans as financial numbers. Two Python-boolean tests failed first (no TypeError); the fix restricts integer conversion to non-boolean `numbers.Integral` and removes the permissive fallback. Tests now cover both Python booleans, both NumPy booleans, valid NumPy int64 and float64 reconstruction. This preserves the explicit M1-02 conversion boundary.
+
+Changed only M1-12's allowed semantics module/test and PROGRESS. **Task checks:**
+- Git Bash: `.venv/Scripts/python.exe -m pytest -q tests/engine/test_yahoo_semantics.py tests/engine/test_yfinance_actions.py tests/engine/test_yfinance_bars.py` ? **104 passed, 2 deselected**.
+- Git Bash: `.venv/Scripts/python.exe -m pytest -q` ? **1890 passed, 1 failed, 4 skipped, 3 deselected**. Only failure: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, **recorded in baseline**; no new failures. Output `%TEMP%/codex-b3-followup-full.txt`.
+- `.venv/Scripts/python.exe -m ruff check .` ? all checks passed; `git diff --check` ? clean.
+
+Final PowerShell and installed engine smoke checks are being recorded in the handoff entry. Base installed-copy imports already pass from outside the repository; neither storage library is installed/loaded and the final boolean guard is present. No dependency/architecture changes. Live checks and CI not run.
 
 ### 2026-10-12: Codex ? M1-13 daily implementation, before task commit
 M1-12's partial implementation is committed as **`fcd8457`** with its own task checks; M1-13 builds on that checked commit, under the owner-approved takeover. Tests were written first and failed to collect because `yfinance_bars.py` did not exist. **Hourly is not implemented**: the real record blocks both fields before fetch; synthetic verification cannot enable the paused hourly implementation either.

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
+from numbers import Integral
 from pathlib import Path
 from statistics import median
 from types import MappingProxyType
@@ -140,14 +141,10 @@ def decimal_value(value) -> Decimal:
         # multiplying by 40 would invent an avoidable reconstruction error.
         exponent = Decimal(float.__repr__(value)).as_tuple().exponent
         result = from_float64(value, Decimal("1").scaleb(exponent))
-    elif isinstance(value, int) and not isinstance(value, bool):
-        result = Decimal(value)
+    elif isinstance(value, Integral) and not isinstance(value, bool):
+        result = Decimal(int(value))
     else:
-        # numpy integer scalars implement __index__; floats still use the converter above.
-        try:
-            result = Decimal(value.__index__())
-        except (AttributeError, TypeError) as exc:
-            raise TypeError(f"unsupported vendor number {type(value).__name__}") from exc
+        raise TypeError(f"unsupported vendor number {type(value).__name__}")
     if not result.is_finite():
         raise ValueError("vendor values must be finite")
     return result

@@ -14,6 +14,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from investment_engine.market.availability import AvailabilityBasis
@@ -45,6 +46,7 @@ from investment_engine.market.importers.yahoo_semantics import (
     decide_hourly_volume,
     decide_prices,
     decide_split_ratios,
+    decimal_value,
     dollar_volume_continuity,
     hourly_differences,
     in_range_splits,
@@ -543,3 +545,16 @@ def test_reconstruction_quantizes_half_even():
     assert reconstruct_price(Decimal("0.00015"), Decimal("1")) == Decimal("0.0002")
     assert reconstruct_volume(Decimal("10"), Decimal("4")) == Decimal("2")  # 2.5 → 2, half-even
     assert reconstruct_volume(Decimal("14"), Decimal("4")) == Decimal("4")  # 3.5 → 4
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", [True, False, np.bool_(True), np.bool_(False)])
+def test_vendor_booleans_are_not_money_or_volume(value):
+    with pytest.raises(TypeError):
+        decimal_value(value)
+
+
+@pytest.mark.unit
+def test_vendor_numpy_numbers_cross_the_explicit_decimal_boundary():
+    assert decimal_value(np.int64(1000)) == Decimal("1000")
+    assert reconstruct_price(np.float64(0.004), Decimal("40")) == Decimal("0.1600")
