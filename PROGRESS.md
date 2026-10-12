@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **2 of 18 tasks done** (M1-00, M1-01). |
 | **`main`** | Local `main` is at **`a8f338b`** (`test: give comprehensions their own scope in the system-clock scan`). **M1-01 passed Codex review** (no blocking findings at `a8f338b`) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 7 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**, approved by the owner. **M1-02 – M1-05 committed (checked)**; the batch self-review is in progress. No Codex review yet. |
+| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**, approved by the owner. **M1-02 – M1-05 committed (checked)**, plus one self-review fix (M1-02). The batch self-review is in progress. No Codex review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` has `__init__.py` (M1-00) and `clock.py` (M1-01). |
@@ -132,6 +132,15 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 1 self-review: M1-02 follow-up fix)
+- **Found by the batch self-review (adversarial probe).** `from_float64` built the Decimal from `repr(value)`. **numpy 2's `float64`**, which is what pandas hands over and what the M1-13 importer will receive, is a `float` subclass whose `repr` is `"np.float64(0.1)"`. So `from_float64(np.float64(0.1), …)` **crashed** with `decimal.InvalidOperation`. Reproduced on numpy 2.4.6 before the fix.
+- **Regression test first:** `test_from_float64_accepts_numpy_float64` (numpy sums, a price, and NaN refused). It failed before the fix.
+- **Fix:** `from_float64` now uses `float.__repr__(value)`, the plain shortest float representation, whatever the subclass. The docstring explains why.
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_money.py`: 57 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1493 passed** (+1), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed.
 
 ### 2026-10-12: Claude Code (batch 1, M1-05: SQLite operational store and data-directory config)
 - **Tests first.** 37 tests:

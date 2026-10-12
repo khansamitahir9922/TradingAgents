@@ -37,14 +37,16 @@ def quantize(value: Decimal, quantum: Decimal, rounding: str = ROUNDING) -> Deci
 def from_float64(value: float, quantum: Decimal, rounding: str = ROUNDING) -> Decimal:
     """Convert a float to Decimal at an explicit quantum.
 
-    Uses the float's shortest round-tripping representation (`repr`), not its
-    exact binary value, so 0.1 + 0.2 becomes 0.3000 at a 0.0001 quantum.
+    Uses the float's shortest round-tripping representation, not its exact
+    binary value, so 0.1 + 0.2 becomes 0.3000 at a 0.0001 quantum. It calls
+    float.__repr__ directly: float subclasses such as numpy.float64 (what
+    pandas hands over) override repr, as "np.float64(0.1)" in numpy 2.
     """
     if not isinstance(value, float):
         raise TypeError(f"value must be a float, not {type(value).__name__}")
     if not math.isfinite(value):
         raise ValueError(f"value must be finite, not {value}")
-    return quantize(Decimal(repr(value)), quantum, rounding)
+    return quantize(Decimal(float.__repr__(value)), quantum, rounding)
 
 
 def to_float64(value: Decimal) -> float:

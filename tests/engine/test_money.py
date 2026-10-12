@@ -176,6 +176,18 @@ def test_quantize_rounds_half_even(value, expected):
 
 
 @pytest.mark.unit
+def test_from_float64_accepts_numpy_float64():
+    # Batch-1 self-review: pandas hands over numpy.float64, a float subclass
+    # whose repr in numpy 2 is "np.float64(0.1)", not "0.1". The conversion
+    # must use the plain float representation.
+    np = pytest.importorskip("numpy")
+    assert from_float64(np.float64(0.1) + np.float64(0.2), PRICE_QUANTUM) == Decimal("0.3000")
+    assert from_float64(np.float64(1208.88), PRICE_QUANTUM) == Decimal("1208.8800")
+    with pytest.raises(ValueError):
+        from_float64(np.float64("nan"), PRICE_QUANTUM)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
 def test_from_float64_refuses_non_finite_values(value):
     with pytest.raises(ValueError):
