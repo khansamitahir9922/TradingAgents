@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **2 of 18 tasks done** (M1-00, M1-01). |
 | **`main`** | Local `main` is at **`a8f338b`** (`test: give comprehensions their own scope in the system-clock scan`). **M1-01 passed Codex review** (no blocking findings at `a8f338b`) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 7 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **The batch workflow documentation**, on branch **`m1/batch-1`**, from `main` at `a8f338b`. It's the first commit on that branch, **committed with the owner's approval and awaiting Codex's quick review**. **No batch task has been started.** Batch 1 (M1-02 – M1-05) starts only after that review. |
+| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**, approved by the owner. **M1-02 committed (checked)**; M1-03 next. No batch review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` has `__init__.py` (M1-00) and `clock.py` (M1-01). |
@@ -132,6 +132,37 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 1, M1-02: Decimal boundary)
+- **The owner approved batch 1** (M1-02 – M1-05) on `m1/batch-1` at `f4313cb`, after Codex's review of the workflow documentation passed.
+- **Tests first.** `tests/engine/test_money.py` has 56 tests:
+  - every acceptance item;
+  - non-finite amounts refused;
+  - the currency-code shape;
+  - mixed currencies or units refused in `+`, `-` and ordering;
+  - equality across currencies is simply `False`;
+  - `*` only by a `Decimal`;
+  - `Money` and `Quantity` never mix;
+  - more half-even cases, including a negative tie;
+  - the quantum exponent kept;
+  - converter type checks;
+  - a float round trip at `PRICE_QUANTUM`.
+
+  Before the implementation, collection failed on the missing module.
+- **Implementation:** `investment_engine/money.py`:
+  - `Money` and `Quantity`: frozen dataclasses, Decimal-only and finite amounts, an ISO 4217 currency or a non-empty unit;
+  - mixing currencies or units raises `ValueError`; combining with another type raises `TypeError`;
+  - `PRICE_QUANTUM`, `SHARE_QUANTUM` and `ROUNDING = ROUND_HALF_EVEN`;
+  - `quantize`;
+  - `from_float64` (float only, finite, via `repr`, then explicit quantization);
+  - `to_float64` (finite Decimal only).
+- **Choice not stated in the spec:** ordering comparisons across currencies **raise**, but equality returns `False`. Raising on `==` would break hashing and containers.
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_money.py`: 56 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1385 passed** (+56), 4 skipped, 1 deselected; failing set = baseline;
+  - `.venv/Scripts/python.exe -m ruff check .`: all checks passed.
+
+  No dependency or packaging change, so no smoke check within the task.
 
 ### 2026-10-12: Claude Code (workflow documentation follow-up)
 - **Codex reviewed `d9ab307`.** The shared rules match, and runtime code is unchanged. It found two documentation issues:
