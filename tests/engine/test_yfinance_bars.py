@@ -434,3 +434,19 @@ def test_live_daily_columns_match_recorded_contract():
                            auto_adjust=False, actions=False, repair=False, back_adjust=False, prepost=False)
     assert {"Open", "High", "Low", "Close", "Volume"} <= set(bars.columns)
     assert len(bars) == 4
+
+
+@pytest.mark.unit
+def test_bar_factors_use_the_importers_verification_record(market, monkeypatch):
+    import investment_engine.market.importers.yfinance_bars as module
+
+    record = replace(YAHOO_VERIFICATION)  # equal, but a distinct object
+    original, seen = module.factor_from_history, []
+
+    def spy(splits, d, download_date, verification):
+        seen.append(verification)
+        return original(splits, d, download_date, verification)
+
+    monkeypatch.setattr(module, "factor_from_history", spy)
+    run(market, verification=record)
+    assert len(seen) == 12 and all(v is record for v in seen)

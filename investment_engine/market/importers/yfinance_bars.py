@@ -162,7 +162,7 @@ def import_bars(instrument_id: str, timeframe: Timeframe, start: date, end: date
             if session.open in seen:
                 raise ValueError("duplicate daily bar identity")
             seen.add(session.open)
-            factor = factor_from_history(history_used, exchange_date, received_at.astimezone(zone).date())
+            factor = factor_from_history(history_used, exchange_date, received_at.astimezone(zone).date(), verification)
             if any(t is Transformation.IDENTITY_IF_NO_LATER_SPLIT and factor != 1 for t in (price_transform, volume_transform)):
                 rejected.append((timestamp_utc, "identity exception requires F == 1"))
                 continue

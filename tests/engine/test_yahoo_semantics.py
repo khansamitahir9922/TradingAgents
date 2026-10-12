@@ -48,6 +48,7 @@ from investment_engine.market.importers.yahoo_semantics import (
     decide_split_ratios,
     decimal_value,
     dollar_volume_continuity,
+    factor_from_history,
     hourly_differences,
     in_range_splits,
     load_recording,
@@ -236,6 +237,54 @@ def test_split_factor_takes_only_split_actions():
     with pytest.raises(ValueError, match="SPLIT"):
         split_factor([dividend], date(2021, 1, 4), DOWNLOAD)
 
+
+
+# factor_from_history: the importers' form of split_factor, on (ex_date, ratio) pairs (review fix 2).
+CITED_PAIRS = YAHOO_VERIFICATION.cited_splits
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("d", [date(2019, 1, 2), date(2021, 7, 19), date(2021, 7, 20), date(2024, 6, 7),
+                               date(2024, 6, 10), date(2026, 10, 9)])
+def test_factor_from_history_equals_split_factor(d):
+    assert factor_from_history(CITED_PAIRS, d, DOWNLOAD, YAHOO_VERIFICATION) == split_factor(CITED, d, DOWNLOAD)
+
+
+@pytest.mark.unit
+def test_factor_from_history_needs_the_verification_record():
+    with pytest.raises(TypeError):
+        factor_from_history(CITED_PAIRS, date(2021, 1, 4), DOWNLOAD)
+
+
+@pytest.mark.unit
+def test_factor_from_history_refuses_dates_before_the_verified_range():
+    with pytest.raises(OutsideVerifiedRange):
+        factor_from_history(CITED_PAIRS, date(2018, 12, 31), DOWNLOAD, YAHOO_VERIFICATION)
+
+
+@pytest.mark.unit
+def test_factor_from_history_refuses_split_entries_before_the_verified_range():
+    with pytest.raises(OutsideVerifiedRange):
+        factor_from_history(((date(2007, 9, 11), Decimal("1.5")), *CITED_PAIRS), date(2021, 1, 4), DOWNLOAD,
+                            YAHOO_VERIFICATION)
+
+
+@pytest.mark.unit
+def test_factor_from_history_uses_the_record_it_is_given():
+    later = replace(YAHOO_VERIFICATION, verified_from=date(2022, 1, 1))
+    with pytest.raises(OutsideVerifiedRange):
+        factor_from_history(CITED_PAIRS[1:], date(2021, 7, 19), DOWNLOAD, later)
+    with pytest.raises(OutsideVerifiedRange):  # 2021-07-20 precedes this record's range
+        factor_from_history(CITED_PAIRS, date(2022, 1, 3), DOWNLOAD, later)
+    assert factor_from_history(CITED_PAIRS[1:], date(2022, 1, 3), DOWNLOAD, later) == Decimal("10")
+
+
+@pytest.mark.unit
+def test_factor_from_history_refuses_duplicate_ex_dates_and_bad_dates():
+    with pytest.raises(SplitHistoryMismatch, match="duplicate"):
+        factor_from_history((*CITED_PAIRS, CITED_PAIRS[0]), date(2021, 1, 4), DOWNLOAD, YAHOO_VERIFICATION)
+    with pytest.raises(TypeError):
+        factor_from_history(CITED_PAIRS, datetime(2021, 1, 4, tzinfo=UTC), DOWNLOAD, YAHOO_VERIFICATION)
 
 # ------------------------------------------------------------------ split-history checks
 

@@ -153,6 +153,11 @@ Claude Code independently reviewed `0661d46..62118a2`: one blocking finding (B1)
 - **Tests (written first; the crossing case failed before the fix):** `test_forming_is_decided_by_the_downloads_receipt_time`, received before the close, before the close with processing crossing it, exactly at it, and after it.
 - **Checks:** `.venv/Scripts/python.exe -m pytest -q tests/engine/test_yfinance_bars.py` → 35 passed, 1 deselected. `.venv/Scripts/python.exe -m pytest -q` (Git Bash) → **1894 passed, 1 failed, 4 skipped, 3 deselected**; the only failure is `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, **recorded in the baseline**. `ruff check .` → All checks passed.
 
+**Fix 2: `factor_from_history` enforces the verified range.** It was a public helper with no range check; both importers used it.
+- **Fix:** it now takes the verification record as a **required** argument, refuses `d < verified_from`, any split entry before `verified_from`, duplicate ex-dates and non-date inputs. Both importers pass their own record. M1-12 v0.3.4 records the contract.
+- **Tests (written first; 13 failed before the fix):** equality with `split_factor` on six dates; the record is required; pre-range date and entry refused; the given record's range is the one applied; duplicates and datetimes refused; spies confirm both importers pass their record (31 dividend and 12 bar calls).
+- **Checks:** the three importer test files → 121 passed, 2 deselected. Full suite (Git Bash) → **1907 passed, 1 failed** (the same baseline failure), 4 skipped, 3 deselected. `ruff check .` → All checks passed.
+
 ### 2026-10-12: Codex ? final daily-only batch 3 handoff for Claude review
 **Approved implementation finished.** Code commits: **`fcd8457`** (M1-12 partial: verified daily semantics and actions), **`d93e47e`** (M1-13 partial: daily bars), **`f1ebc7b`** (self-review Boolean fix). This documentation commit records final checks/handoff. Review range starts at **`0661d46`**. `main` remains **`0661d46`**; nothing merged or pushed, no branches deleted, batch 4 not started. The 12 merged tasks remain the done count; these partial tasks are **committed (checked), awaiting independent review**, not done.
 

@@ -86,7 +86,8 @@ def import_actions(instrument_id: str, *, clock: Clock, resolver: SqliteSymbolRe
             continue
         if value <= 0:
             raise ValueError("dividend amount must be positive")
-        factor = factor_from_history(splits, d, received_at.astimezone(ZoneInfo(instrument.timezone)).date())
+        factor = factor_from_history(splits, d, received_at.astimezone(ZoneInfo(instrument.timezone)).date(),
+                                     verification)
         if dividend_transform is Transformation.IDENTITY_IF_NO_LATER_SPLIT and factor != 1:
             raise FieldBlocked("DIVIDEND_AMOUNT identity exception requires F == 1")
         multiplier = factor if dividend_transform is Transformation.SPLIT_RECONSTRUCTION else 1

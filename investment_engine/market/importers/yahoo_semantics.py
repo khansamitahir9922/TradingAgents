@@ -230,9 +230,25 @@ def split_factor(splits: Sequence[CorporateAction], d: date, download_date: date
     return factor
 
 
-def factor_from_history(splits, d, download_date):
+def factor_from_history(splits, d, download_date, verification):
+    """`split_factor` for (ex_date, ratio) pairs, with the same verified-range rules.
+
+    The record is required, so no importer can compute F without naming the
+    range it was verified for.
+    """
+    plain_date(d, "d")
+    plain_date(download_date, "download_date")
+    if d < verification.verified_from:
+        raise OutsideVerifiedRange(f"{d} is before {verification.verified_from}")
     factor = Decimal("1")
+    seen = set()
     for ex_date, ratio in splits:
+        plain_date(ex_date, "split ex-date")
+        if ex_date < verification.verified_from:
+            raise OutsideVerifiedRange(f"split on {ex_date} precedes {verification.verified_from}")
+        if ex_date in seen:
+            raise SplitHistoryMismatch("duplicate split ex-date")
+        seen.add(ex_date)
         if d < ex_date <= download_date:
             factor *= ratio
     return factor

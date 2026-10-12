@@ -236,3 +236,19 @@ def test_live_full_history_call_is_not_date_filtered():
     values = series_values(fetch_full_splits("NVDA"), "America/New_York")
     assert any(d < date(2019, 1, 1) for d, _ in values)
     assert (date(2024, 6, 10), Decimal("10")) in values
+
+
+@pytest.mark.unit
+def test_dividend_factors_use_the_importers_verification_record(setup, monkeypatch):
+    import investment_engine.market.importers.yfinance_actions as module
+
+    record = replace(YAHOO_VERIFICATION)  # equal, but a distinct object
+    original, seen = module.factor_from_history, []
+
+    def spy(splits, d, download_date, verification):
+        seen.append(verification)
+        return original(splits, d, download_date, verification)
+
+    monkeypatch.setattr(module, "factor_from_history", spy)
+    run(setup, verification=record)
+    assert len(seen) == 31 and all(v is record for v in seen)
