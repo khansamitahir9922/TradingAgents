@@ -298,6 +298,52 @@ def test_identity_if_no_later_split_rejects_and_reports_earlier_bars(market):
     assert all(c.price_basis is PriceBasis.RAW_NO_LATER_SPLIT for c in rows(market))
 
 
+CLOSE_2026_10_09 = datetime(2026, 10, 9, 20, tzinfo=UTC)  # 16:00 New York
+
+
+def run_received_at(market, received_at, processing):
+    """Import 2026-10-09's bar, downloaded at `received_at`; the follow-up split request ends `processing` later."""
+    clock = market["clock"] = ReplayClock(received_at)
+    splits = action_series("nvda_splits_before.json")
+    split_requests = []
+
+    def fetch_splits(symbol):
+        split_requests.append(symbol)
+        if len(split_requests) == 2:
+            clock.advance_by(processing)
+        return splits.copy()
+
+    def fetch_bars(symbol, **kwargs):
+        data = frame()
+        dates = data.index.date
+        return data[(dates >= kwargs["start"]) & (dates < kwargs["end"])].copy()
+
+    return import_bars("EQ_US_NVDA", Timeframe.D1, date(2026, 10, 9), date(2026, 10, 10), **market,
+                       fetch_bars=fetch_bars, fetch_split_history=fetch_splits)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("received_at", "processing", "kept"),
+    [
+        (CLOSE_2026_10_09 - timedelta(seconds=2), timedelta(0), False),  # received before the close
+        (CLOSE_2026_10_09 - timedelta(seconds=2), timedelta(seconds=3), False),  # processing crosses the close
+        (CLOSE_2026_10_09, timedelta(0), True),  # received exactly at the close
+        (CLOSE_2026_10_09 + timedelta(seconds=1), timedelta(seconds=3), True),  # received after the close
+    ],
+    ids=["before-close", "processing-crosses-close", "at-close", "after-close"],
+)
+def test_forming_is_decided_by_the_downloads_receipt_time(market, received_at, processing, kept):
+    report = run_received_at(market, received_at, processing)
+    stored = rows(market, date(2026, 10, 9), date(2026, 10, 10))
+    assert report.dropped_forming == (0 if kept else 1)
+    assert len(stored) == (1 if kept else 0)
+    if kept:
+        assert stored[0].received_at == received_at >= stored[0].end_time == CLOSE_2026_10_09
+    else:
+        assert report.covered is None
+
+
 @pytest.mark.unit
 def test_non_session_out_of_request_and_forming_rows_are_reported(market):
     data = frame().loc["2024-06-07":"2024-06-10"].copy()

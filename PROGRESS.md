@@ -145,6 +145,14 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-12: Claude Code (batch 3 review fixes, approved by the owner)
+Claude Code independently reviewed `0661d46..62118a2`: one blocking finding (B1) and seven suggestions. Codex reproduced B1. The owner approved four follow-up fixes, each with regression tests first and its own commit; no merge, push, batch-3 completion or batch 4.
+
+**Fix 1 (B1): forming daily bars are decided by the download's `received_at`.** `yfinance_bars.py` compared the session close with `clock.now()` at processing time, so a bar downloaded at 15:59:58 ET and processed after 16:00 was stored `CLOSED`, `BACKFILL_ASSUMED`, available from the close, with partial-day prices.
+- **Fix:** drop a bar when `session.close > received_at` of the download that delivered it. M1-13 v0.2.4 updates the report field, step 9 and the acceptance tests.
+- **Tests (written first; the crossing case failed before the fix):** `test_forming_is_decided_by_the_downloads_receipt_time`, received before the close, before the close with processing crossing it, exactly at it, and after it.
+- **Checks:** `.venv/Scripts/python.exe -m pytest -q tests/engine/test_yfinance_bars.py` → 35 passed, 1 deselected. `.venv/Scripts/python.exe -m pytest -q` (Git Bash) → **1894 passed, 1 failed, 4 skipped, 3 deselected**; the only failure is `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, **recorded in the baseline**. `ruff check .` → All checks passed.
+
 ### 2026-10-12: Codex ? final daily-only batch 3 handoff for Claude review
 **Approved implementation finished.** Code commits: **`fcd8457`** (M1-12 partial: verified daily semantics and actions), **`d93e47e`** (M1-13 partial: daily bars), **`f1ebc7b`** (self-review Boolean fix). This documentation commit records final checks/handoff. Review range starts at **`0661d46`**. `main` remains **`0661d46`**; nothing merged or pushed, no branches deleted, batch 4 not started. The 12 merged tasks remain the done count; these partial tasks are **committed (checked), awaiting independent review**, not done.
 

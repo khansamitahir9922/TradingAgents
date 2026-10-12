@@ -155,7 +155,8 @@ def import_bars(instrument_id: str, timeframe: Timeframe, start: date, end: date
                 rejected.append((timestamp_utc, "non-session date"))
                 continue
             session = calendar.session(exchange_date)
-            if session.close > check_utc(clock.now(), "clock.now()"):
+            # Still forming when this download received it, whenever processing ends.
+            if session.close > received_at:
                 dropped += 1
                 continue
             if session.open in seen:
