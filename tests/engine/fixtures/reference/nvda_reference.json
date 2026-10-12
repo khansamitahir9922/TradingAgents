@@ -1,0 +1,222 @@
+{
+  "metadata": {
+    "instrument_id": "EQ_US_NVDA",
+    "purpose": "Independent, cited reference values for the M1-12 Yahoo field-semantics verification. Nothing here comes from Yahoo or from memory.",
+    "compiled_on": "2026-10-12",
+    "compiled_by": "Claude Code (draft for Codex review)",
+    "status": "DRAFT: source types accepted by Codex on 2026-10-12 with conditions; values not yet reviewed",
+    "ex_date_rule": "Where only a record date is published, the ex-date is derived: one business day before the record date while US settlement was T+2 (before 2024-05-28), and equal to the record date under T+1 (from 2024-05-28). For stock splits paid as a stock dividend, the ex-date is the first session after distribution."
+  },
+  "sources": {
+    "NVDA-8K-2021-05-21": {
+      "kind": "company",
+      "title": "NVIDIA Announces Four-for-One Stock Split, Pending Stockholder Approval at Annual Meeting Set for June 3",
+      "publisher": "NVIDIA Corporation, Form 8-K Exhibit 99.1",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581021000056/pr-may2021.htm",
+      "published": "2021-05-21",
+      "retrieved": "2026-10-12",
+      "quote": "a four-for-one split of NVIDIA's common stock in the form of a stock dividend ... to be distributed after the close of trading on July 19, 2021 ... Trading is expected to begin on a stock split-adjusted basis on July 20."
+    },
+    "NVDA-8K-2021-05-26": {
+      "kind": "company",
+      "title": "NVIDIA Announces Financial Results for First Quarter Fiscal 2022",
+      "publisher": "NVIDIA Corporation, Form 8-K Exhibit 99.1",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581021000063/q1fy22pr.htm",
+      "published": "2021-05-26",
+      "retrieved": "2026-10-12",
+      "quote": "NVIDIA will pay its next quarterly cash dividend of $0.16 per share on July 1, 2021, to all shareholders of record on June 10, 2021."
+    },
+    "NVDA-8K-2024-02-21": {
+      "kind": "company",
+      "title": "NVIDIA Announces Financial Results for Fourth Quarter and Fiscal 2024",
+      "publisher": "NVIDIA Corporation, Form 8-K Exhibit 99.1",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581024000028/q4fy24pr.htm",
+      "published": "2024-02-21",
+      "retrieved": "2026-10-12",
+      "quote": "NVIDIA will pay its next quarterly cash dividend of $0.04 per share on March 27, 2024, to all shareholders of record on March 6, 2024."
+    },
+    "NVDA-8K-2024-05-22": {
+      "kind": "company",
+      "title": "NVIDIA Corporation Form 8-K (ten-for-one forward stock split; dividend increase)",
+      "publisher": "NVIDIA Corporation, Form 8-K",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581024000113/nvda-20240522.htm",
+      "published": "2024-05-22",
+      "retrieved": "2026-10-12",
+      "quote": "a ten-for-one forward stock split ... nine additional shares of common stock, to be distributed after the close of market on Friday, June 7, 2024. Trading is expected to commence on a split-adjusted basis at market open on Monday, June 10, 2024. ... increased its quarterly cash dividend by 150 percent from $0.04 per share to $0.10 per share ... equivalent to $0.01 per share on a post-Stock Split basis ... to all shareholders of record on Tuesday, June 11, 2024 ... will be paid on Friday, June 28, 2024."
+    },
+    "NVDA-10Q-2026-04-26": {
+      "kind": "company",
+      "title": "NVIDIA Corporation Form 10-Q for the quarter ended April 26, 2026",
+      "publisher": "NVIDIA Corporation, Form 10-Q",
+      "url": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581026000052/nvda-20260426.htm",
+      "published": "2026-05",
+      "retrieved": "2026-10-12",
+      "quote": "On May 18, 2026, we increased our quarterly cash dividend from $0.01 per share to $0.25 per share to all shareholders of record on June 4, 2026. Our quarterly cash dividend will be paid on June 26, 2026."
+    },
+    "NVDA-8K-2007-08-09": {
+      "kind": "company",
+      "title": "NVIDIA Announces Three-for-Two Stock Split",
+      "publisher": "NVIDIA Corporation, Form 8-K Exhibit 99.1",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581007000042/exhibit.htm",
+      "published": "2007-08-09",
+      "retrieved": "2026-10-12",
+      "quote": "three-for-two stock split ... stockholders of record on August 20, 2007 ... expected to be distributed by the Company's transfer agent on or about Monday, September 10, 2007."
+    },
+    "NASDAQ-PHLX-2007-09-07": {
+      "kind": "exchange",
+      "title": "PHLX options memo 2248-07: NVIDIA Corporation three-for-two stock split",
+      "publisher": "Nasdaq / PHLX",
+      "url": "https://www.nasdaqtrader.com/content/phlxmemos/2007/sep/2248-07.pdf",
+      "published": "2007-09-07",
+      "retrieved": "2026-10-12",
+      "quote": "ex-distribution date September 11, 2007 (as reported by search; to be re-read from the PDF during review)"
+    },
+    "NVDA-10K-FY2006": {
+      "kind": "company",
+      "title": "NVIDIA Corporation Form 10-K, fiscal 2006",
+      "publisher": "NVIDIA Corporation, Form 10-K",
+      "url": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581006000014/fy2006annualreportonform10-k.htm",
+      "published": "2006-03",
+      "retrieved": "2026-10-12",
+      "quote": "two-for-one stock split announced March 6, 2006, effected as a stock dividend, distributed on or about April 6, 2006 (as reported by search; to be re-read during review)"
+    },
+    "NVDA-10K-FY2002": {
+      "kind": "company",
+      "title": "NVIDIA Corporation Form 10-K, fiscal 2002",
+      "publisher": "NVIDIA Corporation, Form 10-K",
+      "url": "https://www.sec.gov/Archives/edgar/data/0001045810/000101287002002262/d10k.htm",
+      "published": "2002",
+      "retrieved": "2026-10-12",
+      "quote": "two-for-one stock split ... stockholders of record on August 28, 2001, effected as a 100% stock dividend ... distributed on September 17, 2001 (as reported by search; to be re-read during review)"
+    },
+    "ISE-2001-44": {
+      "kind": "exchange",
+      "title": "ISE options adjustment memo 2001-44: NVIDIA Corporation (NVDA) stock split",
+      "publisher": "International Securities Exchange",
+      "url": "https://iseoptions.com/marketplace/files/adjustments/2001/2001-44-NVIDIA_Corporation_(NVDA)_Stock_Split-20010906.pdf",
+      "published": "2001-09-06",
+      "retrieved": "2026-10-12",
+      "quote": "ex-distribution date Wednesday, September 12, 2001 (scheduled before the September 11 market closure; to be re-read during review)"
+    },
+    "NVDA-PROXY-2000": {
+      "kind": "company (secondary copy)",
+      "title": "NVIDIA proxy statement excerpt: two-for-one stock split, May 2000",
+      "publisher": "Excerpt quoted by Focus on Risk - Silicon Valley (Substack); the primary SEC filing is still to be located",
+      "url": "https://focusonrisksv.substack.com/p/nvidia-corporation-proxy-statement-d7d",
+      "published": "2000",
+      "retrieved": "2026-10-12",
+      "quote": "The Board approved a two-for-one stock split in May 2000, payable as a stock dividend on June 26, 2000, to stockholders of record on June 12, 2000."
+    },
+    "MASSIVE-BLOG-2024-06-11": {
+      "kind": "independent_vendor",
+      "title": "Understanding Nvidia's Stock Split Using the Stocks Splits API",
+      "publisher": "Massive (formerly Polygon.io) blog",
+      "url": "https://massive.com/blog/using-the-split-api-endpoint-to-handle-the-nvidia-stock-split",
+      "published": "2024-06-11",
+      "retrieved": "2026-10-12",
+      "quote": "Daily aggregates listed with adjusted=False (unadjusted) and adjusted=True for 2024-06-06 to 2024-06-11; values below are from the adjusted=False listing.",
+      "caveat": "Massive's daily aggregates may differ from other vendors in session coverage and late-trade handling; see the two Massive knowledge-base links cited by Codex on 2026-10-12."
+    },
+    "FOOL-2021-07-20": {
+      "kind": "financial_press",
+      "title": "Is Nvidia Stock a Buy Now After the 4-for-1 Stock Split?",
+      "publisher": "The Motley Fool (Eric Cuka)",
+      "url": "https://www.fool.com/investing/2021/07/20/is-nvidia-stock-a-buy-now-after-the-4-for-1-stock/",
+      "published": "2021-07-20",
+      "retrieved": "2026-10-12",
+      "quote": "Nvidia closed at $751.19 on July 19 (2021)."
+    },
+    "MW-ARCHIVE-2021-02-21": {
+      "kind": "financial_press_archived_quote",
+      "title": "NVDA quote page (NVIDIA Corp.), as archived after the 2021-02-19 close",
+      "publisher": "MarketWatch, archived by the Internet Archive (Wayback Machine)",
+      "url": "https://web.archive.org/web/20210221211938/https://www.marketwatch.com/investing/stock/NVDA",
+      "published": "2021-02-21",
+      "retrieved": "2026-10-12",
+      "archive_digest_sha1_base32": "QEMVHD3EDS6KF3O2GJGXZIU2B5OBZI67",
+      "quote": "Last Updated: Feb 19, 2021 7:59 p.m. EST ... After Hours ... Close $597.06",
+      "note": "Captured on a Sunday, so the page's regular-session close is the 2021-02-19 official close, published before the 2021-07-20 split (as traded). Found after the Yahoo files were recorded and before any comparison with them."
+    },
+    "MW-ARCHIVE-2021-02-27": {
+      "kind": "financial_press_archived_quote",
+      "title": "NVDA quote page (NVIDIA Corp.), as archived after the 2021-02-26 close",
+      "publisher": "MarketWatch, archived by the Internet Archive (Wayback Machine)",
+      "url": "https://web.archive.org/web/20210227002407/https://www.marketwatch.com/investing/stock/NVDA",
+      "published": "2021-02-27",
+      "retrieved": "2026-10-12",
+      "archive_digest_sha1_base32": "PWJC2Q3LVLAYNDQVTD32W3BN6S3P4KES",
+      "quote": "Last Updated: Feb 26, 2021 7:22 p.m. EST ... After Hours ... Close $548.58",
+      "note": "Captured on a Saturday; the close is the 2021-02-26 official close, as traded."
+    },
+    "MW-ARCHIVE-2021-03-06": {
+      "kind": "financial_press_archived_quote",
+      "title": "NVDA quote page (NVIDIA Corp.), as archived after the 2021-03-05 close",
+      "publisher": "MarketWatch, archived by the Internet Archive (Wayback Machine)",
+      "url": "https://web.archive.org/web/20210306022234/https://www.marketwatch.com/investing/stock/NVDA",
+      "published": "2021-03-06",
+      "retrieved": "2026-10-12",
+      "archive_digest_sha1_base32": "7J5OMX3KV47UQFV55MZW4S5M2UDAXQEV",
+      "quote": "Last Updated: Mar 5, 2021 7:59 p.m. EST ... After Hours ... Close $498.46",
+      "note": "Captured on a Saturday; the close is the 2021-03-05 official close, as traded."
+    },
+    "YAHOO-HELP-SLN28256": {
+      "kind": "provider_documentation",
+      "title": "What is the adjusted close?",
+      "publisher": "Yahoo Help",
+      "url": "https://help.yahoo.com/kb/SLN28256.html",
+      "published": null,
+      "retrieved": "2026-10-12",
+      "quote": "Adjusted close is the closing price after adjustments for all applicable splits and dividend distributions.",
+      "note": "Says nothing about volume, so it is not primary evidence for V-D or V-H."
+    }
+  },
+  "splits": [
+    {"ex_date": "2000-06-27", "ratio": "2", "sources": ["NVDA-PROXY-2000"], "covered_range": false,
+     "note": "Paid 2000-06-26; ex-date is the next session. Primary SEC copy still to be located."},
+    {"ex_date": null, "ratio": "2", "sources": ["NVDA-10K-FY2002", "ISE-2001-44"], "covered_range": false,
+     "note": "Scheduled ex-date 2001-09-12, but US markets were closed 2001-09-11 to 2001-09-14 and the 10-K gives distribution on 2001-09-17. The actual ex-date is not established. Yahoo reports 2001-09-12, which was not a session."},
+    {"ex_date": "2006-04-07", "ratio": "2", "sources": ["NVDA-10K-FY2006"], "covered_range": false,
+     "note": "Distributed on or about 2006-04-06; ex-date is the next session."},
+    {"ex_date": "2007-09-11", "ratio": "1.5", "sources": ["NVDA-8K-2007-08-09", "NASDAQ-PHLX-2007-09-07"], "covered_range": false},
+    {"ex_date": "2021-07-20", "ratio": "4", "sources": ["NVDA-8K-2021-05-21"], "covered_range": true},
+    {"ex_date": "2024-06-10", "ratio": "10", "sources": ["NVDA-8K-2024-05-22"], "covered_range": true}
+  ],
+  "dividends": [
+    {"ex_date": "2021-06-09", "record_date": "2021-06-10", "declared_per_share": "0.16", "currency": "USD",
+     "basis": "as declared, per pre-2021-split share", "decisive": true, "sources": ["NVDA-8K-2021-05-26"]},
+    {"ex_date": "2024-03-05", "record_date": "2024-03-06", "declared_per_share": "0.04", "currency": "USD",
+     "basis": "as declared, per pre-2024-split share", "decisive": true, "sources": ["NVDA-8K-2024-02-21"]},
+    {"ex_date": "2024-06-11", "record_date": "2024-06-11", "declared_per_share": "0.01", "currency": "USD",
+     "basis": "post-split basis (0.10 pre-split); record date after the split, so F = 1", "decisive": false,
+     "sources": ["NVDA-8K-2024-05-22"]},
+    {"ex_date": "2026-06-04", "record_date": "2026-06-04", "declared_per_share": "0.25", "currency": "USD",
+     "basis": "as declared; no later split, so F = 1", "decisive": false, "sources": ["NVDA-10Q-2026-04-26"]}
+  ],
+  "price_anchors": [
+    {"date": "2021-02-19", "field": "close", "value": "597.06", "epoch": "before 2021-07-20 split (F = 40); inside M1-13's 2021-01-04 - 2021-03-30 window",
+     "sources": ["MW-ARCHIVE-2021-02-21"]},
+    {"date": "2021-02-26", "field": "close", "value": "548.58", "epoch": "before 2021-07-20 split (F = 40); inside M1-13's 2021-01-04 - 2021-03-30 window",
+     "sources": ["MW-ARCHIVE-2021-02-27"]},
+    {"date": "2021-03-05", "field": "close", "value": "498.46", "epoch": "before 2021-07-20 split (F = 40); inside M1-13's 2021-01-04 - 2021-03-30 window",
+     "sources": ["MW-ARCHIVE-2021-03-06"]},
+    {"date": "2021-07-19", "field": "close", "value": "751.19", "epoch": "before 2021-07-20 split (F = 40)",
+     "sources": ["FOOL-2021-07-20"]},
+    {"date": "2024-06-06", "field": "close", "value": "1209.98", "epoch": "between splits (F = 10)",
+     "sources": ["MASSIVE-BLOG-2024-06-11"]},
+    {"date": "2024-06-07", "field": "close", "value": "1208.88", "epoch": "between splits (F = 10)",
+     "sources": ["MASSIVE-BLOG-2024-06-11"]},
+    {"date": "2024-06-07", "field": "high", "value": "1216.9171", "epoch": "between splits (F = 10)",
+     "sources": ["MASSIVE-BLOG-2024-06-11"]},
+    {"date": "2024-06-10", "field": "close", "value": "121.79", "epoch": "after 2024-06-10 split (F = 1)",
+     "sources": ["MASSIVE-BLOG-2024-06-11"]},
+    {"date": "2024-06-11", "field": "close", "value": "120.91", "epoch": "after 2024-06-10 split (F = 1)",
+     "sources": ["MASSIVE-BLOG-2024-06-11"]}
+  ],
+  "volume_anchors": [
+    {"date": "2024-06-06", "timeframe": "D1", "shares": 65723115, "role": "decisive (F = 10)", "sources": ["MASSIVE-BLOG-2024-06-11"]},
+    {"date": "2024-06-07", "timeframe": "D1", "shares": 40552650, "role": "decisive (F = 10)", "sources": ["MASSIVE-BLOG-2024-06-11"]},
+    {"date": "2024-06-10", "timeframe": "D1", "shares": 307078688, "role": "control (F = 1; can't distinguish interpretations)", "sources": ["MASSIVE-BLOG-2024-06-11"]},
+    {"date": "2024-06-11", "timeframe": "D1", "shares": 218971550, "role": "control (F = 1; can't distinguish interpretations)", "sources": ["MASSIVE-BLOG-2024-06-11"]}
+  ],
+  "hourly_volume_anchors": []
+}

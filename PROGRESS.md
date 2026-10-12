@@ -8,13 +8,13 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 | | |
 |---|---|
-| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
-| **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | Batch 2 (M1-06 – M1-11) on `m1/batch-2`: Codex's re-review finding fixed in `c637a75`; batch checks passed again. Ready for Codex's re-review, then the owner-approved merge. Batch 3 not started. |
+| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **12 of 18 tasks done** (M1-00 – M1-11). |
+| **`main`** | Local `main` is at **`0661d46`** (`docs: record the batch 2 re-review fix and checks`). **Batch 2 passed Codex's review** (after two rounds of follow-up fixes) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12; batch 1 (`109a72d`) before it. `main` is 29 commits ahead of `origin/main`. **Nothing has been pushed.** |
+| **Current work** | **Batch 3 (M1-12 ? M1-13)** on `m1/batch-3` (from `0661d46`). Owner approved the exact round-3 contract/reporting corrections and July acceptance window, then **Codex takeover** when Claude reached its usage limit. **M1-12 verified actions/daily semantics implemented and checked, ready for its local task commit; M1-13 daily implementation next. Hourly prices and volume remain BLOCKED.** No merge or push. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
-| **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
-| **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
-| **Runtime tests** | Run for every task and batch, and compared against the recorded baseline (`docs/baselines/M1-00-baseline.md`). On `main` (`109a72d`): **237 engine tests**; Git Bash **1496 passed**, PowerShell **1495 passed**, failing sets = baseline. Codex independently reran the engine tests, the Git Bash suite and ruff for batch 1. CI not yet run. |
+| **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
+| **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules plus `market/calendar/` (US equities, cited 2019 – 2026 data), `market/availability.py`, `market/candles.py`, `market/corporate_actions.py` and `market/store/` (schema, append-only writer, point-in-time reader). The `engine` extra adds `pyarrow` and `duckdb`. |
+| **Runtime tests** | Run for every task and batch, and compared against the recorded baseline (`docs/baselines/M1-00-baseline.md`). On `main` (`0661d46`): **527 engine tests**; Git Bash **1786 passed**, PowerShell **1785 passed**, failing sets = baseline. Codex independently reran the engine tests, the full suite and ruff for batch 2. CI not yet run. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -29,8 +29,8 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Batch 2 (M1-06 – M1-11)** on `m1/batch-2`: Codex's four review findings are fixed (`a10bd73`, `3eafd38`). Its re-review finding (correction validation) is fixed in `c637a75`, and the batch checks passed again. **Next: Codex re-reviews `c637a75`**, then the owner approves one fast-forward merge.
-2. Then **batch 3 (M1-12 – M1-13: Yahoo verification and import, a firm checkpoint)**, after a new owner approval. **Not started.**
+1. **Batch 3:** Codex implements the approved M1-12 and daily-only M1-13 under the same task/batch checks and separate local commits. Claude Code independently reviews Codex's work when its usage limit resets. **Do not declare batch 3 or M1 complete:** hourly verification remains blocked. Stop before merging, pushing or batch 4.
+2. Then **batch 4 (M1-14 – M1-17)**, after a new owner approval. **Not started.**
 
 **Owner's conditions for batch 2 (2026-10-12):**
 - complete **2019 – 2026** calendar coverage from **cited official exchange sources**, special closures included;
@@ -38,7 +38,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 - **corporate actions take explicit instrument context** to check currency and exchange-local dates; the choice is recorded rather than defaults assumed;
 - check both the base installation and the `engine` extra.
 
-**Uncommitted local change, never stage it:** the owner's working copy of `.env.example` has a local edit. It isn't part of any task, and every commit stages named files only.
+**`.env.example`:** the owner reverted the local edit (Codex confirmed on 2026-10-12 that it matches the committed version). Every commit still stages named files only.
 
 **Batch workflow (adopted 2026-10-12, documented in this commit):** `AGENTS.md`/`CLAUDE.md` shared rules §4 and §6, `docs/tasks/README.md` (Workflow, Checks) and `docs/roadmap.md` (§1.1, §4.3).
 - **One-month goal:** finish **M1**. **M2 is a stretch goal**, and still needs reviewed specs (including the agreed adjusted-price view and leakage protections).
@@ -110,7 +110,9 @@ Report directional accuracy against the base rate, and the information coefficie
 | Item | Owner | Needed by |
 |---|---|---|
 | ~~OPEN-01: package name~~ **Resolved:** `investment_engine`, confirmed by the owner on 2026-10-09 | Owner | Done |
-| Which independent sources count as anchors for as-traded prices, volumes and dividends | Codex and owner, at spec review | M1-12 |
+| **No comparable independent hourly reference for NVDA**, so **hourly volume is blocked** and **hourly prices are pending** (169 of 728 sessions where hourly highs and lows differ from daily; investigated in round 3, about 150 still unexplained, including the 2026-02-09 spike). One owner action would address both: a one-off verification pull of an independent vendor's **unadjusted** hourly and daily bars (e.g. Massive's API; needs an account; not a runtime dependency). Until then, M1-13's hourly import, and M1 completion, are blocked | Owner (account or source), then Codex | M1-12, M1-13 |
+| ~~Q1-2021 exact reference close~~ **Resolved for the acceptance test:** owner approved option B, **2021-07-01 <= date < 2021-07-20**, including the independently cited July 19 close $751.19 and excluding the split date. Q1 recording remains the date-filtered-history counterexample; MarketWatch archives remain supporting material only. | Owner/Codex | M1-13 |
+| Which independent sources count as anchors for as-traded prices, volumes and dividends | **Accepted by Codex with conditions (2026-10-12):** independent vendors' dated publications of explicitly unadjusted values (e.g. Massive), dated financial articles with an exact value and trading date, and NVIDIA's own announcements for splits and dividends. Owner approval follows Codex's review of the v0.3.1 draft. | M1-12 |
 | The per-field Yahoo determination results | Determined in M1-12 | M1-12 / M1-13 |
 | How far back yfinance hourly history reaches | Measured in M1-13 | M1-13 |
 | `pyarrow` / `duckdb` versions with Python 3.11 – 3.14 wheels | Checked in M1-10 | M1-10 |
@@ -140,6 +142,148 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Codex takeover ? approved daily-only batch 3 work
+The owner asked Codex to implement while Claude Code is unavailable (usage limit), then return to independent reviewing when Claude can work again. Approval covers the exact `ActionImportReport`/reporting corrections, the July 1?20 **end-exclusive** window, M1-12 and verified daily M1-13, separate local task commits and required checks. **No merge, push or batch 4.** Claude independently reviews these Codex implementations before any merge.
+
+Claude had updated M1-12 v0.3.3 / M1-13 v0.2.3 and the fixtures README, and started `test_yahoo_semantics.py`; no implementation or commits existed. Codex continued those files. The initial tests failed to collect because the importers did not exist (expected tests-first red stage). Existing price assertions were corrected to the spec's $0.01 tolerance: the cited daily high differs by $0.0029, so exact equality and a zero maximum error would misstate the evidence. The primary decision uses the independently cited July/Massive anchors; retained MarketWatch archives are supporting only.
+
+M1-12 implements version/instrument/range checks, exact in-range cited split equality, before/after stability, field-specific transformations, Decimal reconstruction and action import reporting. The fixture imports **33 actions** (2 splits, 31 dividends), excludes **29** (4 splits, 25 dividends), is idempotent, and corrections become OBSERVED revisions without backdating. Hourly fields are explicitly BLOCKED. Default vendor/storage imports are lazy.
+
+Self-review regression: at UTC midnight, symbol lookup must use the exchange-local date. A new test failed (NEW instead of OLD), then passed after the fix. Tests also cover invalid dividends, empty responses, naive timestamps, unsupported instruments, all four cited-history mismatches and blocked fields. No other source modules or existing tests changed.
+
+**M1-12 task checks, final code (Codex):**
+- Git Bash: `.venv/Scripts/python.exe -m pytest -q tests/engine/test_yahoo_semantics.py tests/engine/test_yfinance_actions.py` ? **68 passed, 1 deselected** (live integration excluded).
+- Git Bash: `.venv/Scripts/python.exe -m pytest -q` ? **1854 passed, 1 failed, 4 skipped, 2 deselected**. Only failure: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, **recorded in baseline**. **No new failures.** Output: `%TEMP%/codex-b3-m112-full.txt`.
+- `.venv/Scripts/python.exe -m ruff check .` ? **All checks passed** (after import-order cleanup).
+- `git diff --check` ? clean. Named-file staging excludes `.env`, `.claude/`, and M1-13's still-uncommitted spec.
+- Fresh-install task check not required: no dependencies/packaging settings changed. Batch PowerShell and fresh-install checks will run after the daily M1-13 work.
+- CI and live integration checks **not run**. M1-12 remains **partial** overall because hourly verification is blocked; this task commit delivers verified actions and daily decisions, not batch completion.
+
+### 2026-10-12: Claude Code (batch 3 checkpoint, round 3: Codex's latest findings; uncommitted, for re-review)
+The owner approved documentation and evidence corrections only, including M1-13. No importer code, no architecture or SVG changes, nothing committed.
+
+**1. Split scope made consistent (M1-12 v0.3.2, M1-13 v0.2.2).**
+- "Complete split history" now means complete **over the verified date range** (`ex_date >= verified_from`, equal to `cited_splits`) in both specs.
+- `split_factor` itself raises for `d < verified_from` or for any split before it. Dividends before the range are counted, never stored.
+- M1-13's re-import test contradicted the new-split rule (it expected `unchanged` for an uncited split). It now puts the split in a test record's `cited_splits`; without that, the import aborts.
+- **New acceptance tests:** `split_factor` raises for 2018-12-31 and for a passed 2007 split; a pre-range dividend isn't stored.
+
+**2. Hourly prices: investigated, still pending. Hourly volume: still blocked.** From the saved fixtures (details in `tests/engine/fixtures/yfinance/README.md`):
+- auction prints explain 7 of the 173 inside extremes, and missing bars explain 7 sessions; **about 150 sessions are unexplained**;
+- the 8 outside extremes are isolated single-bar spikes, none on a gap day;
+- **2026-02-09 14:30** (high 198.725 against 193.660): no independent intraday source found. The Internet Archive has no post-close quote page for that session, and news search found no dated range.
+
+**3. Q1-2021 anchor found.** MarketWatch's NVDA quote page, archived by the Internet Archive on the weekend after each session, gives official closes published before the 2021 split:
+- 2021-02-19 **$597.06**, 2021-02-26 **$548.58**, 2021-03-05 **$498.46**;
+- recorded first, then compared: Yahoo daily close × 40 equals all three **exactly** ($0.0000);
+- added to `nvda_reference.json` with archive URLs and content digests. M1-13's test now uses them, and the option to move the window is withdrawn.
+
+**4. Source count.** The reference file had **14** sources at round 2 (the earlier "15" was wrong); with the three archive sources it now has **17**. The 35 missing hourly bar starts remain documented in the fixtures README.
+
+**Files changed, uncommitted:** `docs/tasks/M1-12.md`, `docs/tasks/M1-13.md`, `tests/engine/fixtures/reference/nvda_reference.json`, `tests/engine/fixtures/yfinance/README.md`, `PROGRESS.md`.
+
+**Checks:** none run; nothing executable changed. The reference JSON was parsed to confirm it's valid (17 sources, 9 price anchors). CI not yet run.
+
+### 2026-10-12: Claude Code (batch 3 checkpoint, round 2: Codex's three findings addressed; uncommitted, for re-review)
+**Codex's re-review of round 1:** the daily evidence passes the proposed checks; Codex recalculated daily volume at 1.14% and 1.69%, and the decisive dividends match. Implementation is **not** approved yet. Three blocking findings, plus two non-blocking corrections. The owner approved correcting the evidence and the draft specs, **including M1-13** so that its split contract agrees with M1-12, all **uncommitted** with the importer paused.
+
+**1. The split-scope rules conflicted.** M1-12 skipped the unverifiable 2001 split, while M1-13 still compared the whole history, so every bar import would have aborted.
+- **Fix:** one enforced **verified date range**, defined in M1-12 v0.3.1 and used by M1-13 v0.2.1.
+  - `YAHOO_VERIFICATION` gains `verified_from` (2019-01-01) and `cited_splits`.
+  - A request with `start < verified_from` is refused **before any fetch**.
+  - The vendor's in-range splits must equal `cited_splits` exactly, including splits after the requested window and any **new** split since verification.
+  - Pre-range splits are never used, compared or stored.
+  - `F(d)` keeps every later in-range split.
+  - Storage agreement compares the range on both sides.
+- **Acceptance tests are added to both specs:**
+  - the refusal happens before any fetch;
+  - pre-range splits are ignored, including the 2001 date;
+  - an extra, missing, re-dated or new in-range split aborts;
+  - a later split is applied outside the window.
+
+**2. Hourly-price verification was incomplete.** One matching high around the 2024 split doesn't satisfy P-H's rule.
+- **P-H is now pending.** v0.3.1 requires both of P-H's checks, and every difference must be investigated before a decision.
+- **Recorded** in `tests/engine/fixtures/yfinance/README.md`, all 728 overlapping sessions:
+  - hourly highs and lows differ from daily on **169** sessions;
+  - on **164** of them an hourly extreme falls **inside** the daily range (173 extremes; median $0.050, 90th percentile $0.66, largest $3.86);
+  - on **8** an extreme falls **outside** it. Each is a single bar whose high or low stands far from its own open and close. The largest is **2026-02-09 14:30, high 198.725 against a daily high of 193.660** (+$5.065).
+  - Open and close differences (454 and 530 sessions) are also recorded; these are expected, since the daily values are official prices.
+- The cause isn't established without an independent hourly source.
+
+**3. The Q1-2021 reference close was missing.** I searched financial press, Nasdaq and exchange material, and NVIDIA's filings.
+- No exact, independently cited NVDA close inside 2021-01-04 – 2021-03-30 was found. Free price tables are split-adjusted, and the Motley Fool's 2021-02-25 article gives percentages only.
+- **Nothing was calculated from Yahoo.**
+- M1-13's test now records this as open, with two options for review:
+  - (a) an independent vendor's unadjusted bar for that window;
+  - (b) move the window to 2021-07-01 – 2021-07-19, which has the same purpose (no split events in the response, `F = 40`) and a cited close of $751.19.
+
+**Non-blocking corrections:**
+- **The reference file has 14 sources, not 15.** Corrected in the round-1 entry.
+- **The 35 missing hourly bar starts** (Codex's count reproduced) are documented in the fixtures README; the downloaded values are unchanged. They are:
+  - the 12:30 closing bar on every one of the 7 half-days;
+  - partial days on 2026-01-30 and 2026-02-02;
+  - 2026-07-10 from 11:30;
+  - all of 2026-07-13 and 2026-07-14.
+
+**State:**
+- **Daily:** prices, volume, dividends and in-range splits are provisionally established.
+- **Hourly:** volume is blocked and prices are pending, with no comparable independent hourly source.
+- **One owner action would address the hourly evidence and the Q1-2021 anchor together:** a one-off pull of an independent vendor's unadjusted bars. It's recorded in Open issues.
+
+**Files changed, uncommitted:**
+- `docs/tasks/M1-12.md` (v0.3.1);
+- `docs/tasks/M1-13.md` (v0.2.1, owner-approved for this round);
+- `tests/engine/fixtures/yfinance/README.md` (new);
+- `PROGRESS.md`.
+
+No code was written and no test suite was run, since nothing executable changed. The analysis read only the saved fixtures and the cited calendar.
+
+### 2026-10-12: Claude Code (batch 3 checkpoint: M1-12 evidence saved, v0.3.1 rules drafted; uncommitted, for Codex review)
+**Approval.** The owner approved batch 3 (M1-12, M1-13) on `m1/batch-3` from `0661d46`. Before any code, the Yahoo evidence was checked, and **the checkpoint stopped the batch**: under the v0.3 rule (volume anchors within 0.5%), daily volume met **neither** interpretation.
+
+**Codex's ruling (2026-10-12):**
+- Stopping was right.
+- The proposed source types are accepted, with conditions.
+- The volume rule must be corrected, with **daily and hourly volume decided separately**.
+- Hourly volume stays **blocked** until there are comparable independent references or explicit provider documentation.
+- No ADR is needed.
+
+The owner then approved saving the fixtures, gathering citations, drafting v0.3.1 and updating this file, **all uncommitted**, with the importer paused.
+
+**Saved, uncommitted, for review:**
+- **`tests/engine/fixtures/yfinance/`:** seven JSON files, each with metadata (call, parameters, request and receipt times in UTC, yfinance 1.7.0, pandas and Python versions). Floats are written with `repr`, so they round-trip exactly. Recorded 2026-10-12 08:25 UTC by a scratch script; in implementation it becomes the `integration` recorder.
+
+  | File | Contents |
+  |---|---|
+  | `nvda_splits_before` / `nvda_splits_after` | `Ticker.splits`, fetched before and after the bar downloads. **Identical: 6 splits.** |
+  | `nvda_dividends` | `Ticker.dividends`: 56 |
+  | `nvda_actions_max` | `history(period="max", actions=True)`, action rows only |
+  | `nvda_1d_2019_2026` | Daily bars, 2019-01-02 – 2026-10-09: 1954 rows |
+  | `nvda_1h_730d` | Hourly bars, 2023-11-10 – 2026-10-09: 5054 rows, 653 KB. Includes the bars from before the 2024 split, which will eventually drop out of Yahoo's rolling window. |
+  | `nvda_1d_2021q1_with_actions` | A 2021-Q1 window with `actions=True`: **0 split events**, so a date-filtered call must never be the split history. |
+
+  All bar calls use `auto_adjust=False, actions=False, repair=False, back_adjust=False, prepost=False`.
+- **`tests/engine/fixtures/reference/nvda_reference.json`:** **14** cited sources (corrected from "15" after Codex's re-review), each with its URL, publication date, retrieval date and quote.
+- **`docs/tasks/M1-12.md`, draft v0.3.1:**
+  - a daily volume rule (3%, every decisive anchor must pass, the wrong interpretation at least 50% off, `F = 1` sessions as controls only);
+  - a separate hourly volume rule (comparable hourly references with the same bar boundaries, or explicit documentation; hourly sums are supporting only);
+  - split evidence scoped to the covered range.
+
+**Evidence and provisional determinations (not decisions until review):**
+
+| Field | Evidence | Provisional result |
+|---|---|---|
+| **S** split ratio | NVIDIA 8-Ks: 2021-07-20 4:1 and 2024-06-10 10:1 equal Yahoo's. 2006 and 2007 match the company and exchange records. **2001:** Yahoo's 2001-09-12 was a market-closure day (9/11); the 10-K gives distribution on 2001-09-17, and the actual ex-date isn't established. The 2000 split is cited only through a secondary copy of the proxy. | Established for the covered range. Before 2019: under the v0.3.1 scope rule, 2001 is skipped and reported. |
+| **P-D** daily prices | Fool: $751.19 on 2021-07-19 = Yahoo 18.779751 × 40. Massive: 2024-06-06 1209.98 and 06-07 1208.88 = Yahoo × 10; 06-10 121.79 and 06-11 120.91 = Yahoo × 1. **All exact to $0.01**, one anchor per split epoch. | `SPLIT_ADJUSTED_AS_OF_DOWNLOAD`, so reconstruction |
+| **V-D** daily volume | Decisive (Massive, F = 10): 2024-06-06 and 06-07. Yahoo ÷ 10 is **+1.14% and +1.69%**; Yahoo as-is is +911% and +917%. Controls (F = 1): 2024-06-10 +2.07%, 06-11 +1.63%. | `SPLIT_ADJUSTED_AS_OF_DOWNLOAD` under the v0.3.1 daily rule (all decisive anchors within 3%, the wrong one at least 50% off) |
+| **P-H** hourly prices | The 2024 split is inside hourly coverage. 2024-06-07's hourly high, 121.691711 × 10, equals Massive's high of 1216.9171. There is no ~10× step at the ex-date. | ~~`SPLIT_ADJUSTED_AS_OF_DOWNLOAD`~~ **Pending** (corrected after Codex's re-review): hourly highs and lows differ from daily on 169 of 728 sessions; see the next entry |
+| **V-H** hourly volume | Hourly sum ÷ Massive daily: 0.967 and 0.954 before the split, 0.962 and 0.941 after. Hourly sum ÷ Yahoo daily: 0.096 and 0.094 before, 0.943 and 0.926 after. This suggests **unadjusted**, unlike daily volume, but under v0.3.1 these sums are **supporting only**. No comparable hourly reference or documentation was found. Yahoo Help SLN28256 doesn't mention volume. | **`UNDETERMINED`, blocked** |
+| **D** dividends | NVIDIA 8-Ks: $0.16 (ex 2021-06-09) = Yahoo 0.004 × 40, and $0.04 (ex 2024-03-05) = Yahoo 0.004 × 10, both **exact**. Not decisive (F = 1): $0.01 (2024-06-11) and $0.25 (2026-06-04, 10-Q). | `SPLIT_ADJUSTED_AS_OF_DOWNLOAD`, so reconstruction |
+
+**Consequence if review confirms:** M1-12's action import and M1-13's **daily** bars can proceed. M1-13's **hourly** bars, and so M1 completion, stay blocked until hourly volume has evidence. That's recorded as an open issue, with options.
+
+**Not done:** no code, tests or provenance document (`docs/data-provenance/yfinance.md`); those are implementation. No commit, and no checks run, since nothing executable changed. Primary SEC copies of the 2000, 2001 and 2006 split filings still need re-reading in full.
 
 ### 2026-10-12: Claude Code (batch 2: fix for Codex's re-review; ready for re-review)
 **Codex re-reviewed `a10bd73` to `30353a1`.** The four original findings are addressed, and Codex confirmed that DuckDB still expands an explicit file list, so files are opened directly. **One new blocking finding:** `a10bd73` validated *every* observation as a first import. That refused a genuine correction because of a backfill time the correction never uses, which contradicts M1-10 ("Any backfill time supplied is ignored").
