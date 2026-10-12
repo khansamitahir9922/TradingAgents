@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
 | **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **M1-06 – M1-08 committed (checked)**; M1-09 next. No batch review yet. |
+| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **M1-06 – M1-09 committed (checked)**; M1-10 next. No batch review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
@@ -140,6 +140,35 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 2, M1-09: CorporateAction contract)
+- **The owner's condition, as implemented:** explicit instrument context. Each action stores the instrument's **`currency`** and **`exchange_timezone`** as required fields with **no defaults**:
+  - a dividend must be in that currency;
+  - a `BACKFILL_ASSUMED` action must be available exactly at **00:00 of its ex-date in exchange time** (`ex_date_start()`; e.g. 2024-06-10 → 04:00 UTC in EDT, 2024-01-10 → 05:00 UTC in EST);
+  - `check_context(instrument)` confirms the record matches its `Instrument` (ID, currency, time zone), and importers must call it.
+
+  This is **recorded in the spec** (`docs/tasks/M1-09.md` v0.2.1), with the reason: storing the context keeps every stored record self-checking without the store looking up reference data.
+- **Rule 4 adapted for actions,** also recorded in the spec: actions are announced before their ex-date, so an `OBSERVED` action may be available **before** the ex-date start. Rules 5 – 7 are the shared M1-08 checks, unchanged.
+- **Tests first.** `tests/engine/test_corporate_actions.py` has 49 tests:
+  - a valid action of each type;
+  - ten wrong field combinations refused;
+  - split ratio positive and not 1 (reverse and fractional splits allowed; Decimal only);
+  - dividend positive, in the instrument's currency, at `PRICE_QUANTUM`, as `Money`;
+  - `ex_date_start` in EDT and EST; backfill pinned to it, with midnight UTC refused;
+  - an observed action may precede its ex-date;
+  - the time zone must be an exact IANA name (trailing space, lowercase and nonsense refused); currency shape;
+  - `check_context` matches and three mismatches;
+  - a backdated correction refused; BACKFILL only at revision 1; OBSERVED available exactly when received; naive times refused;
+  - two-provider identities, the source pattern, `ex_date` a date, enum strings, immutability.
+
+  Before the implementation, collection failed on the missing module.
+- **Implementation:** `investment_engine/market/corporate_actions.py`: `ActionType`, `AmountBasis`, `ex_date_start`, and the frozen `CorporateAction` (type-specific field rules, shared availability checks, `check_context`, `identity`).
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_corporate_actions.py`: 49 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1657 passed** (+49), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed.
+
+  No dependency or packaging change.
 
 ### 2026-10-12: Claude Code (batch 2, M1-08: Candle contract)
 - **Correction to the M1-07 entry below:** the data file has **77 closures** (2019 – 2026: 9, 9, 9, 9, 10, 10, 11, 10), not 80. The data and tests were unaffected; only the count in the entry was wrong.
