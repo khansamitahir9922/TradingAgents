@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
 | **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **M1-06 committed (checked)**; M1-07 next. No batch review yet. |
+| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **M1-06 and M1-07 committed (checked)**; M1-08 next. No batch review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
@@ -140,6 +140,32 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 2, M1-07: trading calendar 2, cited holidays)
+- **Data from official sources only, never from memory.** `investment_engine/market/calendar/data/us_equities.json` covers **2019-01-01 – 2026-12-31**: 80 closures, including **one special closure**, and 17 early closes at 13:00 ET. Every entry cites one of six sources, all retrieved on 2026-10-12:
+  - NYSE Group calendar press releases on ICE's investor site: 2019 – 2021 (published 2018-12-04); 2021 – 2023 (2020-12-28, a cross-check: no Juneteenth closure in 2021); 2022 – 2024 (2021-12-27: Juneteenth from 2022, no New Year's closure in 2022); 2025 – 2027 (2024-11-08);
+  - the NYSE release closing the markets on **2025-01-09** for President Carter's national day of mourning (2024-12-30);
+  - NYSE's live Holidays & Trading Hours page, a 2026 cross-check.
+  - Archived copies of the NYSE page couldn't be fetched (the Wayback Machine is blocked for this tool), so the official press releases are the sources.
+  - **No other special closure in 2019 – 2026 was found** in official NYSE or ICE sources.
+  - **Dates after 2026-10-12 are the published schedule.** An unscheduled closure announced later would need a data update; the file's `note` says so.
+- **Tests first.** `tests/engine/test_calendar_holidays.py` has 31 tests:
+  - coverage and out-of-range;
+  - every listed closure isn't a session, and every early close ends at its stated time;
+  - **cited spot checks, each naming its source ID**: Good Fridays, Juneteenth (its 2022 first year and 2024), Thanksgiving, Independence Day observed on a Friday or Monday, Christmas observed on Friday 2021-12-24 (a full closure), the 2025-01-09 special closure, early closes (13:00 EST = 18:00 UTC; 13:00 EDT = 17:00 UTC);
+  - cited **regular** sessions: 2021-12-31 (New Year's 2022 not observed), 2021-06-18 (no Juneteenth in 2021), 2021-12-23;
+  - the special closure shifts next and previous sessions;
+  - file consistency: unique dates, in coverage, weekdays, reasons and known sources, 13:00 closes, the stated regular hours;
+  - per-year completeness: 8 – 11 closures, Thanksgiving on the fourth Thursday, the early close the day after.
+
+  Before the implementation, collection failed on the missing loader.
+- **Sessions per year, computed and recorded for review, not asserted against a source** (the sources give dates, not counts): 2019 **252**, 2020 **253**, 2021 **252**, 2022 **251**, 2023 **250**, 2024 **252**, 2025 **250**, 2026 **251**. The test asserts only a 245 – 254 sanity band.
+- **Implementation:** `load_us_equities_calendar()` in `us_equities.py`. It reads the packaged file with `importlib.resources`, refuses data for another time zone or other regular hours, and refuses entries citing an unknown source. `pyproject.toml` `[tool.setuptools.package-data]` adds `market/calendar/data/*.json` to the `investment_engine` entry.
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_calendar_holidays.py`: 31 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1550 passed** (+31), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed;
+  - **smoke** (a packaging change): fresh venv, `pip install .`, the CI import OK; from outside the repository, the installed loader gave coverage 2019-01-01 – 2026-12-31, with 2025-01-09 closed.
 
 ### 2026-10-12: Claude Code (batch 2, M1-06: trading calendar 1, plus the batch-2 start)
 - **Batch 1 is merged** (Codex's review of every commit passed; `main` at `109a72d`; 6 of 18 tasks done). **The owner approved batch 2**, and `m1/batch-2` was created from `109a72d`.

@@ -6,8 +6,10 @@ supplied by the caller (M1-07 loads the cited data); any date outside the
 covered range raises CalendarRangeError instead of being guessed.
 """
 
+import json
 from collections.abc import Collection, Mapping
 from datetime import UTC, date, datetime, time, timedelta
+from importlib.resources import files
 from zoneinfo import ZoneInfo
 
 from investment_engine.market.calendar.base import CalendarRangeError, Session
@@ -97,3 +99,29 @@ class UsEquitiesCalendar:
         while not self.is_session(d):
             d -= timedelta(days=1)
         return self.session(d)
+
+
+def load_us_equities_calendar() -> UsEquitiesCalendar:
+    """The US equities calendar built from the packaged, cited data file (docs/tasks/M1-07.md).
+
+    Every closure and early close in data/us_equities.json names an official
+    source; the file is refused if any entry cites an unknown source or the
+    stated regular hours don't match this module's.
+    """
+    raw = files("investment_engine.market.calendar").joinpath("data", "us_equities.json").read_text(encoding="utf-8")
+    data = json.loads(raw)
+    if data["timezone"] != TIMEZONE:
+        raise ValueError(f"calendar data is for {data['timezone']}, not {TIMEZONE}")
+    regular = (time.fromisoformat(data["regular"]["open"]), time.fromisoformat(data["regular"]["close"]))
+    if regular != (REGULAR_OPEN, REGULAR_CLOSE):
+        raise ValueError(f"calendar data gives regular hours {regular}, not {REGULAR_OPEN}-{REGULAR_CLOSE}")
+    sources = {s["id"] for s in data["sources"]}
+    for entry in data["closures"] + data["early_closes"]:
+        if entry.get("source") not in sources:
+            raise ValueError(f"calendar entry {entry} doesn't cite a known source")
+    return UsEquitiesCalendar(
+        covered_from=date.fromisoformat(data["covered_from"]),
+        covered_to=date.fromisoformat(data["covered_to"]),
+        holidays=frozenset(date.fromisoformat(e["date"]) for e in data["closures"]),
+        half_days={date.fromisoformat(e["date"]): time.fromisoformat(e["close"]) for e in data["early_closes"]},
+    )
