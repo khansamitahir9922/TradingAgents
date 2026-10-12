@@ -391,9 +391,9 @@ def test_an_invalid_duplicate_candle_is_refused_not_counted_unchanged(writer, ch
         {"currency": "EUR"},
         {"exchange_timezone": "America/New York"},
         {"received_at": FETCHED.replace(tzinfo=None)},
-        {"backfill_available_from": ex_date_start(EX_DATE, "America/New_York") + timedelta(hours=1)},
+        {"processed_at": FETCHED.replace(tzinfo=None)},
     ],
-    ids=["currency-mismatch", "bad-timezone", "naive-received_at", "backfill-not-at-ex-date-start"],
+    ids=["currency-mismatch", "bad-timezone", "naive-received_at", "naive-processed_at"],
 )
 def test_an_invalid_duplicate_action_is_refused_not_counted_unchanged(writer, changes):
     writer.write_corporate_actions([dividend_obs()], import_id="a1")
@@ -419,3 +419,65 @@ def test_a_store_root_with_glob_characters_reads_only_its_own_files(tmp_path):
     MarketDataWriter(tmp_path / "marketx").write_candles([candle_obs()], import_id="i1")
     result = MarketDataWriter(tmp_path / "market[x]").write_candles([candle_obs()], import_id="i1")
     assert result.new_records == 1 and result.unchanged == 0
+
+
+# A backfill time that would be wrong for a first import: before the bar's
+# end, or not at the start of the ex-date.
+BAD_CANDLE_HINT = END - timedelta(hours=1)
+BAD_ACTION_HINT = ex_date_start(EX_DATE, "America/New_York") + timedelta(hours=1)
+
+
+@pytest.mark.unit
+def test_a_bad_backfill_hint_is_still_refused_on_a_first_import(writer):
+    with pytest.raises(ValueError):
+        writer.write_candles([candle_obs(backfill_available_from=BAD_CANDLE_HINT)], import_id="i1")
+    with pytest.raises(ValueError):
+        writer.write_corporate_actions([dividend_obs(backfill_available_from=BAD_ACTION_HINT)], import_id="a1")
+    assert not writer.root.exists() or not any(p.is_file() for p in writer.root.rglob("*"))
+
+
+@pytest.mark.unit
+def test_a_candle_correction_ignores_its_unused_backfill_hint(writer):
+    # Codex re-review of batch 2 (M1-10: "Any backfill time supplied is
+    # ignored"): validating every observation as a first import refused a
+    # genuine correction because of a hint it never uses.
+    writer.write_candles([candle_obs()], import_id="i1")
+    result = writer.write_candles(
+        [candle_obs(close=Decimal("1151.0000"), received_at=LATER, processed_at=LATER,
+                    backfill_available_from=BAD_CANDLE_HINT)],
+        import_id="i2",
+    )
+    assert result.new_revisions == 1
+    rows = sorted(stored(writer.root, "candles"), key=lambda r: r["revision"])
+    assert [(r["revision"], r["availability_basis"], r["available_from"]) for r in rows] == [
+        (1, "BACKFILL_ASSUMED", END), (2, "OBSERVED", LATER)
+    ]
+
+
+@pytest.mark.unit
+def test_an_action_correction_ignores_its_unused_backfill_hint(writer):
+    writer.write_corporate_actions([dividend_obs()], import_id="a1")
+    result = writer.write_corporate_actions(
+        [dividend_obs(amount=Money(Decimal("0.0200"), "USD"), received_at=LATER, processed_at=LATER,
+                      backfill_available_from=BAD_ACTION_HINT)],
+        import_id="a2",
+    )
+    assert result.new_revisions == 1
+    rows = sorted(stored(writer.root, "corporate_actions"), key=lambda r: r["revision"])
+    assert [(r["revision"], r["availability_basis"], r["available_from"]) for r in rows] == [
+        (1, "BACKFILL_ASSUMED", ex_date_start(EX_DATE, "America/New_York")), (2, "OBSERVED", LATER)
+    ]
+
+
+@pytest.mark.unit
+def test_a_duplicate_ignores_its_unused_backfill_hint(writer):
+    # The same rule for an unchanged record: the hint isn't used, so it isn't
+    # held against an otherwise valid duplicate, and nothing is written.
+    writer.write_candles([candle_obs()], import_id="i1")
+    writer.write_corporate_actions([dividend_obs()], import_id="a1")
+    before = digests(writer.root)
+    assert writer.write_candles([candle_obs(received_at=LATER, backfill_available_from=BAD_CANDLE_HINT)],
+                                import_id="i2").unchanged == 1
+    assert writer.write_corporate_actions([dividend_obs(received_at=LATER, backfill_available_from=BAD_ACTION_HINT)],
+                                          import_id="a2").unchanged == 1
+    assert digests(writer.root) == before

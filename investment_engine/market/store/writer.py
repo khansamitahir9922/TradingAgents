@@ -3,11 +3,12 @@
 This is the one place that assigns revision numbers, per identity:
 - an identity not stored before becomes revision 1: BACKFILL_ASSUMED at the
   observation's backfill time if it has one, otherwise OBSERVED at receipt;
-- identical compared values write nothing (the observation is still fully
-  validated first, so an invalid duplicate is refused, not skipped);
-- changed values become the next revision, always OBSERVED and available from
-  their own receipt. A backfill time on a correction is validated but never
-  used, so a correction is never backdated.
+- for an identity already stored, the observation is validated in full as
+  the OBSERVED next revision it would become. Identical compared values then
+  write nothing, so an invalid duplicate is refused, not skipped; changed
+  values are written as that revision, available from their own receipt.
+  Any backfill time supplied is ignored there, so a correction is never
+  backdated.
 
 Identities include the provider, so one provider's value is never another's
 correction. Every write creates new files only: each partition's new rows go
@@ -197,31 +198,29 @@ class MarketDataWriter:
                 return build(**fields_, import_id=import_id, revision=revision,
                              available_from=available_from, availability_basis=basis)
 
-            # Every observation is validated in full, as the record it would be
-            # if first seen, before deciding whether it's new, a correction or
-            # unchanged; the checks then run on what it claims, not on a
-            # comparison of a few values.
-            if obs.backfill_available_from is not None:
-                first_seen = as_record(1, AvailabilityBasis.BACKFILL_ASSUMED, obs.backfill_available_from)
-            else:
-                first_seen = as_record(1, AvailabilityBasis.OBSERVED, obs.received_at)
-
+            # Every observation is validated in full, as the record it would
+            # actually become, before deciding whether it's unchanged; the
+            # checks run on everything it claims, not on a few compared values.
             key = identity(obs)
             previous = latest.get(key)
             if previous is None:
-                new = first_seen
+                if obs.backfill_available_from is not None:
+                    new = as_record(1, AvailabilityBasis.BACKFILL_ASSUMED, obs.backfill_available_from)
+                else:
+                    new = as_record(1, AvailabilityBasis.OBSERVED, obs.received_at)
                 new_records += 1
-            elif values(previous) == values(first_seen):
-                unchanged += 1
-                continue
             else:
+                # Stored before: the next revision, always observed at its own
+                # receipt and never backdated; any backfill time is ignored.
+                new = as_record(previous.revision + 1, AvailabilityBasis.OBSERVED, obs.received_at)
+                if values(previous) == values(new):
+                    unchanged += 1
+                    continue
                 if obs.received_at < previous.received_at:
                     raise ValueError(
                         f"a correction received at {obs.received_at} is earlier than the revision it corrects "
                         f"({previous.received_at}); revisions are observed in time order"
                     )
-                # A correction: always observed at its own receipt, never backdated.
-                new = as_record(previous.revision + 1, AvailabilityBasis.OBSERVED, obs.received_at)
                 new_revisions += 1
 
             latest[key] = new
