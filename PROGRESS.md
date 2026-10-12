@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
 | **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **M1-06 and M1-07 committed (checked)**; M1-08 next. No batch review yet. |
+| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **M1-06 – M1-08 committed (checked)**; M1-09 next. No batch review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
@@ -141,8 +141,39 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-12: Claude Code (batch 2, M1-08: Candle contract)
+- **Correction to the M1-07 entry below:** the data file has **77 closures** (2019 – 2026: 9, 9, 9, 9, 10, 10, 11, 10), not 80. The data and tests were unaffected; only the count in the entry was wrong.
+- **Tests first,** 58 tests:
+  - `tests/engine/test_availability.py`: the two bases, and provider IDs that do and don't match;
+  - `tests/engine/test_candles.py`: **a passing and a failing case for each of the nine rules**:
+    - 1: every datetime aware, UTC rather than merely aware, start before end;
+    - 2: OHLC order, positive prices, non-negative volume, Decimal only;
+    - 3: extra precision refused, not rounded; fractional volume refused; fewer decimals fine;
+    - 4: `available_from` not before the event;
+    - 5: OBSERVED is available exactly when received;
+    - 6: a correction must be OBSERVED and not available before it was received;
+    - 7: BACKFILL_ASSUMED only at revision 1; revision a positive int;
+    - 8: CLOSED means `event_time == end_time`, and a FORMING bar may be observed earlier;
+    - 9: `resampled:yfinance` and other non-provider sources refused;
+  - plus two-provider identities, enum strings converted, other fields validated, immutability.
+
+  Before the implementation, collection failed on the missing modules.
+- **Implementation:**
+  - `investment_engine/market/availability.py`: `AvailabilityBasis`, `PROVIDER_ID_PATTERN`, and the shared checks `check_utc`, `check_provider`, `check_name`, `check_revision` and `check_availability` (rules 4 – 7), so candles and corporate actions apply identical availability rules;
+  - `investment_engine/market/candles.py`: `Timeframe`, `BarState`, `PriceBasis`, `VolumeBasis` and the frozen `Candle` with `identity`.
+- **Choices not stated in the spec, recorded for review:**
+  - "aware UTC" means a **zero UTC offset**: a New York time is refused rather than converted;
+  - a FORMING bar's `event_time` may precede its `end_time`;
+  - enum values given as strings are converted.
+- **Task checks** (run while M1-09's uncommitted test file was on disk, so it was excluded with `--ignore`):
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_candles.py tests/engine/test_availability.py`: 58 passed;
+  - `.venv/Scripts/python.exe -m pytest -q --ignore=tests/engine/test_corporate_actions.py` (Git Bash): 1 failed, **1608 passed** (+58), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check` on the task's files: all checks passed.
+
+  No dependency or packaging change.
+
 ### 2026-10-12: Claude Code (batch 2, M1-07: trading calendar 2, cited holidays)
-- **Data from official sources only, never from memory.** `investment_engine/market/calendar/data/us_equities.json` covers **2019-01-01 – 2026-12-31**: 80 closures, including **one special closure**, and 17 early closes at 13:00 ET. Every entry cites one of six sources, all retrieved on 2026-10-12:
+- **Data from official sources only, never from memory.** `investment_engine/market/calendar/data/us_equities.json` covers **2019-01-01 – 2026-12-31**: 77 closures (corrected from 80; see the M1-08 entry), including **one special closure**, and 17 early closes at 13:00 ET. Every entry cites one of six sources, all retrieved on 2026-10-12:
   - NYSE Group calendar press releases on ICE's investor site: 2019 – 2021 (published 2018-12-04); 2021 – 2023 (2020-12-28, a cross-check: no Juneteenth closure in 2021); 2022 – 2024 (2021-12-27: Juneteenth from 2022, no New Year's closure in 2022); 2025 – 2027 (2024-11-08);
   - the NYSE release closing the markets on **2025-01-09** for President Carter's national day of mourning (2024-12-30);
   - NYSE's live Holidays & Trading Hours page, a 2026 cross-check.
