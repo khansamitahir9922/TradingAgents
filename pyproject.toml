@@ -34,6 +34,14 @@ dev = [
     "ruff>=0.16",
     "pytest>=8.0",
     "pytest-subtests>=0.13",
+    "pyarrow>=26.0.0",
+    "duckdb>=1.5.6",
+]
+# The investment_engine market-data store (Parquet + DuckDB). Optional so the
+# core install stays lean: pip install "tradingagents[engine]".
+engine = [
+    "pyarrow>=26.0.0",
+    "duckdb>=1.5.6",
 ]
 # Amazon Bedrock support (AWS SigV4 auth + boto3). Optional so the core install
 # stays lean: pip install "tradingagents[bedrock]".

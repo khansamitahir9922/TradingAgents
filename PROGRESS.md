@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
 | **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **M1-06 – M1-09 committed (checked)**; M1-10 next. No batch review yet. |
+| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**, from `main` at `109a72d`, approved by the owner. **M1-06 – M1-10 committed (checked)**; M1-11 next. No batch review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
@@ -140,6 +140,46 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 2, M1-10: market-data store, append-only writes)
+- **Wheels verified before any dependency change** (the spec's stop condition). Checked with pip's resolver (`pip install --dry-run --only-binary=:all: --no-deps --python-version <v> --platform <p>`) for Python 3.11, 3.12, 3.13 and 3.14, each on `win_amd64` and `manylinux_2_28_x86_64`. **All 16 combinations have wheels:** `pyarrow` 26.0.0 and `duckdb` 1.5.6. These are now the floors.
+- **`pyproject.toml`, only the sections M1-10 allows:**
+  - a new `[project.optional-dependencies] engine = ["pyarrow>=26.0.0", "duckdb>=1.5.6"]`;
+  - the same two packages added to `dev`, so the CI test job installs them.
+- **Tests first.** 29 tests:
+  - `tests/engine/test_optional_imports.py`: in a subprocess, importing the package and every non-store module (including `market.store` itself) loads **neither** `pyarrow` nor `duckdb`; only the writer loads `pyarrow`;
+  - `tests/engine/test_store_write.py`:
+    - backfill revision 1 at the given time; live revision 1 observed;
+    - the provider-first file layout;
+    - an identical rewrite changes nothing (byte and modification-time check);
+    - **a changed value is revision 2, OBSERVED, available exactly at receipt, even though the observation carried a backfill time**, with revision 1 and its file untouched;
+    - revision 3; volume and basis changes count as corrections;
+    - **two providers never correct each other**;
+    - a bad record anywhere in a batch writes **nothing**;
+    - FORMING, unquantized and non-provider records refused;
+    - exact decimal round trip;
+    - **an existing file is never overwritten** (`FileExistsError`, no leftover temporary file);
+    - unsafe import IDs refused;
+    - two observations of one bar in one batch get ordered revisions;
+    - dividend backfill from the ex-date start, its correction, identical rewrite, and provider separation;
+    - split ratios round-trip, and excess precision is refused.
+
+  Before the implementation, collection failed on the missing modules.
+- **Implementation:**
+  - `investment_engine/market/store/__init__.py` (no heavy imports);
+  - `store/schema.py`: Parquet schemas with exact types (prices and amounts `decimal128(18,4)`, volume `decimal128(20,0)`, ratios `decimal128(28,12)`, UTC microsecond timestamps), record conversion, and `to_table`, which refuses values that don't fit exactly;
+  - `store/writer.py`: `CandleObservation`, `ActionObservation`, `WriteResult` and `MarketDataWriter`. Revisions are assigned per identity. The whole batch and every target are validated before any write. Each file is written under a temporary name, then **hard-linked** into place (`os.link` refuses an existing target, so nothing is replaced), and the temporary name is removed.
+- **Choices not stated in the spec, recorded for review:**
+  - the **`import_id` comes from the write call**, not from each observation, so a batch can't mix import IDs; it must be a safe file name;
+  - a split ratio is stored to **12 decimal places**, and more is refused;
+  - a multi-partition write isn't atomic across partitions if the process dies midway, but each file is complete or absent, and a rerun with the same import ID refuses to overwrite.
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_store_write.py tests/engine/test_optional_imports.py`: 29 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1686 passed** (+29), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed;
+  - **smoke, both installs** (a dependency change): two fresh `py -3.11` venvs, run with each venv's own Python.
+    - **Base** (`pip install .`): the CI import is OK; from outside the repository, `pyarrow` and `duckdb` are **not installed** and not loaded, and the non-store modules work.
+    - **With the extra** (`pip install ".[engine]"`): the CI import is OK; both libraries are installed but **not loaded** by the package import; the installed writer wrote `import=smoke-1.parquet` (one new record).
 
 ### 2026-10-12: Claude Code (batch 2, M1-09: CorporateAction contract)
 - **The owner's condition, as implemented:** explicit instrument context. Each action stores the instrument's **`currency`** and **`exchange_timezone`** as required fields with **no defaults**:
