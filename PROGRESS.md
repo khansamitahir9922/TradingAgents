@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
 | **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 2** (M1-06 – M1-11) on **`m1/batch-2`**: all six tasks committed (checked), plus one self-review fix (store path safety). Final batch checks running. No Codex review yet. |
+| **Current work** | Batch 2 (M1-06 – M1-11) on `m1/batch-2`: all six tasks committed and checked, plus one self-review fix; batch checks passed. Ready for Codex's review of every commit, then the owner-approved merge. Batch 3 not started. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
@@ -29,7 +29,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Batch 2 (M1-06 – M1-11)** on `m1/batch-2`: the tasks one commit at a time, then the batch checks (PowerShell, plus a clean install both **without and with the `engine` extra**), Claude Code's adversarial self-review, Codex's review of every commit, and one owner-approved merge.
+1. **Batch 2 (M1-06 – M1-11)** on `m1/batch-2`: all six tasks are committed and checked, plus one self-review fix, and the batch checks have passed. **Next: Codex reviews every commit** (`c3feff5` to the batch-record commit). Fixes go in follow-up commits, then the owner approves one fast-forward merge.
 2. Then **batch 3 (M1-12 – M1-13: Yahoo verification and import, a firm checkpoint)**, after a new owner approval. **Not started.**
 
 **Owner's conditions for batch 2 (2026-10-12):**
@@ -140,6 +140,53 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 2: batch checks and self-review; ready for Codex review)
+**Commits on `m1/batch-2`, after `109a72d`:**
+
+| Commit | What |
+|---|---|
+| `c3feff5` | M1-06 calendar 1, plus `tzdata`, the batch-2 start in PROGRESS and the M1-02 wording exception |
+| `cafa373` | M1-07 cited holidays 2019 – 2026 |
+| `a641add` | M1-08 Candle contract |
+| `5be0c18` | M1-09 CorporateAction contract (explicit instrument context) |
+| `a1772bc` | M1-10 append-only writer and the `engine` extra |
+| `f77f94e` | M1-11 point-in-time reader |
+| `52e875a` | Self-review fix: store path safety and correction receipt order |
+| (this commit) | Batch record |
+
+**Batch checks on the final code state, `52e875a`:**
+- **B1, PowerShell:** `& .venv\Scripts\python.exe -m pytest -q`: 2 failed, **1733 passed**, 4 skipped, 1 deselected. The failing set equals the PowerShell baseline.
+- **B2, clean install, both variants,** each with its fresh venv's own Python: both passed. Fresh Python 3.11 venvs, cached downloads.
+  - **Base** (`pip install .`): install, imports and the calendar loaded from the installed copy (2019-01-01 to 2026-12-31; 2025-01-09 closed) all pass. `pyarrow` and `duckdb` are **neither installed nor loaded**.
+  - **`engine` extra** (`pip install ".[engine]"`): the same checks pass, both libraries are installed, and importing the package still loads neither. A write-then-read through the **installed** copy shows the revision visible before a correction as [1] and after it as [2].
+- **Latest Git Bash run (`52e875a`):** 1 failed, **1734 passed**; failing set = baseline. `ruff check .`: all checks passed. **475 engine tests.**
+- **CI:** not yet run. Python 3.12 – 3.14 and the `TZ=America/New_York` job are unverified.
+
+**Self-review (Claude Code), against the specs, the laws and adversarial probes:**
+- **One real defect found and fixed:** **path traversal**. A crafted `instrument_id` wrote a Parquet file outside the store. Contracts now require well-formed instrument IDs (kept identical to `Instrument` by a test), and the writer and reader refuse folders outside the root. Also hardened: corrections must be received after what they correct.
+- **Caught in my own tests during the batch:**
+  - a meaningless assertion line (removed before the first run);
+  - a calendar test assuming an unsupplied holiday;
+  - unrealistic store-test data, twice (backfills received before their ex-date; corrections received two years before what they corrected).
+
+  In each case the code was right and the test was fixed.
+- **Probed and fine:** DST around both 2024 changes; half-day closes in EDT and EST; the special closure shifting next and previous sessions; the base install neither installing nor loading `pyarrow` or `duckdb`; exact decimals through Parquet and DuckDB; a backfilled split invisible a microsecond before its ex-date start; same-day split-before-dividend ordering whichever was written first; no partial writes when one record in a batch is bad; no overwrite of an existing file.
+- **Known limits, accepted and noted:**
+  - calendar data **after 2026-10-12 is the published schedule**, so a later unscheduled closure needs a data update;
+  - a candle's duration isn't checked against its timeframe in the contract (M1-13 maps vendor bars to calendar sessions);
+  - a multi-partition write isn't atomic across partitions if the process dies midway (each file is complete or absent, and a rerun refuses to overwrite);
+  - one writer process at a time;
+  - a store root path containing glob characters (`[`, `*`, `?`) isn't supported by the reader's DuckDB glob;
+  - a first-seen action received **before** its ex-date but labelled backfill becomes available only from the ex-date start: conservative, never early.
+- **Recorded deviations and choices for Codex's judgement** (each detailed in its task entry):
+  - M1-09 adds `currency` and `exchange_timezone` (explicit context) and adapts rule 4 for actions, recorded in the spec (v0.2.1);
+  - M1-10 takes `import_id` from the write call, stores ratios to 12 decimal places, and links files into place with a hard link;
+  - M1-11 fetches results as Arrow to avoid DuckDB's `pytz` dependency;
+  - M1-08 means "UTC" as a zero offset, and allows a FORMING bar's `event_time` to precede its `end_time`;
+  - M1-07 records the sessions per year without asserting them, since the sources give no counts.
+- **Scope:** every commit changed only its task's allowed files, plus the owner-approved documentation exception (M1-02). `pyproject.toml` changed only in `[project] dependencies` (M1-06), `[tool.setuptools.package-data]` (M1-07) and `[project.optional-dependencies]` (M1-10). No architecture, TradingAgents code, existing tests or CI changed. **No stop rule was triggered.**
+- **Not committed:** the owner's local `.env.example` edit, which is never staged.
 
 ### 2026-10-12: Claude Code (batch 2 self-review fix: store path safety and observation order; M1-08 to M1-11 files)
 - **Found by the batch self-review (adversarial probe): a path-traversal bug.** The candle and action contracts checked `instrument_id` only for "non-empty, no surrounding spaces", and the store builds folder paths from it. Reproduced: an observation with `instrument_id='../../../../../ESCAPED'` made the writer create a Parquet file **outside** the store's root (`store/ESCAPED/…` beside `store/market`). Real data comes from SymbolMapping, so this wasn't reachable through normal use, but a store must not trust paths built from data.
