@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **6 of 18 tasks done** (M1-00 – M1-05). |
 | **`main`** | Local `main` is at **`109a72d`** (`docs: record batch 1 checks and self-review`). **Batch 1 passed Codex's review of every commit** (no blocking findings) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 16 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | Batch 2 (M1-06 – M1-11) on `m1/batch-2`: all six tasks committed and checked, plus one self-review fix; batch checks passed. Ready for Codex's review of every commit, then the owner-approved merge. Batch 3 not started. |
+| **Current work** | Batch 2 (M1-06 – M1-11) on `m1/batch-2`: Codex's four review findings fixed in follow-up commits; batch checks passed again. Ready for Codex's re-review, then the owner-approved merge. Batch 3 not started. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: `__init__.py`, `clock.py`, `money.py`, `config.py`, `market/instruments.py`, `market/symbols.py`, `storage/sqlite.py` and `storage/schema/0001_reference_data.sql`. |
@@ -29,7 +29,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Batch 2 (M1-06 – M1-11)** on `m1/batch-2`: all six tasks are committed and checked, plus one self-review fix, and the batch checks have passed. **Next: Codex reviews every commit** (`c3feff5` to the batch-record commit). Fixes go in follow-up commits, then the owner approves one fast-forward merge.
+1. **Batch 2 (M1-06 – M1-11)** on `m1/batch-2`: Codex's review found four issues; all are fixed in follow-up commits (`a10bd73`, `3eafd38`) and the batch checks passed again. **Next: Codex re-reviews the fix commits**, then the owner approves one fast-forward merge.
 2. Then **batch 3 (M1-12 – M1-13: Yahoo verification and import, a firm checkpoint)**, after a new owner approval. **Not started.**
 
 **Owner's conditions for batch 2 (2026-10-12):**
@@ -141,6 +141,45 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-12: Claude Code (batch 2: fixes for Codex's review; ready for re-review)
+**Codex reviewed all eight batch-2 commits. Verdict: fixes needed, four findings, no ADR needed.** All four are fixed in follow-up commits. Regression tests came first: 17 of the new tests failed on the unfixed code.
+
+| Commit | What |
+|---|---|
+| `a10bd73` | Findings 1–3, plus the M1-10 two-provider correction test (part of finding 4) |
+| `3eafd38` | Finding 4: exact sessions per year (M1-07) |
+| (this commit) | This record and the batch checks |
+
+**1. The reader could return another folder's data (M1-11).** A store at `market[x]` read the files of `marketx`, because DuckDB treated `[x]` as a pattern.
+- **Codex's suggested fix was not enough.** I tested it: DuckDB **still expands `[x]` inside an explicit list of paths**. With both folders populated, reading `m[x]/…/import=a.parquet` returned `mx`'s value.
+- **Fix:** pathlib lists the partition's files (the folder is taken literally), and pyarrow reads each from an **open file object**. DuckDB queries the resulting Arrow table, registered as `records`, and **never sees a path**. The path-inside-root check is kept.
+- **Tests:** candles and actions, through `latest` and `revisions_available_between`, empty and populated. A matching writer test passed before the fix (the writer's reads were already literal) and stays as a guard.
+- **This resolves the batch-2 known limit** "a store root path containing glob characters isn't supported".
+
+**2. Duplicates skipped validation (M1-10).** Values matching the stored record returned "unchanged" before the observation was checked.
+- **Fix:** each observation is first built in full as the record it would be if first seen, which runs every contract check. Only then is it compared, as a validated record, with the stored one.
+- **Tests:** a duplicate with `FORMING`, a float price, or a naive `received_at` or `processed_at` is refused. A dividend duplicate with the wrong currency, a bad time zone, a naive time, or a backfill time other than the ex-date start is refused. In every case no file changes. **A valid duplicate still writes no file.**
+- **Behaviour note:** a correction's backfill time was ignored before; now it must be valid, though it's still never used, so corrections are never backdated.
+
+**3. Bad arguments passed when the store was empty (M1-11).** Every method now checks its times, dates, timeframe and action types before looking at the store. **Tests:** 14 bad calls covering all ten methods, each run on an empty and a populated store (28 cases).
+
+**4. Two acceptance checks were incomplete.**
+- **M1-07:** each year's session count is now asserted exactly: 2019 252, 2020 253, 2021 252, 2022 251, 2023 250, **2024 252**, 2025 250, 2026 251. These are worked by hand from the cited schedules (weekdays less weekday closures) and recorded in a table in the test. A second test ties that table to the data file, so a missing or extra closure fails.
+- **M1-10:** correcting `testvendor`'s dividend creates only its revision 2. `yfinance`'s files are byte-for-byte unchanged.
+
+**Checks on `3eafd38`:**
+- Task checks:
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine`: **523 passed** (+48);
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1782 passed**, 4 skipped, 1 deselected; failing set = baseline (`tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`);
+  - `ruff check .`: all checks passed.
+- **B1, PowerShell:** `& .venv\Scripts\python.exe -m pytest -q`: 2 failed, **1781 passed**, 4 skipped, 1 deselected. The failing set equals the PowerShell baseline. Codex's run didn't reproduce `tests/test_cli_commands.py::test_every_command_is_registered_when_run_as_a_module`; it does fail here, most likely because of the console encoding.
+- **B2, clean install, both variants**, each with its fresh venv's own Python: both passed on `3eafd38`. Fresh Python 3.11 venvs; the smoke script ran with `-I` from outside the repo, and an import was also checked from the repo root.
+  - **Base** (`pip install .`): the package loads from `site-packages`, and the installed calendar gives 2025-01-09 closed and 252 sessions in 2024. `pyarrow` and `duckdb` are **neither installed nor loaded**, and importing `investment_engine.market.store` loads neither.
+  - **`engine` extra:** the same checks pass, and both libraries are installed but not loaded on import. A write-then-read in a store at **`market[x]`**, with a decoy `marketx` beside it, returns only its own closes (`1150.0000`, `1151.0000`): revision [1] is visible before the correction and [2] after.
+- **CI:** not yet run.
+
+**Files changed:** `market/store/reader.py`, `market/store/writer.py` and their tests (M1-10, M1-11 allowed files), `tests/engine/test_calendar_holidays.py` (M1-07), and `PROGRESS.md`. No architecture, SVG, TradingAgents code, existing non-engine tests, `pyproject.toml` or CI changed.
+
 ### 2026-10-12: Claude Code (batch 2: batch checks and self-review; ready for Codex review)
 **Commits on `m1/batch-2`, after `109a72d`:**
 
@@ -177,7 +216,7 @@ Report directional accuracy against the base rate, and the information coefficie
   - a candle's duration isn't checked against its timeframe in the contract (M1-13 maps vendor bars to calendar sessions);
   - a multi-partition write isn't atomic across partitions if the process dies midway (each file is complete or absent, and a rerun refuses to overwrite);
   - one writer process at a time;
-  - a store root path containing glob characters (`[`, `*`, `?`) isn't supported by the reader's DuckDB glob;
+  - ~~a store root path containing glob characters isn't supported~~ (fixed after Codex's review, `a10bd73`);
   - a first-seen action received **before** its ex-date but labelled backfill becomes available only from the ex-date start: conservative, never early.
 - **Recorded deviations and choices for Codex's judgement** (each detailed in its task entry):
   - M1-09 adds `currency` and `exchange_timezone` (explicit context) and adapts rule 4 for actions, recorded in the spec (v0.2.1);
