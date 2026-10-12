@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **2 of 18 tasks done** (M1-00, M1-01). |
 | **`main`** | Local `main` is at **`a8f338b`** (`test: give comprehensions their own scope in the system-clock scan`). **M1-01 passed Codex review** (no blocking findings at `a8f338b`) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 7 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**, approved by the owner. **M1-02 – M1-04 committed (checked)**; M1-05 next. No batch review yet. |
+| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**, approved by the owner. **M1-02 – M1-05 committed (checked)**; the batch self-review is in progress. No Codex review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` has `__init__.py` (M1-00) and `clock.py` (M1-01). |
@@ -132,6 +132,32 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 1, M1-05: SQLite operational store and data-directory config)
+- **Tests first.** 37 tests:
+  - `tests/engine/conftest.py`: an autouse fixture gives every engine test its own data directory;
+  - `tests/engine/test_config.py`: the environment variable is honoured; deleted and blank fall back to `~/.investment_engine`; the variable is read at call time; engine tests use their own directory; reading the config creates nothing;
+  - `tests/engine/test_sqlite_store.py`: the parent folder is created and foreign keys enforced; the schema is idempotent and versioned; a newer database is refused; scripts are numbered without gaps; a **portable-SQL grep** (no `INSERT OR REPLACE/IGNORE`, `REPLACE INTO`, `AUTOINCREMENT`, `WITHOUT ROWID`, `PRAGMA`, `ATTACH`, `GLOB`, or SQLite date and time functions); instrument round trip; persistence across connections; sorted `list()`; duplicate refused; unknown is `KeyError`; `update_lifecycle` changes only the lifecycle and enforces its rules; the schema `CHECK` refuses an invalid lifecycle written directly; no delete methods.
+  - **M1-04's `SymbolResolverContract` runs against SQLite** (13 cases, `TestSqliteSymbolResolver`). Also: a refused mapping leaves no rows and no open transaction; an unknown instrument is refused (foreign key); mappings persist; no delete methods.
+
+  Before the implementation, collection failed on the missing modules.
+- **Implementation:**
+  - `investment_engine/config.py`;
+  - `investment_engine/storage/__init__.py`;
+  - `investment_engine/storage/schema/0001_reference_data.sql`: `schema_version`, `instruments` and `symbol_mappings` with `CHECK`, `PRIMARY KEY` and `FOREIGN KEY` constraints;
+  - `investment_engine/storage/sqlite.py`: `open_operational_db` (autocommit; foreign keys on), `apply_schema` (each script applied atomically with its version row; `SchemaVersionError` when the database is newer), `SqliteInstrumentRepository` and `SqliteSymbolResolver`, which **reuses M1-04's `conflict` and `covers`** inside a `BEGIN IMMEDIATE` transaction;
+  - `pyproject.toml`: **only** `[tool.setuptools.package-data]`, adding `investment_engine = ["storage/schema/*.sql"]`.
+- **Choices not stated in the spec, recorded for review:**
+  - an **empty** `INVESTMENT_ENGINE_DATA_DIR` counts as unset;
+  - the "out of the home folder" test checks for **the temporary folder, not the real default**, because on this machine the temp folder itself is inside the home folder (see the baseline);
+  - the `BEGIN IMMEDIATE` and `PRAGMA` statements are in Python code, not in the schema scripts (the portability rule covers the scripts);
+  - the database integrity errors are translated: a duplicate ID becomes "already registered", any other cause is reported as itself.
+- **Self-review fix before this commit:** an early draft reported every integrity error as "already registered". It's now precise.
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_config.py tests/engine/test_sqlite_store.py`: 37 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1492 passed** (+37), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed;
+  - **smoke** (a packaging change): a fresh `py -3.11` venv, `<scratch>/Scripts/python.exe -m pip install .`, the CI import OK from the repository root, and from outside it the installed `investment_engine.storage.sqlite` applied **schema version 1**. That proves the `.sql` script is packaged.
 
 ### 2026-10-12: Claude Code (batch 1, M1-04: SymbolMapping)
 - **Tests first.** `tests/engine/test_symbols.py` has 29 tests. The resolver behaviour is written once, as **`SymbolResolverContract`**, and run here by `TestInMemorySymbolResolver`. M1-05 subclasses the same contract for SQLite, which satisfies its "same test cases" requirement without editing this file. The contract covers:
