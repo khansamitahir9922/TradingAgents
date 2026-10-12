@@ -49,7 +49,7 @@ Run from the repository root with the project venv. Record the **exact command a
 | # | Command | Must show |
 |---|---|---|
 | B1 | PowerShell: `& .venv\Scripts\python.exe -m pytest -q` | The PowerShell baseline failing set, and nothing new |
-| B2 | Clean-install smoke: `py -3.11 -m venv <scratch>`; `<scratch>/Scripts/python.exe -m pip install .`; from the repository root, `python -c "import tradingagents, cli.main, investment_engine; print('clean-install import OK')"`; and from **outside** the repository, an import of the batch's new modules, to prove they're packaged. Cached downloads are fine. | Both imports succeed without dev extras |
+| B2 | Clean-install smoke: `py -3.11 -m venv <scratch>`; `<scratch>/Scripts/python.exe -m pip install .`; then, from the repository root, `<scratch>/Scripts/python.exe -c "import tradingagents, cli.main, investment_engine; print('clean-install import OK')"`; and from **outside** the repository, `<scratch>/Scripts/python.exe -c "import <the batch's new modules>; …"`, to prove they're packaged. **Both imports must run with the fresh environment's Python** (`<scratch>/Scripts/python.exe`), never a plain `python`, which could resolve to the project venv and hide a broken installation. Cached downloads are fine. | Both imports succeed without dev extras |
 
 **CI:** the GitHub workflow runs only when the owner pushes or opens a pull request. Until then, a task reports **"CI not yet run"**. It never claims a CI result it didn't see. Python 3.12 – 3.13 and the `TZ=America/New_York` job can't be reproduced on this Windows machine and stay unverified until CI runs. Python 3.11 is the venv; 3.14 is available through `py -3.14` for optional local runs.
 

@@ -29,7 +29,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Codex quick-reviews the workflow documentation commit** on `m1/batch-1`.
+1. **Codex quick-reviews the workflow documentation commits** on `m1/batch-1`: `d9ab307`, then the follow-up fixing Codex's two findings (the smoke-check commands must use the fresh environment's Python; the outdated `tzdata` alternatives are removed).
 2. **Batch 1 (M1-02 – M1-05)** on the same branch, once the documentation commit has passed review. Coding starts only then. The owner's batch approval covers implementing and locally committing the four tasks. Then the batch checks, Claude Code's self-review, Codex's review of every commit, and **one owner-approved merge** of the whole branch.
 
 **Batch workflow (adopted 2026-10-12, documented in this commit):** `AGENTS.md`/`CLAUDE.md` shared rules §4 and §6, `docs/tasks/README.md` (Workflow, Checks) and `docs/roadmap.md` (§1.1, §4.3).
@@ -42,7 +42,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 - **Per task:** its own tests, task checks (task tests, full suite in Git Bash, ruff; plus the smoke check if dependencies or packaging change), `PROGRESS.md` entry and commit. Within a batch, a committed and checked earlier task can satisfy a dependency.
 - **Per batch:** the PowerShell full suite, the clean-install smoke check, Claude Code's self-review, Codex's review of **every commit**, then one owner-approved merge.
 - **Stop rules:** a new test failure; a file change outside a spec's allowed files; a spec gap needing an architecture or ADR change; a blocked verification checkpoint.
-- **`tzdata`:** M1-06's allowed files now permit adding it to `[project] dependencies`. The spec proposes an **unconditional** declaration, which is for Codex to confirm. It's added only when M1-06 is implemented, in batch 2.
+- **`tzdata`:** M1-06's allowed files permit adding it to `[project] dependencies`. **Codex accepted the unconditional, explicit declaration** (2026-10-12). It's added only when M1-06 is implemented, in batch 2.
 
 **Known stale labels, left for a later update.** The status lines in `docs/design-principles.md` and the ADR records (`architecture/adr/`) still say "awaiting review of the M0 commit and merge". They describe the state before M0's merge on 2026-10-09. The AGENTS.md, CLAUDE.md, task README and roadmap labels were fixed in the batch-1 documentation commit. This file is the current record.
 
@@ -106,7 +106,7 @@ Report directional accuracy against the base rate, and the information coefficie
 | The per-field Yahoo determination results | Determined in M1-12 | M1-12 / M1-13 |
 | How far back yfinance hourly history reaches | Measured in M1-13 | M1-13 |
 | `pyarrow` / `duckdb` versions with Python 3.11 – 3.14 wheels | Checked in M1-10 | M1-10 |
-| **Time-zone data on Windows (found in M1-01). Decided (Codex, 2026-10-11): declare `tzdata` explicitly. M1-06's permitted files were updated in the batch-1 documentation commit; whether to declare it unconditionally is proposed there, for Codex to confirm.** `zoneinfo` needs the `tzdata` package on Windows, which has no system time-zone database. Today it's present only **transitively**, because pandas declares it for `win32`. M1-01's tests use it (`America/New_York`); the M1-06 calendar will need it **at runtime**. Proposal for M1-06's review: either declare `tzdata; sys_platform == "win32"` explicitly (a `pyproject.toml` dependency change, which M1-06's spec doesn't currently allow) or accept and document the transitive dependency. | Codex and owner | M1-06 |
+| **Time-zone data (found in M1-01). Decided:** `tzdata` is declared **explicitly and unconditionally** (for all platforms) in `[project] dependencies` when M1-06 is implemented. The M1-06 spec permits exactly that one entry, and **Codex accepted the unconditional declaration** (2026-10-12). Background: `zoneinfo` needs `tzdata` wherever there's no system time-zone database (Windows, some slim containers); until M1-06 it's present only transitively, via pandas on Windows. | Codex and owner | **Decided**; implemented in M1-06 (batch 2) |
 | NVDA's listing date for the seed record | Checked in M1-17 | M1-17 |
 | Whether DataHealth snapshots are persisted for lineage | Decided with lineage | M2 |
 | OPEN-16: proposed order-lifecycle extensions. **Unaccepted**; they need a reviewed, accepted follow-up ADR. | Owner and Codex | Before M4 |
@@ -132,6 +132,13 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (workflow documentation follow-up)
+- **Codex reviewed `d9ab307`.** The shared rules match, and runtime code is unchanged. It found two documentation issues:
+  1. `docs/tasks/README.md`: the clean-install check used plain `python`, which could test the project venv instead of the fresh install. **Fixed:** both import checks now explicitly use `<scratch>/Scripts/python.exe`, including the one run outside the repository.
+  2. `PROGRESS.md`: an outdated paragraph still offered "Windows-only" or "transitive dependency" alternatives for `tzdata`. **Fixed:** they're removed, and the entry records that **Codex accepted the explicit, unconditional `tzdata` dependency** that M1-06 permits.
+- Only `docs/tasks/README.md` and `PROGRESS.md` changed. No batch task started.
+
 
 ### 2026-10-12: Claude Code (M1-01 merge; batch workflow documentation)
 - **M1-01 merged.** Codex's review passed at `a8f338b` with no blocking findings; the lambda false-alarm limit was accepted. With the owner's approval, `main` was fast-forwarded from `f906841` to `a8f338b` (nothing pushed, no branches deleted). **2 of 18 M1 tasks are done.**
