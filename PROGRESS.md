@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **2 of 18 tasks done** (M1-00, M1-01). |
 | **`main`** | Local `main` is at **`a8f338b`** (`test: give comprehensions their own scope in the system-clock scan`). **M1-01 passed Codex review** (no blocking findings at `a8f338b`) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12. `main` is 7 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**, approved by the owner. **M1-02 and M1-03 committed (checked)**; M1-04 next. No batch review yet. |
+| **Current work** | **Batch 1** (M1-02 – M1-05) on **`m1/batch-1`**, approved by the owner. **M1-02 – M1-04 committed (checked)**; M1-05 next. No batch review yet. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` has `__init__.py` (M1-00) and `clock.py` (M1-01). |
@@ -132,6 +132,35 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-12: Claude Code (batch 1, M1-04: SymbolMapping)
+- **Tests first.** `tests/engine/test_symbols.py` has 29 tests. The resolver behaviour is written once, as **`SymbolResolverContract`**, and run here by `TestInMemorySymbolResolver`. M1-05 subclasses the same contract for SQLite, which satisfies its "same test cases" requirement without editing this file. The contract covers:
+  - half-open validity (before, start, inside, exclusive end, after);
+  - open-ended mappings;
+  - a reused symbol (`ABC` → `EQ_US_ABC`, then `EQ_US_ABC_2`, with a gap);
+  - the FB → META ticker change (`EQ_US_FB` keeps its mnemonic) on both sides and in both directions;
+  - provider independence;
+  - exact (case-sensitive) matching;
+  - every unknown lookup raising `UnknownSymbol`;
+  - `datetime` refused;
+  - both overlap rules, with the state unchanged after a refusal;
+  - an identical overlapping mapping refused;
+  - touching intervals allowed.
+
+  Record validation: provider shape, symbol and ID shape, `valid_to > valid_from`, dates not datetimes, immutability. Before the implementation, collection failed on the missing module.
+- **Implementation:** `investment_engine/market/symbols.py`:
+  - `PROVIDER_YFINANCE`, a frozen `SymbolMapping` and `UnknownSymbol(LookupError)`;
+  - the **module-level rule functions** `covers`, `overlaps` and `conflict`, so the M1-05 SQLite resolver reuses exactly the same rules, as its spec requires;
+  - the in-memory `SymbolResolver` (add, resolve, symbol_for).
+- **Choices not stated in the spec, recorded for review:**
+  - an **identical** overlapping mapping (same instrument, symbol and provider) is refused as well as the two specified conflicts, because it would make the same claim twice;
+  - the provider must match `[a-z][a-z0-9_]*`, the same shape M1-08 uses for provider IDs.
+- **Task checks:**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_symbols.py`: 29 passed;
+  - `.venv/Scripts/python.exe -m pytest -q` (Git Bash): 1 failed, **1455 passed** (+29), 4 skipped, 1 deselected; failing set = baseline;
+  - `ruff check .`: all checks passed.
+
+  No dependency or packaging change.
 
 ### 2026-10-12: Claude Code (batch 1, M1-03: Instrument)
 - **Tests first.** `tests/engine/test_instruments.py` has 41 tests:
