@@ -1,0 +1,27 @@
+{
+  "instrument": {
+    "instrument_id": "EQ_US_NVDA",
+    "asset_class": "EQUITY",
+    "currency": "USD",
+    "exchange": "XNAS",
+    "timezone": "America/New_York",
+    "status": "ACTIVE",
+    "active_from": "1999-01-22",
+    "active_to": null
+  },
+  "mapping": {
+    "instrument_id": "EQ_US_NVDA",
+    "provider": "yfinance",
+    "symbol": "NVDA",
+    "valid_from": "1999-01-22",
+    "valid_to": null
+  },
+  "sources": [
+    {
+      "url": "https://investor.nvidia.com/investor-resources/faqs/default.aspx",
+      "retrieved_on": "2026-10-13",
+      "supports": ["IPO date", "NVDA ticker", "Nasdaq listing"]
+    }
+  ],
+  "note": "Reference identity only; this file contains no market prices. Research import coverage starts at the separately verified 2019 boundary."
+}

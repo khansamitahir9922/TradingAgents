@@ -61,7 +61,7 @@ include = ["tradingagents*", "cli*", "investment_engine*"]
 [tool.setuptools.package-data]
 cli = ["static/*"]
 tradingagents = ["assets/*.svg"]
-investment_engine = ["storage/schema/*.sql", "market/calendar/data/*.json"]
+investment_engine = ["storage/schema/*.sql", "market/calendar/data/*.json", "reference/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
