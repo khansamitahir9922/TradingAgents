@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **12 of 18 tasks done** (M1-00 – M1-11). |
 | **`main`** | Local `main` is at **`0661d46`** (`docs: record the batch 2 re-review fix and checks`). **Batch 2 passed Codex's review** (after two rounds of follow-up fixes) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12; batch 1 (`109a72d`) before it. `main` is 29 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 3 (daily part) on `m1/batch-3`: review fixes accepted by Codex (2026-10-12). Hourly verification protocol v0.3.10 (M1-12, uncommitted) with a complete offline runner outside the repository (frozen by `MANIFEST.sha256`), for Codex review. A roadmap patch for batches 3a/3b/4/5 is prepared outside the repository, not applied.** Codex implemented `fcd8457` (M1-12 daily semantics and actions), `d93e47e` (M1-13 daily bars) and `f1ebc7b` while Claude Code was unavailable; handoff `62118a2`. Claude Code's independent review found one blocking issue (B1); the owner approved four fixes, committed as `9b901b4`, `4cd81b4`, `09d7321`, `f2536fb`, plus this record. Task and batch checks pass against the baseline. **Hourly prices and volume remain BLOCKED; batch 3 is not complete. No merge, push or batch 4.** |
+| **Current work** | **Batches re-planned (owner decision, 2026-10-13):** 3a (M1-12/M1-13 daily part, reviewed, awaiting merge approval), 3b (hourly; protocol v0.3.10 reviewed, waiting on A4 and keys), 4 (M1-14 – M1-16, **approved, in progress** on `m1/batch-4`), 5 (M1-17, after 3b and 4). M2 specs are being drafted on `docs/m2-specs`. Hourly fields stay BLOCKED. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules plus `market/calendar/` (US equities, cited 2019 – 2026 data), `market/availability.py`, `market/candles.py`, `market/corporate_actions.py` and `market/store/` (schema, append-only writer, point-in-time reader). The `engine` extra adds `pyarrow` and `duckdb`. |
@@ -29,10 +29,11 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Codex reviews the hourly verification protocol v0.3.10, the frozen offline runner and the roadmap patch** (M1-12, uncommitted; scripts in `C:\Users\LOQ\hourly-verification`; session log, 2026-10-13, "protocol v0.3.10 package"). No data is downloaded until it passes review. Then the access checks run first, starting with the terms check A4, before any key is used. Codex accepted the review fixes `62118a2..4f594bf` (no blocking findings).
-   - **Hourly remains blocked** pending comparable independent evidence (Open issues). Batch 3 and M1 are not complete.
-   - Merging needs the owner's separate approval, and only once hourly is resolved or the owner decides how to treat the daily-only state. Nothing is pushed without the owner's instruction.
-2. **Owner decisions** (session log, 2026-10-13, "protocol v0.3.10 package"): the roadmap patch (batches 3a, 3b, 4, 5); the combined work package (batch 4 with the M2 spec pack); and OPEN-06 and OPEN-09 (proposed choices listed there). Nothing in them is applied or started.
+1. **Batch 4 (M1-14, M1-15, M1-16)**, approved by the owner on 2026-10-13: one uninterrupted package on `m1/batch-4`, built on this scheduling commit. Tests first, one commit per task, task and batch checks, self-review. Then Codex reviews every commit.
+2. **M2 specification drafts** on `docs/m2-specs`, alongside batch 4, for review. OPEN-06 option A is the proposed baseline; OPEN-09 assumptions and thresholds are **provisional**. No M2 code.
+3. **Batch 3a merge** needs the owner's approval. **Merge order:** `m1/batch-4` is built on top of `m1/batch-3`, so that every merge stays a fast-forward. 3a (this branch) merges first, then batch 4. Merging batch 4 first would need a rebase, with approval.
+4. **Batch 3b (hourly):** A4 (Alpaca's terms) first; then, with the owner's paper-account keys, A3, A1 + A2 and checkpoint R, per M1-12 v0.3.10.
+5. Merges, pushes, M2 implementation, key use and market-data downloads all need explicit approval.
 
 **Owner's conditions for batch 2 (2026-10-12):**
 - complete **2019 – 2026** calendar coverage from **cited official exchange sources**, special closures included;
@@ -147,6 +148,28 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-13: Claude Code (scheduling change applied: batches 3a, 3b, 4, 5; owner-approved)
+**Codex's review of v0.3.10:** the protocol and the offline runner pass (94 tests, ruff, 13 hashes; the 200 requests-per-minute figure matches Alpaca's published Basic-plan limit). Codex made **one scheduling correction**: batch 5 (M1-17) must depend on **3b and 4**, because M1-17 needs M1-12 and M1-13, which are done only when 3b merges.
+
+**The owner approved** (2026-10-13):
+- locally committing the v0.3.10 documents: `f03ea74`;
+- applying the corrected scheduling change as a separate commit: **this commit**;
+- **batch 4** as one uninterrupted package;
+- M2 specification drafts on a separate branch, with OPEN-06 option A as the proposed baseline and OPEN-09 provisional.
+
+Not authorized: merges, pushes, M2 implementation, key use or market-data downloads.
+
+**Applied** (the reviewed patch, plus Codex's correction):
+- `docs/roadmap.md` §4.3: rows 3a, 3b, 4 and 5, where batch 5 needs **3b and 4**, and a dated decision note;
+- `docs/tasks/README.md`: a split task is done when its last batch merges;
+- `docs/data-provenance/yfinance.md`: "batch 3" becomes "batch 3b".
+
+**Codex's notes for M2, carried into the spec drafts:**
+- Option A strategies are starting baselines, not proven profitable.
+- OPEN-09 costs, the 5-day horizon and the walk-forward windows are **draft assumptions**. The specs must define entry and exit rules, overlapping signals, warm-up data, and the **removal of training examples whose 5-day outcome crosses into the test period**.
+- The promotion thresholds (Sharpe 0.5, 30 trades, 60% of windows, 3 months of shadow) are **provisional**, not established as sufficient. **Passing never enables trading automatically.**
+- Strategy and benchmark returns are compared on the same basis: dividends and costs treated consistently.
 
 ### 2026-10-13: Claude Code (snapshot check after Codex's review; no changes)
 Codex's latest review describes the **v0.3.9** snapshot: 79 tests, `E` in the tape-C profile, no time estimate in checkpoint R, and the stale runner sentence. All three items are already fixed in **v0.3.10** (entry below). Re-verified 2026-10-13 on the current files:

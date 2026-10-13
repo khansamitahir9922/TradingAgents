@@ -33,7 +33,7 @@ Yahoo defines adjusted close as: “the closing price after adjustments for all 
 | `H1_VOLUME` | `UNDETERMINED` | `BLOCKED` | No comparable independent hourly reference |
 | `DIVIDEND_AMOUNT` | `SPLIT_ADJUSTED_AS_OF_DOWNLOAD` | `SPLIT_RECONSTRUCTION` | 0 after quantization |
 
-Blocked hourly fields cannot be written, even where the split factor is 1. This prevents an apparent absence of later splits from being mistaken for verification. **M1 and batch 3 are not complete.**
+Blocked hourly fields cannot be written, even where the split factor is 1. This prevents an apparent absence of later splits from being mistaken for verification. **M1 and batch 3b (the hourly part of M1-12 and M1-13) are not complete.**
 
 ## Splits and dividend anchors
 

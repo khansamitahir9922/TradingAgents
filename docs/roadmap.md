@@ -220,8 +220,12 @@ Section 4.4 lists the decisions still open.
 | — | M1-00, M1-01 | Skeleton, baseline, Clock | — | — | **Done** (merged task by task: `f906841`, `a8f338b`) |
 | **1** | M1-02 – M1-05 | Money types, instruments, symbol mappings, SQLite | 02, 03, then 04 (uses 03), then 05 (uses 03 and 04) | M1-00 | M1-05 adds package data: run the smoke check within the task |
 | **2** | M1-06 – M1-11 | Calendars, candles, corporate actions, storage | 06, 07 (uses 06), 08, 09 (uses 08), 10 (uses 08, 09), 11 (uses 10) | M1-01, M1-02, M1-03 (batch 1) | M1-06 adds `tzdata`, M1-07 calendar data and M1-10 optional dependencies: smoke checks within those tasks |
-| **3** | M1-12 – M1-13 | Yahoo verification and import | 12, then 13 | Batches 1 and 2 | **Firm checkpoint.** If verification blocks a field, the batch stops (§4.1, rule 3). |
-| **4** | M1-14 – M1-17 | Replay, resampling, data health, NVDA report | 14, 15, 16, then 17 | Batches 1 – 3 | M1-17 adds package data: smoke check within the task |
+| **3a** | M1-12 – M1-13, **daily part** | Yahoo daily verification, corporate actions, daily bars | 12, then 13 | Batches 1 and 2 | **Firm checkpoint passed for the daily fields** (Codex review, 2026-10-12). `H1_PRICE` and `H1_VOLUME` stay BLOCKED in `YAHOO_VERIFICATION`. Merging 3a doesn't complete M1-12 or M1-13. |
+| **3b** | M1-12 – M1-13, **hourly part** | Hourly verification (M1-12 protocol), then unblocking and the hourly import | Protocol gates A4 → A3 → A1 + A2 → R → full run → evidence review; then the unblocking commit; then the M1-13 hourly path | 3a | **Firm checkpoint** (§4.1, rule 3). M1-12 and M1-13 are **done only when 3b merges**. |
+| **4** | M1-14 – M1-16 | Replay, resampling, data health | 14, 15, 16 | Batches 1 and 2 (M1-01, M1-05, M1-07 – M1-11) | Doesn't use M1-12 or M1-13, so it doesn't wait for batch 3; it can run while 3b waits for evidence. |
+| **5** | M1-17 | NVDA report | — | **3b and 4** (M1-17 depends on M1-12 and M1-13, which are done only when 3b merges) | M1-17 adds package data: smoke check within the task. A partial, daily-only CLI could be planned separately later; it isn't part of this plan. **M1 completes only when no field is blocked** (§4.5). |
+
+**Batch split (owner decision, 2026-10-13; reviewed by Codex).** Batch 3 was split into 3a (daily, reviewed) and 3b (hourly, waiting on the verification protocol), and the old batch 4 into 4 (M1-14 – M1-16) and 5 (M1-17, after 3b and 4). Each task's dependencies are unchanged; only the batch grouping changed.
 
 The dependency **phases** below still hold, and every batch's order follows them. Each phase needs only tasks from earlier phases:
 
