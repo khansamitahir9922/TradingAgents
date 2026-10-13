@@ -355,3 +355,29 @@ def test_hourly_and_daily_bars_replay_together_in_timeframe_order(store):
                                      received_at=utc(2024, 6, 4))], import_id="h")
     events = replay(reader, utc(2024, 6, 3), utc(2024, 6, 4), timeframes=(H1, D1))
     assert [e.payload.timeframe for e in events] == [D1, H1]  # same delivery time: D1 ranks before H1
+
+
+class WrongIdentityReader:
+    """Returns a stored revision whatever was asked for: a misbehaving reader."""
+
+    def __init__(self, candle):
+        self.candle = candle
+
+    def candle_revisions_available_between(self, *args, **kwargs):
+        return [self.candle]
+
+    def action_revisions_available_between(self, *args, **kwargs):
+        return []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("change", [{"source": "testvendor"}, {"instrument_id": "EQ_US_AMD"}, {"timeframe": H1}],
+                         ids=["provider", "instrument", "timeframe"])
+def test_a_revision_for_another_identity_than_requested_is_refused(friday_correction, change):
+    # Self-review probe: providers never mix, even if a reader returns the wrong partition's rows.
+    [stored] = friday_correction.candle_revision_history("yfinance", NVDA, D1, utc(2024, 6, 3), utc(2024, 6, 4))[:1]
+    feed = ReplayFeed(WrongIdentityReader(replace(stored, **change)), ReplayClock(utc(2024, 6, 3)),
+                      sources=["yfinance"], instrument_ids=[NVDA], timeframes=[D1],
+                      start=utc(2024, 6, 3), end=utc(2024, 6, 8))
+    with pytest.raises(ValueError, match="requested"):
+        list(feed)

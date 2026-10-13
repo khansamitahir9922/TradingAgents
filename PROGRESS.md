@@ -149,6 +149,26 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-13: Claude Code (batch 4: self-review fixes)
+I self-reviewed M1-14 – M1-16 against their specs and the laws, with adversarial probes (scratch script, outside the repository). **Two gaps** were found, on paths the spec tests don't reach:
+1. **Replay trusted the reader's identity.** A reader returning another provider's revision for a `yfinance` request was passed straight through as a `testvendor` event, and the same held for another instrument or timeframe. **Fix:** every payload must match the requested provider, instrument and timeframe, or replay raises. Providers never mix even with a misbehaving reader.
+2. **DataHealth outside the calendar's coverage** (e.g. 2030, or 2018) reported `MISSING` over "0 sessions". **Fix:** a time outside the coverage raises `CalendarRangeError`, because the expected bars can't be established, so no status is reported. Inside the coverage, a lookback shortened where the coverage begins is still evaluated.
+
+**Tests (written first; 5 failed before the fix):** `test_a_revision_for_another_identity_than_requested_is_refused` (provider, instrument, timeframe) and `test_a_time_outside_the_calendars_coverage_raises_instead_of_reporting` (after, before).
+
+**Probed and found sound:**
+- reader order;
+- latency at the window edges;
+- forming and half-day sessions;
+- the cutoff on direct inputs;
+- `compare_daily` with no closed bars;
+- duplicate stored revisions (refused).
+
+**Checks:**
+- the replay and DataHealth tests → 49 passed;
+- `.venv/Scripts/python.exe -m pytest -q` (Git Bash) → **1985 passed, 1 failed** (the same baseline failure), 4 skipped, 3 deselected;
+- `ruff check .` → All checks passed.
+
 ### 2026-10-13: Claude Code (batch 4: M1-16 DataHealth, committed and checked)
 **M1-16** (`investment_engine/market/data_health.py`, `tests/engine/test_data_health.py`):
 - `evaluate_health` reports per provider and timeframe, at T = the injected clock's time, using **only** OK, STALE, MISSING and DEGRADED.

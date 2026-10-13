@@ -113,11 +113,15 @@ def _expected(sessions: Sequence[Session], timeframe: Timeframe, at: datetime) -
 
 
 def _lookback(calendar: TradingCalendar, at: datetime, n: int) -> list[Session]:
-    """The last `n` sessions that opened before `at`, oldest first, within the calendar's coverage."""
+    """The last `n` sessions that opened before `at`, oldest first, within the calendar's coverage.
+
+    A time outside the coverage raises CalendarRangeError: the expected bars can't be established, so no
+    status is reported. Inside it, the window may be shorter where the coverage begins.
+    """
     d = at.astimezone(ZoneInfo(calendar.timezone)).date()
     sessions: list[Session] = []
+    current = calendar.session(d) if calendar.is_session(d) else calendar.previous_session(d)
     try:
-        current = calendar.session(d) if calendar.is_session(d) else calendar.previous_session(d)
         while len(sessions) < n:
             if current.open < at:
                 sessions.append(current)

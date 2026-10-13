@@ -78,14 +78,24 @@ class ReplayFeed:
                 for timeframe in self.timeframes:
                     for candle in self.reader.candle_revisions_available_between(
                             source, instrument_id, timeframe, lo, hi):
+                        self._check_identity(candle, source, instrument_id, timeframe)
                         if candle.state is not BarState.CLOSED:
                             raise ValueError(f"replay delivers only CLOSED bars (Law 7), not {candle.state}: "
                                              f"{candle.identity}")
                         kind = "BAR_CLOSED" if candle.revision == 1 else "CANDLE_REVISED"
                         events.append(self._event(kind, candle))
                 for action in self.reader.action_revisions_available_between(source, instrument_id, lo, hi):
+                    self._check_identity(action, source, instrument_id)
                     events.append(self._event("CORPORATE_ACTION", action))
         return events
+
+    @staticmethod
+    def _check_identity(payload, source: str, instrument_id: str, timeframe: Timeframe | None = None) -> None:
+        """Providers never mix: a revision for another provider, instrument or timeframe than requested is refused."""
+        got = (payload.source, payload.instrument_id, getattr(payload, "timeframe", None))
+        want = (source, instrument_id, timeframe if timeframe is not None else got[2])
+        if got != want:
+            raise ValueError(f"the reader returned a revision for {got}, not the requested {want}")
 
     def _event(self, kind: Kind, payload) -> ReplayEvent:
         received = payload.available_from + self.latency

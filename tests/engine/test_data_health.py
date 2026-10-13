@@ -261,3 +261,13 @@ def test_default_thresholds_are_documented_and_immutable():
         HealthThresholds(stale_after_bars={D1: 1}, lookback_sessions=20)  # every timeframe needs a threshold
     with pytest.raises(ValueError):
         HealthThresholds(lookback_sessions=0)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("at", [utc(2030, 1, 7, 15), utc(2018, 12, 31, 15)], ids=["after", "before"])
+def test_a_time_outside_the_calendars_coverage_raises_instead_of_reporting(env, at):
+    # Self-review probe: expected bars can't be established there, so no status is reported.
+    from investment_engine.market.calendar.base import CalendarRangeError
+
+    with pytest.raises(CalendarRangeError):
+        health(env, [YF_D1], at)
