@@ -140,6 +140,27 @@ def test_comparison_refuses_duplicate_resampled_sessions(store):
         compare_daily(reader, "yfinance", NVDA, [result, result], at=LATER)
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize("change", [
+    {"price_basis": PriceBasis.RAW_RECONSTRUCTED_FROM_SPLIT_ADJUSTED},
+    {"volume_basis": VolumeBasis.RAW_RECONSTRUCTED_FROM_SPLIT_ADJUSTED},
+], ids=["price-provenance", "volume-provenance"])
+def test_raw_vendor_values_are_comparable_despite_different_reconstruction_provenance(store, change):
+    # Daily volume may be reconstructed while hourly volume is already raw.
+    # Both labels name as-traded units, so their provenance isn't a unit mismatch.
+    reader = stored(store, friday_bars())
+    result = aggregate_session(visible(reader, FRI, LATER), CAL.session(FRI), at=LATER)
+    stored(store, [daily(FRI)], import_id="daily")
+    session = CAL.session(FRI)
+    [vendor] = reader.candles_visible_at("yfinance", NVDA, D1, session.open, session.close, LATER)
+
+    class ReconstructedReader:
+        def candles_visible_at(self, *args):
+            return [replace(vendor, **change)]
+
+    assert compare_daily(ReconstructedReader(), "yfinance", NVDA, [result], at=LATER) == []
+
+
 # ------------------------------------------------------------------ basic sessions
 
 

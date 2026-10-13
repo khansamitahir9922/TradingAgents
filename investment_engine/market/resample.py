@@ -223,9 +223,10 @@ def compare_daily(reader, source: str, instrument_id: str, resampled: Sequence[R
         elif v is None:
             differences.append(DailyDifference(d, "missing_vendor", None, None))
         else:
-            for name in ("currency", "price_basis", "volume_basis"):
-                if getattr(v, name) != getattr(bar, name):
-                    raise ValueError(f"vendor and resampled {name} must match before comparing values")
+            # Candle's permitted field bases all describe as-traded units.
+            # Reconstruction provenance may differ between daily and hourly data.
+            if v.currency != bar.currency:
+                raise ValueError("vendor and resampled currency must match before comparing values")
             if (v.start_time, v.end_time) != (bar.start_time, bar.end_time):
                 raise ValueError("vendor and resampled session boundaries must match")
             for name in _FIELDS:
