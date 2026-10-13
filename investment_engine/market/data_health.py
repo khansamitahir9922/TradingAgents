@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 from investment_engine.clock import Clock
 from investment_engine.market.availability import check_utc
 from investment_engine.market.calendar.base import CalendarRangeError, Session, TradingCalendar
-from investment_engine.market.candles import Timeframe
+from investment_engine.market.candles import BarState, Timeframe
 from investment_engine.market.symbols import UnknownSymbol
 
 _HOUR = timedelta(hours=1)
@@ -152,6 +152,13 @@ def _source_health(key: SourceKey, *, instrument_id: str, at: datetime, local: d
     if not visible:
         return result(HealthStatus.MISSING,
                       f"no {key.provider} {key.timeframe} bar visible in the last {_plural(len(sessions), 'session')}")
+    expected_pairs = set(expected)
+    for c in visible:
+        if (c.source, c.instrument_id, c.timeframe) != (key.provider, instrument_id, key.timeframe):
+            raise ValueError("reader row identity does not match the requested provider, instrument and timeframe")
+        if (c.state is not BarState.CLOSED or c.available_from > at or
+                (c.start_time, c.end_time) not in expected_pairs):
+            raise ValueError("health inputs must be available, closed bars with the expected session boundaries")
     latest = max(visible, key=lambda c: c.end_time)
     present = {c.start_time for c in visible}
     behind = sum(1 for _, end in expected if end > latest.end_time)

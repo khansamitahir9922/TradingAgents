@@ -90,6 +90,56 @@ def visible(reader, d, at, source="yfinance"):
     return reader.candles_visible_at(source, NVDA, H1, session.open, session.close, at)
 
 
+@pytest.mark.unit
+def test_resample_refuses_another_instruments_reader_rows(store):
+    reader = stored(store, friday_bars())
+    rows = [replace(c, instrument_id="EQ_US_MSFT") for c in visible(reader, FRI, LATER)]
+
+    class WrongReader:
+        def candles_visible_at(self, *args):
+            return rows
+
+    with pytest.raises(ValueError, match="identity"):
+        resample_daily(WrongReader(), "yfinance", NVDA, FRI, FRI, calendar=CAL, at=LATER)
+
+
+@pytest.mark.unit
+def test_comparison_refuses_resampled_bars_for_another_instrument(store):
+    reader = stored(store, friday_bars())
+    rows = [replace(c, instrument_id="EQ_US_MSFT") for c in visible(reader, FRI, LATER)]
+    result = aggregate_session(rows, CAL.session(FRI), at=LATER)
+    with pytest.raises(ValueError, match="identity"):
+        compare_daily(reader, "yfinance", NVDA, [result], at=LATER)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("change", [
+    {"source": "testvendor"}, {"instrument_id": "EQ_US_MSFT"},
+    {"timeframe": H1}, {"currency": "EUR"},
+], ids=["provider", "instrument", "timeframe", "currency"])
+def test_comparison_refuses_vendor_rows_that_cannot_be_compared(store, change):
+    reader = stored(store, friday_bars())
+    result = aggregate_session(visible(reader, FRI, LATER), CAL.session(FRI), at=LATER)
+    stored(store, [daily(FRI)], import_id="daily")
+    session = CAL.session(FRI)
+    [vendor] = reader.candles_visible_at("yfinance", NVDA, D1, session.open, session.close, LATER)
+
+    class WrongReader:
+        def candles_visible_at(self, *args):
+            return [replace(vendor, **change)]
+
+    with pytest.raises(ValueError, match="identity|currency"):
+        compare_daily(WrongReader(), "yfinance", NVDA, [result], at=LATER)
+
+
+@pytest.mark.unit
+def test_comparison_refuses_duplicate_resampled_sessions(store):
+    reader = stored(store, friday_bars())
+    result = aggregate_session(visible(reader, FRI, LATER), CAL.session(FRI), at=LATER)
+    with pytest.raises(ValueError, match="duplicate"):
+        compare_daily(reader, "yfinance", NVDA, [result, result], at=LATER)
+
+
 # ------------------------------------------------------------------ basic sessions
 
 

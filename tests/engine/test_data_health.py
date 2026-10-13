@@ -264,6 +264,39 @@ def test_default_thresholds_are_documented_and_immutable():
 
 
 @pytest.mark.unit
+def test_a_daily_bar_with_the_wrong_session_end_cannot_report_ok(env):
+    # Candle deliberately doesn't validate calendar duration. Health must not
+    # mistake a shortened vendor day for the expected complete daily bar.
+    from dataclasses import replace
+
+    session = CAL.session(date(2024, 6, 14))
+    malformed = replace(bar(session.date), end_time=session.close - timedelta(minutes=1),
+                        event_time=session.close - timedelta(minutes=1))
+    env["writer"].write_candles([malformed], import_id="short-day")
+    with pytest.raises(ValueError, match="expected"):
+        health(env, [YF_D1], AFTER_FRI_14, thresholds=HealthThresholds(lookback_sessions=1))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("change", [
+    {"source": "testvendor"}, {"instrument_id": "EQ_US_MSFT"}, {"timeframe": H1},
+], ids=["provider", "instrument", "timeframe"])
+def test_health_refuses_reader_rows_for_another_identity(env, change):
+    from dataclasses import replace
+
+    daily_series(env)
+    actual_reader = env["reader"]
+
+    class WrongReader:
+        def candles_visible_at(self, *args):
+            return [replace(c, **change) for c in actual_reader.candles_visible_at(*args)]
+
+    env["reader"] = WrongReader()
+    with pytest.raises(ValueError, match="identity"):
+        health(env, [YF_D1], AFTER_FRI_14)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("at", [utc(2030, 1, 7, 15), utc(2018, 12, 31, 15)], ids=["after", "before"])
 def test_a_time_outside_the_calendars_coverage_raises_instead_of_reporting(env, at):
     # Self-review probe: expected bars can't be established there, so no status is reported.

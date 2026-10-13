@@ -4,13 +4,13 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 ---
 
-## Current state (2026-10-12)
+## Current state (2026-10-13)
 
 | | |
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **12 of 18 tasks done** (M1-00 – M1-11). |
 | **`main`** | Local `main` is at **`0661d46`** (`docs: record the batch 2 re-review fix and checks`). **Batch 2 passed Codex's review** (after two rounds of follow-up fixes) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12; batch 1 (`109a72d`) before it. `main` is 29 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batches re-planned (owner decision, 2026-10-13):** 3a (M1-12/M1-13 daily part, reviewed, awaiting merge approval), 3b (hourly; protocol v0.3.10 reviewed, waiting on A4 and keys), 4 (M1-14 – M1-16, **approved, in progress** on `m1/batch-4`), 5 (M1-17, after 3b and 4). M2 specs are being drafted on `docs/m2-specs`. Hourly fields stay BLOCKED. |
+| **Current work** | **Codex takeover while Claude is unavailable until October 15.** Batch 3a daily work reviewed, awaiting owner merge approval; 3b hourly remains BLOCKED. Batch 4 (M1-14 – M1-16) was implemented by Claude through `b394fbb`; Codex reviewed those commits and implemented additional regression fixes below. Those Codex changes await Claude/owner independent review. M2 task specs are being completed separately on `docs/m2-specs`; no M2 code. Batch 5 still waits for 3b and 4. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules plus `market/calendar/` (US equities, cited 2019 – 2026 data), `market/availability.py`, `market/candles.py`, `market/corporate_actions.py` and `market/store/` (schema, append-only writer, point-in-time reader). The `engine` extra adds `pyarrow` and `duckdb`. |
@@ -29,8 +29,8 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Batch 4 (M1-14, M1-15, M1-16)**, approved by the owner on 2026-10-13: one uninterrupted package on `m1/batch-4`, built on this scheduling commit. Tests first, one commit per task, task and batch checks, self-review. Then Codex reviews every commit.
-2. **M2 specification drafts** on `docs/m2-specs`, alongside batch 4, for review. OPEN-06 option A is the proposed baseline; OPEN-09 assumptions and thresholds are **provisional**. No M2 code.
+1. **Batch 4 review:** Claude's task commits are complete and Codex's follow-up fixes/checks are recorded below. When Claude returns, it independently reviews Codex's changes; the owner reviews/approves any later merge. The current approval explicitly forbids merging or pushing.
+2. **M2 specification drafts** on `docs/m2-specs`, in `C:\Users\LOQ\TradingAgents-m2-specs`, for independent review. OPEN-06 option A is the owner's selected research scope; exact strategy rules remain draft contracts. OPEN-09 assumptions/thresholds and OPEN-08 validity are **provisional**. No M2 code; completed M1 and accepted specs/decisions are prerequisites.
 3. **Batch 3a merge** needs the owner's approval. **Merge order:** `m1/batch-4` is built on top of `m1/batch-3`, so that every merge stays a fast-forward. 3a (this branch) merges first, then batch 4. Merging batch 4 first would need a rebase, with approval.
 4. **Batch 3b (hourly):** A4 (Alpaca's terms) first; then, with the owner's paper-account keys, A3, A1 + A2 and checkpoint R, per M1-12 v0.3.10.
 5. Merges, pushes, M2 implementation, key use and market-data downloads all need explicit approval.
@@ -148,6 +148,43 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-13: Codex takeover - batch 4 review and regression fixes
+
+The owner authorized the whole batch 4, local follow-up commits, all checks and M2 drafting on a separate branch while Claude's weekly limit is exhausted. **No merge, push, M2 implementation, key use or market-data download.** Actual checkout already contained Claude's finished task commits: `e8d4eab` / `3cb6344` (M1-14 and its missing-log follow-up), `4a98c3b` (M1-15), `cacf899` (M1-16), `b394fbb` (Claude self-review fixes). Protocol/scheduling were already committed as `f03ea74` and `5984997`; the latter correctly makes batch 5 wait for **3b and 4**. Nothing was repeated or rebased.
+
+**Review:** inspected each commit's changed files and task contracts, then the combined replay/resampling/health code and acceptance tests. All changed paths remain inside the tasks' allowed files; architecture, upstream runtime, dependencies and CI are unchanged. M1-14's missing PROGRESS entry is an explicitly recorded process deviation repaired by `3cb6344`, without rewriting history.
+
+**Codex implemented these follow-up fixes (independent review still needed):**
+
+- `resample.py`: reject a reader row for another requested instrument/provider/timeframe; compare only resampled inputs of the requested identity; reject duplicate sessions and incompatible vendor identity, currency, field bases or session boundaries before making numeric comparisons. A caller could previously pass MSFT's resampled bars to an NVDA comparison and receive apparently valid numbers.
+- `data_health.py`: validate the requested identity and exact completed calendar start/end pair, CLOSED state and availability. A stored daily candle ending one minute before the expected close could previously be reported OK with the default tolerance. Invalid input now raises rather than inventing a health status. No Candle/store contract was changed.
+- Added **11 regression cases** in the two task test files. The new cases all failed on Claude's original code before the fix, with `DID NOT RAISE`; intentional tests-first failures, not regressions in an existing passing test. Original 123 task/clock checks passed before modification; 134 pass after it.
+
+**Exact check commands and observed results (code unchanged between checks):**
+
+| Check | Command | Result |
+|---|---|---|
+| Original task/clock checks | `.venv/Scripts/python.exe -m pytest -q tests/engine/test_replay.py tests/engine/test_resample.py tests/engine/test_data_health.py tests/engine/test_no_system_clock.py` | 123 passed before fixes |
+| Regression reproduction | `.venv/Scripts/python.exe -m pytest -q tests/engine/test_resample.py tests/engine/test_data_health.py -k 'another_instrument or cannot_be_compared or duplicate_resampled or wrong_session_end or another_identity'` | 11 expected new regression-test failures before implementation |
+| Fixed task/clock checks | `.venv/Scripts/python.exe -m pytest -q tests/engine/test_replay.py tests/engine/test_resample.py tests/engine/test_data_health.py tests/engine/test_no_system_clock.py` | **134 passed** |
+| Full Git Bash suite | `& 'C:/Program Files/Git/bin/bash.exe' -lc '.venv/Scripts/python.exe -m pytest -q'` (launched from PowerShell at repository root) | **1996 passed, 1 failed**, 4 skipped, 3 deselected, 99 subtests passed |
+| Full PowerShell suite | `& .venv/Scripts/python.exe -m pytest -q` | **1996 passed, 1 failed**, 4 skipped, 3 deselected, 99 subtests passed |
+| Ruff | `.venv/Scripts/python.exe -m ruff check .` | All checks passed |
+| Whitespace | `git diff --check` | Clean |
+
+**Only failure in both suites:** `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, recorded in the M1-00 baseline. The other PowerShell baseline failure, `tests/test_cli_commands.py::test_every_command_is_registered_when_run_as_a_module`, **did not reproduce in this run**. No new passing-baseline test failed. An initial tool attempt to select Git Bash through its shell argument did not start pytest (`.venv` not recognized); the explicit Git Bash invocation above then ran successfully.
+
+**Batch B2 fresh installation:** scratch venv `C:/Users/LOQ/AppData/Local/Temp/codex-batch4-smoke-3dda18c4eff646308845dd5a578dbf0a` (abbreviated `<scratch>` below). Commands:
+
+1. `py -3.11 -m venv <scratch>`; `<scratch>/Scripts/python.exe -m pip install .` - passed. Package downloads occurred; **no market data or authenticated API requests** occurred.
+2. From repository root: `<scratch>/Scripts/python.exe -c "import tradingagents, cli.main, investment_engine; print('clean-install import OK')"` - passed.
+3. `<scratch>/Scripts/python.exe -I -c "import importlib.util, sys; from investment_engine.market import replay, resample, data_health; from investment_engine.market.calendar.us_equities import load_us_equities_calendar; assert importlib.util.find_spec('pyarrow') is None; assert importlib.util.find_spec('duckdb') is None; assert 'pyarrow' not in sys.modules and 'duckdb' not in sys.modules; assert 'site-packages' in replay.__file__; assert len(load_us_equities_calendar().sessions_between(__import__('datetime').date(2024,1,1),__import__('datetime').date(2024,12,31))) == 252; print('installed batch 4 base modules OK; optional engines absent')"` - passed; isolated interpreter imports the installed copy.
+4. `<scratch>/Scripts/python.exe -m pip install '.[engine]'` - passed; installed pyarrow 26.0.0 / DuckDB 1.5.6 without dev extras.
+5. From `<scratch>`: `& ./Scripts/python.exe -I ./batch4_smoke.py` - passed. The scratch script writes synthetic hourly/daily bars and a correction, replays revisions [1, 2], resamples/compares daily OHLCV, evaluates OK health, verifies installed module paths and unchanged store hashes at `market[x]`. Script stays outside the repository.
+
+**Not run:** CI, Python 3.12-3.14 matrix, live Yahoo/Alpaca checks, authenticated protocol gates, M2 runtime tests (no M2 code). The previously accepted v0.3.10 offline runner was not re-run this session. Hourly remains BLOCKED; M1 done count remains **12/18** until later owner-approved merges. Codex's self-review is not independent approval of Codex's own fixes.
+
 
 ### 2026-10-13: Claude Code (batch 4: self-review fixes)
 I self-reviewed M1-14 – M1-16 against their specs and the laws, with adversarial probes (scratch script, outside the repository). **Two gaps** were found, on paths the spec tests don't reach:

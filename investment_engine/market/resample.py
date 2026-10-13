@@ -158,6 +158,8 @@ def resample_daily(reader, source: str, instrument_id: str, first_session: date,
     by_session: dict[date, list[Candle]] = {s.date: [] for s in sessions}
     bounds = [(s.open, s.close, s.date) for s in sessions]
     for c in candles:
+        if (c.source, c.instrument_id, c.timeframe) != (source, instrument_id, Timeframe.H1):
+            raise ValueError("reader row identity does not match the requested provider, instrument and timeframe")
         home = next((d for open_, close, d in bounds if open_ <= c.start_time < close), None)
         if home is None:
             raise ValueError(f"stored H1 bar starting {c.start_time} is outside every calendar session")
@@ -176,11 +178,18 @@ def compare_daily(reader, source: str, instrument_id: str, resampled: Sequence[R
     """
     check_utc(at, "at")
     bars = list(resampled)
+    seen = set()
     for bar in bars:
         if bar.source != source:
             raise ValueError(f"resampled bars come from provider {bar.source}, not {source}")
         if bar.as_of != at:
             raise ValueError(f"resampled with cutoff {bar.as_of}, compared at {at}: the cutoff must be the same")
+        if not bar.inputs or any((ref.source, ref.instrument_id, ref.timeframe) !=
+                                 (source, instrument_id, Timeframe.H1) for ref in bar.inputs):
+            raise ValueError("resampled input identity does not match the requested provider and instrument")
+        if bar.session_date in seen:
+            raise ValueError(f"duplicate resampled session {bar.session_date}")
+        seen.add(bar.session_date)
     closed = {bar.session_date: bar for bar in bars if bar.state is BarState.CLOSED}
     if first_session is not None or last_session is not None or calendar is not None:
         if first_session is None or last_session is None or calendar is None:
@@ -194,7 +203,15 @@ def compare_daily(reader, source: str, instrument_id: str, resampled: Sequence[R
              (s.start_time, s.end_time) if isinstance(s, ResampledBar) else (s.open, s.close) for s in sessions}
     lo = min(start for start, _ in spans.values())
     hi = max(end for _, end in spans.values())
-    vendor = {c.start_time: c for c in reader.candles_visible_at(source, instrument_id, Timeframe.D1, lo, hi, at)}
+    vendor = {}
+    for c in reader.candles_visible_at(source, instrument_id, Timeframe.D1, lo, hi, at):
+        if (c.source, c.instrument_id, c.timeframe) != (source, instrument_id, Timeframe.D1):
+            raise ValueError("vendor row identity does not match the requested provider, instrument and timeframe")
+        if c.state is not BarState.CLOSED or c.end_time > at or c.available_from > at:
+            raise ValueError("vendor row must be closed and available at the comparison cutoff")
+        if c.start_time in vendor:
+            raise ValueError(f"duplicate vendor session starting {c.start_time}")
+        vendor[c.start_time] = c
     differences = []
     for d in sorted(spans):
         start = spans[d][0]
@@ -206,6 +223,11 @@ def compare_daily(reader, source: str, instrument_id: str, resampled: Sequence[R
         elif v is None:
             differences.append(DailyDifference(d, "missing_vendor", None, None))
         else:
+            for name in ("currency", "price_basis", "volume_basis"):
+                if getattr(v, name) != getattr(bar, name):
+                    raise ValueError(f"vendor and resampled {name} must match before comparing values")
+            if (v.start_time, v.end_time) != (bar.start_time, bar.end_time):
+                raise ValueError("vendor and resampled session boundaries must match")
             for name in _FIELDS:
                 if getattr(v, name) != getattr(bar, name):
                     differences.append(DailyDifference(d, name, getattr(v, name), getattr(bar, name)))
