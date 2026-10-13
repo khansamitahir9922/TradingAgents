@@ -149,6 +149,36 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-13: Claude Code (batch 4: M1-14 replay feed, committed `e8d4eab` and checked)
+`m1/batch-4` was created from the scheduling commit `5984997`. The M2 spec drafts are in a separate worktree, `C:\Users\LOQ\TradingAgents-m2-specs`, on `docs/m2-specs`.
+
+**M1-14** (`investment_engine/market/replay.py`, `tests/engine/test_replay.py`):
+- `ReplayFeed` delivers each stored revision as exactly one `ReplayEvent`: revision 1 is `BAR_CLOSED`, a later revision is `CANDLE_REVISED`, and any action revision is `CORPORATE_ACTION`.
+- **Times:** `event_time = available_from`; `received_at = processed_at = event_time + latency`.
+- **Window:** delivered iff `start <= received_at < end`. Candidates are read per provider with `*_revisions_available_between(…, start - latency, end - latency)`.
+- **Order:** spec rule 6's identity key, so it doesn't depend on reader order. A repeated stored revision raises.
+- **Clock:** advanced to each `received_at` and never backwards.
+- **Rejected:** a FORMING bar raises. Negative latency, an empty or backwards window, naive times, and duplicate or empty sources, instruments or timeframes are refused.
+- Replay never writes.
+
+**Tests (written first):** 27, covering every acceptance case in the spec:
+- the four Friday-correction windows;
+- the latency leak (`BAR_CLOSED` at E + 5 s carrying revision 1, `CANDLE_REVISED` at E + 8 s);
+- late first observation, and the window edge;
+- corporate actions, including actions before bars at equal times;
+- two providers;
+- the original, reversed and 20 seeded shuffles of reader output;
+- determinism, the clock, invalid arguments, FORMING, an unchanged store (hashes), labels, and the timeframe order.
+
+Two of my test set-ups first wrote a correction "received" before its original, which the writer correctly refuses; they were fixed.
+
+**Checks (before `e8d4eab`):**
+- `.venv/Scripts/python.exe -m pytest -q tests/engine/test_replay.py` → 27 passed.
+- `.venv/Scripts/python.exe -m pytest -q` (Git Bash) → **1937 passed, 1 failed** (`tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, **recorded in the baseline**), 4 skipped, 3 deselected.
+- `ruff check .` → All checks passed. Ruff first flagged import order in the new test file; it was sorted, then rechecked.
+
+**Process deviation, recorded:** this entry and M1-14's spec status line were meant to be in `e8d4eab`. A shell script failed, and the commit went ahead without them. They follow in a separate docs commit; the history wasn't rewritten.
+
 ### 2026-10-13: Claude Code (scheduling change applied: batches 3a, 3b, 4, 5; owner-approved)
 **Codex's review of v0.3.10:** the protocol and the offline runner pass (94 tests, ruff, 13 hashes; the 200 requests-per-minute figure matches Alpaca's published Basic-plan limit). Codex made **one scheduling correction**: batch 5 (M1-17) must depend on **3b and 4**, because M1-17 needs M1-12 and M1-13, which are done only when 3b merges.
 
