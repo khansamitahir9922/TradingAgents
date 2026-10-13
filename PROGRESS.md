@@ -149,6 +149,34 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-13: Claude Code (batch 4: M1-15 resampler, committed and checked)
+**M1-15** (`investment_engine/market/resample.py`, `tests/engine/test_resample.py`):
+- `resample_daily` reads one provider's H1 bars with `candles_visible_at(at)`, groups them into calendar sessions, and returns a `ResampledBar` (CLOSED or FORMING) or a `SessionGap` per session.
+- `aggregate_session` is pure, and it validates (it raises on any of these):
+  - a bar ending after `at`, or unavailable at `at`;
+  - mixed provider, instrument, currency or basis;
+  - a duplicate start, an off-grid bar, or a non-H1 or FORMING input.
+- **Aggregation** is in Decimal (first open, max high, min low, last close, summed volume). Every input is a complete `InputRef`, and the availability basis is BACKFILL_ASSUMED if any input is.
+- `compare_daily` reads the same provider's D1 bars at the same cutoff and reports field differences, `missing_vendor` and `missing_resampled`.
+- The spec's implicit edge cases are resolved conservatively and recorded in M1-15 ("batch 4"): a forming day needs every ended hour; no output before the open; gaps for empty sessions; the grid check; and the optional session range for `compare_daily`.
+
+**Tests (written first):** 26, covering every acceptance case in the spec:
+- a full regular day field by field, the half-day grid, and a full half-day;
+- the missing middle hour (a gap);
+- FORMING built only from ended bars, and a forming day with an earlier hour missing (a gap);
+- the cutoff: a bar ending after `at` raises; an unavailable input raises; the correction is revision 1 before its availability and revision 2 after;
+- mixed providers raise, and five kinds of inconsistent input;
+- duplicates and off-grid bars;
+- `compare_daily` per provider, identical, a different close, missing on either side, a vendor bar not yet available, FORMING not compared, and the same-cutoff rule;
+- complete lineage.
+
+My first run had two failures, neither in the logic: the cutoff check order (fixed, and recorded) and an invalid test bar (close above high, which the Candle contract rejects).
+
+**Checks:**
+- `.venv/Scripts/python.exe -m pytest -q tests/engine/test_resample.py` → 26 passed.
+- `.venv/Scripts/python.exe -m pytest -q` (Git Bash) → **1963 passed, 1 failed** (the same baseline failure), 4 skipped, 3 deselected.
+- `ruff check .` → All checks passed, after one simplification ruff suggested (`list(...)`).
+
 ### 2026-10-13: Claude Code (batch 4: M1-14 replay feed, committed `e8d4eab` and checked)
 `m1/batch-4` was created from the scheduling commit `5984997`. The M2 spec drafts are in a separate worktree, `C:\Users\LOQ\TradingAgents-m2-specs`, on `docs/m2-specs`.
 
