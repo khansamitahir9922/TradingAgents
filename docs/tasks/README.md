@@ -8,6 +8,8 @@
 
 Each task has one spec here (`M1-00.md` … `M1-17.md`). A spec is the contract for its task: anyone, whether Claude Code, Codex or a human, can pick it up from the repository alone.
 
+**M2 planning:** [draft M2 pack](M2-README.md), M2-00 – M2-12. The pack is awaiting independent review; it does not authorize M2 code. Existing check/commit/batch discipline applies to future accepted M2 tasks too. Completed M1 and resolved prerequisite decisions remain mandatory.
+
 ## Sections in every spec
 1. **Goal**: what the task delivers.
 2. **Dependencies**: tasks that must be done first. Merged into `main`, or committed and checked earlier on the same batch branch (see Workflow).

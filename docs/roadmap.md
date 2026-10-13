@@ -5,7 +5,7 @@
 | **Document status** | **v0.4, for review.** v0.3: Codex review passed; merged into `main` with the owner's approval (M0, `906ae85`, 2026-10-09). v0.4 adopts the **batch workflow** (§1.1, §4.3), records the owner's one-month window, and updates M0's completed status. Earlier notes:<br>v0.2 applied Codex's first roadmap review: workflow, baseline, Yahoo verification, availability.<br>v0.3 applies the M1 spec review: complete split history, per-field verification, replay timing, provider separation, the resampler cutoff, the frozen DataHealth states, and blocking on failed verification. |
 | **Date** | 2026-10-08 |
 | **Sources** | `architecture/architecture-v1.0.md` Part K (milestones and promotion gates; v1.0 FROZEN), `docs/PRD.md` (milestone table, OPEN-01 – OPEN-17), `architecture/adr/`. Where this roadmap and the architecture disagree, the architecture wins. |
-| **Estimates** | **M1 is detailed**, with a spec per task in `docs/tasks/`. Everything for M2 – M10 is **provisional**: listed as work packages that are split into 1–3 hour tasks, with specs, before implementation. |
+| **Estimates** | **M1 is detailed**. M2 has a **draft specification pack** (M2-00 – M2-12), awaiting independent review and acceptance. M3 – M10 remain provisional work packages, split into reviewed 1–3 hour tasks before implementation. |
 
 This roadmap splits the frozen milestones into **tasks of about 1–3 hours** each. A task is small enough to build, test and review in one sitting, and to hand over between Claude Code and Codex using only the repository's documents.
 
@@ -275,22 +275,19 @@ Most implementation choices are **resolved in the task specs**. These remain gen
 
 ## 5. M2 – M10 (provisional)
 
-Everything below is **provisional**. Each row is a **work package, not a task**: larger rows (anything over 3 hours) are split into 1–3 hour tasks, each with its own spec, before implementation starts. Names and estimates are for planning only.
+Everything below is **provisional**. M2's draft tasks are linked below; M3 – M10 rows remain work packages, with larger rows split into reviewed 1–3 hour tasks before implementation. Names and estimates are for planning only, not a promise of elapsed completion time.
 
 ### M2 — Quant + initial evaluation *(SQLite)*
-**Before it starts:** OPEN-06 (first rule strategies and required data sources); initial OPEN-09 metrics.
+**Before it starts:** completed M1, accepted M2 specifications and initial OPEN-09 experiment assumptions. The owner selected **OPEN-06 option A** as the daily NVDA research scope on 2026-10-13; exact rule parameters remain draft. OPEN-08 validity and OPEN-09 costs/windows/promotion thresholds stay provisional. No M2 runtime implementation is approved by this documentation change.
 
-| Provisional work package | Est. |
-|---|---|
-| Versioned feature definitions (float64; ADR-007) | 2–3 h |
-| Indicator set for the first strategies (several tasks) | 6–9 h |
-| `FeatureSnapshot` | 2 h |
-| Rule-strategy interface and first strategies, with declared required sources | 4–6 h |
-| `MarketView` with `policy_version`; `ABSTAIN` when a required source isn't OK (Law 9); `strength` never a probability | 3 h |
-| `LineageRecord` (bars with revisions, feature and strategy versions) | 2–3 h |
-| Initial evaluation: stated cost model, next-bar prices, no look-ahead | 6–8 h |
-| Walk-forward evaluation for rule strategies (must be in place, and passed, before any paper run in M4; PRD UC-11) | 4–6 h |
-| HTML report: NVDA chart with MarketViews and the evaluation, following design principles Sections 2 – 5 | 4–6 h |
+| Proposed batch | Draft tasks | Est. (planning only) |
+|---|---|---|
+| **M2-A** | [M2-00](tasks/M2-00.md) PIT split-adjusted view; [01](tasks/M2-01.md) versioned definitions; [02](tasks/M2-02.md) indicators; [03](tasks/M2-03.md) FeatureSnapshot | 8–10 h |
+| **M2-B** | [04](tasks/M2-04.md) strategy interface; [05](tasks/M2-05.md) two daily strategies; [06](tasks/M2-06.md) MarketView/policy; [07](tasks/M2-07.md) pipeline and complete append-only lineage | 9–11 h |
+| **M2-C** | [08](tasks/M2-08.md) price/total returns and completed labels; [09](tasks/M2-09.md) base-rate direction/IC metrics; [10](tasks/M2-10.md) next-open SIMULATED research with raw prices and explicit costs | 8–9 h |
+| **M2-D** | [11](tasks/M2-11.md) walk-forward, leakage guards and evaluation records; [12](tasks/M2-12.md) honest static HTML report | 6 h |
+
+[M2 pack and dependencies](tasks/M2-README.md). These groups support longer uninterrupted runs: the owner can approve combined A/B or C/D after the specs/configuration are accepted, with separate task commits and checks and a combined review package. Whole milestones cannot be combined in a way that bypasses their prerequisite gates, ADRs or merge approvals. M2-11 must be split into smaller specs if implementation planning shows its fold/storage work exceeds three hours. None of these draft groups is an implementation authorization.
 
 **Complete when:** the report shows views over NVDA history with honest, cost-inclusive results; replay tests give identical views across runs; lineage explains every view.
 
