@@ -400,3 +400,41 @@ def test_compare_daily_needs_the_same_cutoff(store):
     resampled = resample_daily(reader, "yfinance", NVDA, FRI, FRI, calendar=CAL, at=LATER)
     with pytest.raises(ValueError, match="cutoff"):
         compare_daily(reader, "yfinance", NVDA, resampled, at=LATER + timedelta(days=1))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("case", [
+    "future-bar-and-inputs", "future-bar", "future-input", "earlier-than-inputs",
+    "later-than-inputs", "naive-bar", "naive-input",
+])
+def test_comparison_refuses_future_or_inconsistent_availability_lineage(store, case):
+    reader = stored(store, [*friday_bars(), daily(FRI)])
+    [bar] = resample_daily(reader, "yfinance", NVDA, FRI, FRI, calendar=CAL, at=LATER)
+    future = LATER + timedelta(days=1)
+    if case == "future-bar-and-inputs":
+        altered = replace(bar, available_from=future,
+                          inputs=tuple(replace(ref, available_from=future) for ref in bar.inputs))
+    elif case == "future-bar":
+        altered = replace(bar, available_from=future)
+    elif case == "future-input":
+        altered = replace(bar, inputs=(replace(bar.inputs[0], available_from=future), *bar.inputs[1:]))
+    elif case == "earlier-than-inputs":
+        altered = replace(bar, available_from=bar.available_from - timedelta(seconds=1))
+    elif case == "later-than-inputs":
+        altered = replace(bar, available_from=bar.available_from + timedelta(seconds=1))
+    elif case == "naive-bar":
+        altered = replace(bar, available_from=bar.available_from.replace(tzinfo=None))
+    else:
+        altered = replace(bar, inputs=(replace(bar.inputs[0], available_from=bar.inputs[0].available_from.replace(tzinfo=None)),
+                                      *bar.inputs[1:]))
+    with pytest.raises(ValueError, match="available|availability"):
+        compare_daily(reader, "yfinance", NVDA, [altered], at=LATER)
+
+
+@pytest.mark.unit
+def test_comparison_accepts_inputs_available_exactly_at_the_cutoff(store):
+    reader = stored(store, [*friday_bars(), daily(FRI)])
+    [bar] = resample_daily(reader, "yfinance", NVDA, FRI, FRI, calendar=CAL, at=LATER)
+    at_cutoff = replace(bar, available_from=LATER,
+                        inputs=tuple(replace(ref, available_from=LATER) for ref in bar.inputs))
+    assert compare_daily(reader, "yfinance", NVDA, [at_cutoff], at=LATER) == []

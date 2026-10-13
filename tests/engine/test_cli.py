@@ -108,6 +108,7 @@ def test_report_has_exact_values_sources_bases_and_times_and_is_read_only(app):
                  "original publication time unknown", "recorded quantum", "TRADING STATUS CANNOT BE VERIFIED"):
         assert text in result.output
     assert "D1 OK" in result.output and "required_sources_ok=True" in result.output
+    assert "RESEARCH DATA (yfinance)" in result.output
     assert "H1 UNAVAILABLE" in result.output and "comparison UNAVAILABLE" in result.output
     after = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob("*") if p.is_file()}
     assert before == after
@@ -189,6 +190,7 @@ def test_only_the_named_providers_bars_and_corrections_are_shown(app):
     assert result.exit_code == 0 and "provider=testvendor" in result.output
     assert "100.0000 -> 100.5000 USD" in result.output and "101.0000" not in result.output
     assert "testvendor D1 OK" in result.output and "yfinance D1" not in result.output
+    assert "RESEARCH DATA (testvendor)" in result.output
 
 
 @pytest.mark.unit

@@ -202,7 +202,7 @@ def report(instrument: str = "EQ_US_NVDA", provider: str = "yfinance", timeframe
         timezone = ZoneInfo(identity.timezone)
         reader = reader_type(market_store_dir())
         _print(f"{identity.instrument_id} exchange={identity.exchange} provider={provider}")
-        _print("PAPER-ONLY PLATFORM | RESEARCH DATA | REPLAY | PARTIAL M1: daily support only")
+        _print(f"PAPER-ONLY PLATFORM | RESEARCH DATA ({provider}) | REPLAY | PARTIAL M1: daily support only")
         _print("TRADING STATUS CANNOT BE VERIFIED: no execution gate or kill-switch observation exists in M1. Autonomy UNCONFIGURED.")
         _print(f"Delivery window [{start.isoformat()}, {end.isoformat()}); latency={delay}; as-of {_times(cutoff, timezone)}")
         _print("RAW_AS_REPORTED: provider values; RAW_RECONSTRUCTED: reconstructed from split-adjusted research data.")

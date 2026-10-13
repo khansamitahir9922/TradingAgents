@@ -187,6 +187,13 @@ def compare_daily(reader, source: str, instrument_id: str, resampled: Sequence[R
         if not bar.inputs or any((ref.source, ref.instrument_id, ref.timeframe) !=
                                  (source, instrument_id, Timeframe.H1) for ref in bar.inputs):
             raise ValueError("resampled input identity does not match the requested provider and instrument")
+        # A matching as_of label is not proof that the referenced revisions were visible then.
+        available = check_utc(bar.available_from, "resampled available_from")
+        input_availability = [check_utc(ref.available_from, "input available_from") for ref in bar.inputs]
+        if available > at or any(value > at for value in input_availability):
+            raise ValueError("resampled bar and every input must be available at the comparison cutoff")
+        if available != max(input_availability):
+            raise ValueError("resampled availability must equal the latest input available_from")
         if bar.session_date in seen:
             raise ValueError(f"duplicate resampled session {bar.session_date}")
         seen.add(bar.session_date)
