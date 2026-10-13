@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **12 of 18 tasks done** (M1-00 – M1-11). |
 | **`main`** | Local `main` is at **`0661d46`** (`docs: record the batch 2 re-review fix and checks`). **Batch 2 passed Codex's review** (after two rounds of follow-up fixes) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12; batch 1 (`109a72d`) before it. `main` is 29 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Codex takeover package finished; independent review pending.** Batch 3a daily work reviewed, awaiting owner merge approval; 3b hourly remains BLOCKED. Batch 4 (M1-14 – M1-16) was implemented by Claude through `b394fbb`; Codex reviewed those commits, fixed additional regressions in `6618c47` and the final follow-up containing the newest log entry, and ran all checks. Codex changes await Claude/owner independent review. **13 M2 specs** are committed as drafts on `docs/m2-specs` at `bb86480`; no M2 code. Batch 5 still waits for 3b and 4. |
+| **Current work** | **Owner authorized Codex self-review and continuation without waiting for Claude (2026-10-13).** Batch 4 has been self-reviewed, with additional DataHealth boundary fixes and checks recorded below; this is not independent review. Batch 3a remains unmerged; 3b hourly remains BLOCKED. **13 M2 specs** are drafted and self-reviewed on `docs/m2-specs` at `6df10da`; OPEN-08/09 and M1 prerequisites remain unresolved, no M2 code. Public hourly-access assessment is on `docs/hourly-access-review`; a concrete daily-first CLI proposal is prepared outside the repo, awaiting an owner scope decision. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules plus `market/calendar/` (US equities, cited 2019 – 2026 data), `market/availability.py`, `market/candles.py`, `market/corporate_actions.py` and `market/store/` (schema, append-only writer, point-in-time reader). The `engine` extra adds `pyarrow` and `duckdb`. |
@@ -29,11 +29,12 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Batch 4 review:** Claude's task commits are complete and Codex's follow-up fixes/checks are recorded below. When Claude returns, it independently reviews Codex's changes; the owner reviews/approves any later merge. The current approval explicitly forbids merging or pushing.
-2. **M2 specification drafts:** `5984997..bb86480` on `docs/m2-specs`, in `C:\Users\LOQ\TradingAgents-m2-specs`, for independent review. Start at `docs/tasks/M2-README.md`, then read all 13 specs. OPEN-06 option A is the owner's selected research scope; exact strategy rules remain draft contracts. OPEN-09 assumptions/thresholds and OPEN-08 validity are **provisional**. No M2 code; completed M1 and accepted specs/decisions are prerequisites. This draft branch diverges from batch 4: after acceptance, integrate its documents on a fresh branch from the then-current main, preserving the newer operational handoff; don't blindly overwrite PROGRESS.md or rewrite either existing branch.
-3. **Batch 3a merge** needs the owner's approval. **Merge order:** `m1/batch-4` is built on top of `m1/batch-3`, so that every merge stays a fast-forward. 3a (this branch) merges first, then batch 4. Merging batch 4 first would need a rebase, with approval.
-4. **Batch 3b (hourly):** A4 (Alpaca's terms) first; then, with the owner's paper-account keys, A3, A1 + A2 and checkpoint R, per M1-12 v0.3.10.
-5. Merges, pushes, M2 implementation, key use and market-data downloads all need explicit approval.
+1. **Continue under the owner's self-review instruction.** Waiting for Claude is no longer a continuation prerequisite. Keep self-review distinct from independent review; a later Claude audit is still useful. Merges/pushes remain unauthorized. Code/contract fixes found by review are complete below.
+2. **Daily-first work proposal:** `C:/Users/LOQ/TradingAgents-proposals/daily-cli-unblock.md` and `.patch`, prepared and `git apply --check` passed, **not applied**. It would deliver the daily M1-17 report/import wiring using committed checked dependencies on an explicitly approved extended work branch; H1, full imports, full comparison and M1 completion remain blocked. The currently accepted roadmap makes all of batch 5 wait for 3b and 4, so this exact scheduling split needs the owner's decision before implementation.
+3. **M2 specification drafts:** `5984997..6df10da` on `docs/m2-specs`, in `C:\Users\LOQ\TradingAgents-m2-specs`, self-reviewed and still drafts pending configuration/scope acceptance. OPEN-06 option A is selected; OPEN-08/09 remain provisional. No M2 code; completed M1 remains a prerequisite. Preserve the newer operational handoff when later integrating these documents.
+4. **Batch 3a merge** needs the owner's approval. Preserve the existing stacked branch history; no merge/rebase is authorized here.
+5. **Batch 3b (hourly):** public A4 research has not established all permissions; see `docs/hourly-access-review`. Applicable account terms/publication permissions need resolution before keys, A3/A1/A2, R or downloads. This is an evidence/permission blocker, not a Claude-availability blocker.
+6. Merges, pushes, M2 implementation, key use and market-data downloads still need their own explicit instruction.
 
 **Owner's conditions for batch 2 (2026-10-12):**
 - complete **2019 – 2026** calendar coverage from **cited official exchange sources**, special closures included;
@@ -148,6 +149,31 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-13: Codex - continued under owner-authorized self-review
+
+The owner said to review on our own and continue rather than wait for Claude. Reviewed `6618c47` and `e43b309` against their task contracts and the combined branch. This is **self-review**, never described as independent approval. The instruction doesn't merge anything, waive missing hourly evidence, accept OPEN-08/09 assumptions or authorize keys/downloads.
+
+**Implemented M1-16 follow-up:**
+- A health query on 2019-01-01 (covered, but a holiday with no earlier covered session) previously raised CalendarRangeError. T's date is now validated outside the range-exhaustion handler; looking backwards past coverage returns an empty lookback, giving honest MISSING when no bars exist. Truly uncovered dates still raise.
+- `lookback_sessions=True` previously became 1 because bool subclasses int, silently reducing the checked history. Booleans are now refused, consistent with the existing explicit-integer threshold rule.
+- Three regression cases written first all failed on `e43b309`; all now pass. Only the task's allowed module/test/spec and this log changed.
+
+**Exact final commands/results:**
+- `.venv/Scripts/python.exe -m pytest -q tests/engine/test_data_health.py -k 'boolean_cannot or first_covered_holiday'`: 3 intentional new regression cases failed before implementation.
+- `.venv/Scripts/python.exe -m pytest -q tests/engine/test_replay.py tests/engine/test_resample.py tests/engine/test_data_health.py tests/engine/test_no_system_clock.py`: **139 passed**.
+- `.venv/Scripts/python.exe -m ruff check .`: passed.
+- `& 'C:/Program Files/Git/bin/bash.exe' -lc '.venv/Scripts/python.exe -m pytest -q'`: **2001 passed, 1 failed**, 4 skipped, 3 deselected, 99 subtests passed.
+- `& .venv/Scripts/python.exe -m pytest -q` (PowerShell): **2001 passed, 1 failed**, same skips/deselection/subtests.
+- Both suites' sole failure: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, **recorded in baseline**. The PowerShell CLI baseline failure did not reproduce; no new passing-baseline test failed.
+- `git diff --check` and `git diff --cached --check`: clean.
+
+**Fresh installed B2:** `py -3.11 -m venv <scratch>`; `<scratch>/Scripts/python.exe -m pip install '.[engine]'`, where scratch is `C:/Users/LOQ/AppData/Local/Temp/codex-health-review-b7833549af5947708a356aa2d6336bb0`; passed (install log retained there). Repository-root `<scratch>/Scripts/python.exe -c "import tradingagents, cli.main, investment_engine; print('review clean-install import OK')"` passed. From scratch, `& ./Scripts/python.exe -I 'C:/Users/LOQ/AppData/Local/Temp/codex-batch4-smoke-3dda18c4eff646308845dd5a578dbf0a/batch4_smoke.py'` passed. A subsequent isolated installed-copy check asserted `_lookback(calendar, datetime(2019,1,1,15,tzinfo=UTC),20) == []` and `HealthThresholds(lookback_sessions=True)` raises ValueError; passed. No dependencies or packaging changed.
+
+**Additional progress:** re-read all 13 M2 specs and corrected draft key/ABSTAIN/baseline consistency on the separate branch (`6df10da`); no M2 runtime. Investigated public Alpaca/exchange terms and prepared a source-linked A4 assessment on separate `docs/hourly-access-review` worktree, keeping protocol execution rules unchanged. A4 remains unresolved; no secret or data access. Prepared a concrete, **unapplied** daily-first M1-17 split in `C:/Users/LOQ/TradingAgents-proposals/daily-cli-unblock.md` and `.patch`; `git apply --check C:/Users/LOQ/TradingAgents-proposals/daily-cli-unblock.patch` passed. It preserves full hourly acceptance cases and the M1 completion gate. Its scope decision is necessary because the existing roadmap explicitly schedules batch 5 only after 3b and 4, independent of who reviews.
+
+**Next:** owner decides the daily-first split or resolves A4's account/publication permissions. On daily-first authorization, apply the prepared scheduling/spec patch, implement the whole partial task with tests first and all checks, then self-review. Don't stop after each already-authorized substep. No merge/push, branch deletion, M2 code, keys or market downloads occurred. Main stays `0661d46`, M1 done count 12/18. CI/live checks/other-Python matrix not run.
+
 
 ### 2026-10-13: Codex - final batch 4 checks and combined M2 handoff
 

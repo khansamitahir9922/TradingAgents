@@ -264,6 +264,26 @@ def test_default_thresholds_are_documented_and_immutable():
 
 
 @pytest.mark.unit
+def test_a_boolean_cannot_silently_shorten_the_health_lookback():
+    # True is an int subclass, but isn't an explicit number of sessions.
+    with pytest.raises(ValueError, match="positive integer"):
+        HealthThresholds(lookback_sessions=True)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("at", [utc(2019, 1, 1, 15), utc(2019, 1, 1, 21)],
+                         ids=["first-covered-holiday-daytime", "first-covered-holiday-evening"])
+def test_health_at_the_first_covered_holiday_has_an_empty_lookback(env, at):
+    # The date is covered; only its previous session lies outside coverage.
+    # An empty covered history is missing, not an out-of-range request.
+    result = health(env, [YF_D1], at)
+    assert result.applicability.applicable and not result.required_sources_ok
+    source = only(result, YF_D1)
+    assert source.status is HealthStatus.MISSING and source.latest_bar_end is None
+    assert "0 sessions" in source.detail
+
+
+@pytest.mark.unit
 def test_a_daily_bar_with_the_wrong_session_end_cannot_report_ok(env):
     # Candle deliberately doesn't validate calendar duration. Health must not
     # mistake a shortened vendor day for the expected complete daily bar.

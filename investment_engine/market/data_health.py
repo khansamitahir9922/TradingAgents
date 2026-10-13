@@ -92,7 +92,8 @@ class HealthThresholds:
             raise ValueError(f"stale_after_bars needs a threshold for every timeframe: {sorted(Timeframe)}")
         if any(not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in values.values()):
             raise ValueError("stale thresholds must be non-negative integers")
-        if not isinstance(self.lookback_sessions, int) or self.lookback_sessions < 1:
+        if (not isinstance(self.lookback_sessions, int) or isinstance(self.lookback_sessions, bool)
+                or self.lookback_sessions < 1):
             raise ValueError("lookback_sessions must be a positive integer")
         object.__setattr__(self, "stale_after_bars", values)
 
@@ -120,8 +121,9 @@ def _lookback(calendar: TradingCalendar, at: datetime, n: int) -> list[Session]:
     """
     d = at.astimezone(ZoneInfo(calendar.timezone)).date()
     sessions: list[Session] = []
-    current = calendar.session(d) if calendar.is_session(d) else calendar.previous_session(d)
+    is_session = calendar.is_session(d)  # validates T's date before catching an exhausted lookback
     try:
+        current = calendar.session(d) if is_session else calendar.previous_session(d)
         while len(sessions) < n:
             if current.open < at:
                 sessions.append(current)
