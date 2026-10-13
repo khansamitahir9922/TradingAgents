@@ -28,7 +28,7 @@ owner approves the batch → per task: spec → tests → implementation → tas
 - **One commit per task**, with its own tests and `PROGRESS.md` entry. Review fixes go in follow-up commits.
 - **Dependencies:** a task may build on an earlier task in the same batch branch once that task is committed and its task checks have passed. Dependencies outside the batch must be merged into `main`.
 - **Review:** Claude Code self-reviews the batch, including adversarial edge-case probes. Codex reviews **every commit** before the merge.
-- **Done** means the batch is merged. Before that, a task is "in progress", "committed (checked)", "in review" or "approved, awaiting merge". A task split across two batches (M1-12 and M1-13: batches 3a and 3b) is done only when its **last** batch merges.
+- **Done** means the batch is merged. Before that, a task is "in progress", "committed (checked)", "in review" or "approved, awaiting merge". A task split across two batches (M1-12 and M1-13: batches 3a and 3b; M1-17: 5a and 5b) is done only when its **last** batch merges.
 - **Stop rules:** stop and report on a new test failure, a needed file change outside the spec's allowed files, a spec gap needing an architecture or ADR change, or a blocked verification checkpoint (M1-12 is a firm checkpoint).
 - **Nothing is pushed** without the owner's explicit instruction. `.env` and `.claude/` are never staged.
 
