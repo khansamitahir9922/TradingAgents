@@ -149,6 +149,36 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-13: Claude Code (batch 4: M1-16 DataHealth, committed and checked)
+**M1-16** (`investment_engine/market/data_health.py`, `tests/engine/test_data_health.py`):
+- `evaluate_health` reports per provider and timeframe, at T = the injected clock's time, using **only** OK, STALE, MISSING and DEGRADED.
+- **Applicability** is a separate field. An inactive instrument gives no source statuses, with `required_sources_ok = False` and a reason ("not active before …" or "not active on or after …").
+- **MISSING:** no symbol mapping at T (detail "no symbol mapping for <provider> on <date>"), or no bar visible in the lookback.
+- **STALE:** expected bars behind > the timeframe's threshold. Expected bars come from the calendar, so nights, weekends and holidays never count.
+- **DEGRADED:** holes up to the latest visible bar.
+- Reads use `candles_visible_at(T)` per provider only. Nothing is persisted.
+- The spec's implicit choices are recorded in M1-16 ("batch 4"): behind against missing; the lookback bounded by the calendar; the input checks.
+
+**Tests (written first):** 17, covering every acceptance case in the spec:
+- OK; one bar behind still OK; STALE with `bars_behind`, and a relaxed threshold;
+- a weekend and a holiday not counted;
+- DEGRADED listing the removed session;
+- MISSING with no bars, and with no mapping;
+- hourly bars, counting ended hours;
+- inactive and delisted instruments, which aren't applicable;
+- **every path reaching exactly the four statuses** (`detail` empty iff OK);
+- two providers, independent, and `testvendor` never filling a `yfinance` gap;
+- a bar first observed after T, and a correction after T, both unused;
+- the injected clock; the required-set and threshold checks.
+
+**Corrected in my own tests before the first green run:** a series starting 3 June would rightly show May as holes under a 20-session lookback, so the series now starts 1 May; the hourly test uses a 2-session lookback; and one expected count (9 sessions behind on 30 June, not 6).
+
+**Checks:**
+- `.venv/Scripts/python.exe -m pytest -q tests/engine/test_data_health.py` → 17 passed.
+- `tests/engine/test_no_system_clock.py` and `test_layering.py` → 53 passed (the clock scan covers the new modules).
+- `.venv/Scripts/python.exe -m pytest -q` (Git Bash) → **1980 passed, 1 failed** (the same baseline failure), 4 skipped, 3 deselected.
+- `ruff check .` → All checks passed.
+
 ### 2026-10-13: Claude Code (batch 4: M1-15 resampler, committed and checked)
 **M1-15** (`investment_engine/market/resample.py`, `tests/engine/test_resample.py`):
 - `resample_daily` reads one provider's H1 bars with `candles_visible_at(at)`, groups them into calendar sessions, and returns a `ResampledBar` (CLOSED or FORMING) or a `SessionGap` per session.
