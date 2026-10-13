@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **12 of 18 tasks done** (M1-00 – M1-11). |
 | **`main`** | Local `main` is at **`0661d46`** (`docs: record the batch 2 re-review fix and checks`). **Batch 2 passed Codex's review** (after two rounds of follow-up fixes) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12; batch 1 (`109a72d`) before it. `main` is 29 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Batch 3 (daily part) on `m1/batch-3`: review fixes committed, awaiting Codex's review.** Codex implemented `fcd8457` (M1-12 daily semantics and actions), `d93e47e` (M1-13 daily bars) and `f1ebc7b` while Claude Code was unavailable; handoff `62118a2`. Claude Code's independent review found one blocking issue (B1); the owner approved four fixes, committed as `9b901b4`, `4cd81b4`, `09d7321`, `f2536fb`, plus this record. Task and batch checks pass against the baseline. **Hourly prices and volume remain BLOCKED; batch 3 is not complete. No merge, push or batch 4.** |
+| **Current work** | **Batch 3 (daily part) on `m1/batch-3`: review fixes accepted by Codex (2026-10-12). Hourly verification protocol v0.3.10 (M1-12, uncommitted) with a complete offline runner outside the repository (frozen by `MANIFEST.sha256`), for Codex review. A roadmap patch for batches 3a/3b/4/5 is prepared outside the repository, not applied.** Codex implemented `fcd8457` (M1-12 daily semantics and actions), `d93e47e` (M1-13 daily bars) and `f1ebc7b` while Claude Code was unavailable; handoff `62118a2`. Claude Code's independent review found one blocking issue (B1); the owner approved four fixes, committed as `9b901b4`, `4cd81b4`, `09d7321`, `f2536fb`, plus this record. Task and batch checks pass against the baseline. **Hourly prices and volume remain BLOCKED; batch 3 is not complete. No merge, push or batch 4.** |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules plus `market/calendar/` (US equities, cited 2019 – 2026 data), `market/availability.py`, `market/candles.py`, `market/corporate_actions.py` and `market/store/` (schema, append-only writer, point-in-time reader). The `engine` extra adds `pyarrow` and `duckdb`. |
@@ -29,10 +29,10 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Codex reviews the review-fix commits** `9b901b4`, `4cd81b4`, `09d7321`, `f2536fb` and the record commit after them (session log, 2026-10-12, "batch 3 review fixes"). Claude Code's independent review of `0661d46..62118a2` is done: one blocking finding (B1, fixed) and seven suggestions (three fixed, the rest deferred below). Codex is the reviewer again.
+1. **Codex reviews the hourly verification protocol v0.3.10, the frozen offline runner and the roadmap patch** (M1-12, uncommitted; scripts in `C:\Users\LOQ\hourly-verification`; session log, 2026-10-13, "protocol v0.3.10 package"). No data is downloaded until it passes review. Then the access checks run first, starting with the terms check A4, before any key is used. Codex accepted the review fixes `62118a2..4f594bf` (no blocking findings).
    - **Hourly remains blocked** pending comparable independent evidence (Open issues). Batch 3 and M1 are not complete.
    - Merging needs the owner's separate approval, and only once hourly is resolved or the owner decides how to treat the daily-only state. Nothing is pushed without the owner's instruction.
-2. Then **batch 4 (M1-14 – M1-17)**, after a new owner approval. **Not started.**
+2. **Owner decisions** (session log, 2026-10-13, "protocol v0.3.10 package"): the roadmap patch (batches 3a, 3b, 4, 5); the combined work package (batch 4 with the M2 spec pack); and OPEN-06 and OPEN-09 (proposed choices listed there). Nothing in them is applied or started.
 
 **Owner's conditions for batch 2 (2026-10-12):**
 - complete **2019 – 2026** calendar coverage from **cited official exchange sources**, special closures included;
@@ -147,6 +147,320 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-13: Claude Code (snapshot check after Codex's review; no changes)
+Codex's latest review describes the **v0.3.9** snapshot: 79 tests, `E` in the tape-C profile, no time estimate in checkpoint R, and the stale runner sentence. All three items are already fixed in **v0.3.10** (entry below). Re-verified 2026-10-13 on the current files:
+- `MANIFEST.sha256` SHA-256 `2ad88c803a63c241c8fb16d452d6559b60d4491aad8772af9690c0a1c360a343`; `sha256sum -c` gives 13 OK;
+- **94 passed**; ruff: All checks passed!;
+- no `E` entry in `ALPACA_MINUTE_TAPE_C`, and other tapes are unmapped;
+- `resource_estimate` has `REQUESTS_PER_MINUTE = 200`, `estimated_minimum_minutes`, and "estimates, not bounds" (no `upper_bound` keys);
+- the stale sentence is absent from M1-12;
+- the roadmap patch (SHA-256 `c6747e66…a8047d`) still passes `git apply --check`.
+
+**Review this snapshot: v0.3.10, manifest `2ad88c80…`.** No files changed in this check.
+
+### 2026-10-13: Claude Code (protocol v0.3.10 package: Codex's v0.3.9 review, roadmap patch, work package, OPEN-06/09 proposals; uncommitted)
+Codex reviewed v0.3.9 and independently confirmed:
+- 79 tests passed and ruff passed;
+- empty and malformed responses are rejected;
+- partial results can't establish verification;
+- auction volume respects combined restrictions;
+- the runner connects the checks.
+
+**One fix and two cleanups remained.** The owner approved one offline finishing run. Limits: no keys, market-data downloads, commits, merges, pushes, or starting the proposed batches.
+
+**Fixes:**
+1. **Checkpoint R** (`hv/run.py`, `resource_estimate`):
+   - It now states the **request-rate assumption**: Alpaca's Basic plan, 200 historical calls per minute ("About Market Data API", retrieved 2026-10-12).
+   - It gives the **estimated minimum time**: requests ÷ 200, rounded up; retries, latency and processing add to it.
+   - Sizes are labelled **"projected from calibration date …; estimates, not bounds"**, and the "upper bound" keys are gone.
+   - **Test:** `test_checkpoint_r_states_the_rate_assumption_and_minimum_time`.
+2. **Stale sentence** about an unfinished entry point: removed from M1-12.
+3. **A3's public part, with tape applicability.** I read Alpaca's aggregation table row by row with its tape column (through a fetch of the page's coloured markers, not a byte-exact copy). NVDA is tape C.
+   - Both profiles are now **tape-C tables**: the vendor profile is exactly the minute rows whose tape includes C.
+   - **Unmapped on tape C:**
+     - **E** (tapes A/B only, Codex's example);
+     - the **blank** regular-sale code (A/B only);
+     - S, 1, 2, 3 and 8;
+     - a trade with **no** codes;
+     - **any other tape**.
+   - Alpaca's daily rows agree with the UTP matrix on G, P, Z, 4, 9 and T.
+   - **Tests:** the vendor table equals the documented rows code by code; the daily rows agree; unmapped codes and tapes; and a trade on another tape can't build a bar.
+   - **Still pending at A3:** Alpaca's tape-C condition endpoint (needs keys, after A4).
+
+**Exact commands and results** (Git Bash, in `C:\Users\LOQ\hourly-verification`, frozen snapshot):
+- `sha256sum -c MANIFEST.sha256`: 13 files OK. `MANIFEST.sha256` itself: `2ad88c803a63c241c8fb16d452d6559b60d4491aad8772af9690c0a1c360a343`.
+- `/c/Users/LOQ/TradingAgents/.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider tests`: **94 passed**.
+- `/c/Users/LOQ/TradingAgents/.venv/Scripts/python.exe -m ruff check --no-cache .`: **All checks passed!**
+
+Repository: only `docs/tasks/M1-12.md` (v0.3.10) and `PROGRESS.md` changed, uncommitted; `git diff --check` clean. Repository tests weren't run (no repository code changed). No keys, no market data, CI not run.
+
+**1. Roadmap patch (prepared, not applied).**
+- **File:** `C:\Users\LOQ\TradingAgents-proposals\roadmap-batch-split.patch`, outside the repository, SHA-256 `c6747e6645496295b4a20d4d596d25a1a5952d5b3a68abdc13ed744207a8047d`.
+- **Check:** `git apply --check -p1` against the current tree passes (exit 0); nothing was applied.
+- **Changes:**
+  - `docs/roadmap.md` §4.3: rows 3 and 4 become **3a** (daily, reviewed; hourly fields BLOCKED), **3b** (the hourly protocol run, unblocking and the hourly import; M1-12/M1-13 done only when 3b merges), **4** (M1-14 – M1-16; needs batches 1 and 2 only) and **5** (M1-17; needs 3a and 4, and 3b for the hourly section). A note records the owner's decision (date to fill in) and that only the grouping changed, not task dependencies.
+  - `docs/tasks/README.md`: "a task split across two batches is done only when its last batch merges".
+  - `docs/data-provenance/yfinance.md`: "batch 3" becomes "batch 3b".
+- **Unchanged:** the dependency phases, §4.5 (M1 completion) and the architecture. No ADR is needed.
+- **When approved,** it would go in as its own docs commit, before batch 4 starts.
+
+**2. The combined work package (proposed; starts only after the patch is approved and applied).**
+
+| Track | Branch | Order and contents | Est. | Checkpoints |
+|---|---|---|---|---|
+| **Batch 4 (code)** | `m1/batch-4` from `main` | M1-14 replay → M1-15 resampler → M1-16 DataHealth. Each task: spec re-read, tests first, implementation, task checks (its tests, full suite in Git Bash, ruff), PROGRESS entry, one commit. Then batch checks (PowerShell suite, clean-install smoke), self-review with adversarial probes | 8 – 9 h | Stop rules unchanged; Codex reviews every commit; merge needs approval |
+| **M2 spec pack (docs)** | `docs/m2-specs` from `main` | Draft 1 – 3 h task specs: (1) the point-in-time **split-adjusted view** and leakage protections, then (2) versioned features, (3) indicators for the chosen strategies, (4) `FeatureSnapshot`, (5) the rule-strategy interface and first strategies, (6) `MarketView` with Law 9 `ABSTAIN`, (7) `LineageRecord`, (8) the initial evaluation (cost model, next-bar fills), (9) walk-forward, (10) the HTML report; plus roadmap §5's M2 table and batch plan | 4 – 6 h | Codex reviews the specs; **no M2 code until they are accepted and M1's prerequisites hold** |
+
+Run as **one session** (about 12 – 15 h of work). Code and docs live on separate branches with separate commits and reviews. A blocker in one track doesn't stop the other, except a stop rule, which stops the session and is reported.
+
+**3. OPEN-06 and OPEN-09: proposed choices (owner decisions; not evidence-based thresholds).**
+
+*OPEN-06, first rule strategies and required sources:*
+- **Option A (recommended):** two daily strategies on NVDA, computed on the point-in-time split-adjusted daily view.
+  - **(A1) Trend:** close against the 200-day SMA, with the 50/200 SMA state, gives BULLISH, BEARISH or NEUTRAL. Strength is the normalised distance from the 200-day SMA.
+  - **(A2) Pullback within the trend:** RSI(14) ≤ 30 above the 200-day SMA gives BULLISH; RSI ≥ 70 below it gives BEARISH; otherwise NEUTRAL.
+  - **Required sources (Law 9):** yfinance **D1** bars (verified daily fields) with DataHealth `OK`, and yfinance **SPLIT** actions (for the adjusted view). Missing either means `ABSTAIN`.
+  - Hourly isn't required (it's blocked). Dividends aren't required (price return; total return is labelled separately).
+- **Option B:** the trend strategy only. Fastest; the least to evaluate.
+- **Option C:** add an hourly strategy. Not possible until 3b resolves.
+
+*OPEN-09, evaluation and promotion thresholds* (starting points to confirm; one instrument only, see OPEN-05):
+- **Initial evaluation (M2):**
+  - daily bars 2019 – 2026;
+  - **next-bar-open fills**;
+  - stated costs of **5 bps per side** (commission assumed 0, slippage 5 bps), with a sensitivity run at 10 bps;
+  - benchmarks: buy-and-hold NVDA, and cash;
+  - metrics: return after costs (total and annualised), Sharpe, Sortino, maximum drawdown, hit rate against the base rate, the information coefficient, trade count, exposure and turnover.
+- **Horizon:** views are evaluated over **5 trading days** (swing).
+- **Walk-forward:** rolling **2-year training and 6-month test windows**, stepped by 6 months; only out-of-sample windows count.
+- **Shadow promotion (before M4):** across the out-of-sample windows, after costs:
+  - Sharpe ≥ **0.5**;
+  - maximum drawdown no worse than buy-and-hold over the same windows;
+  - at least **30** trades;
+  - a positive result in at least **60%** of windows.
+
+  A stricter alternative: Sharpe ≥ 0.8 and at least 50 trades.
+- **Level 1 and Level 2:** set before M4. Proposal: Level 1 after at least **3 months** in shadow with results tracking the backtest within a stated band; Level 2 decided later.
+
+### 2026-10-12: Claude Code (protocol v0.3.9 package: Codex's four findings, complete runner, roadmap proposal; uncommitted)
+Codex reviewed the v0.3.7 package. **Its correction:** the historical `u` field is confirmed by Alpaca staff, so that objection is resolved. **Four blocking findings remained.** The owner approved one uninterrupted offline package. Limits: no keys, market-data downloads, purchases, commits, merges, pushes or batch 4; hourly stays blocked.
+
+**Codex's note on snapshots:** the scratch files changed during its review (62 tests at first, then a snapshot with three collection errors). That version isn't approved. This package is **frozen**: `MANIFEST.sha256` in the scripts folder lists all 13 files, and every result below is for that snapshot.
+
+**Findings and fixes:**
+1. **The daily check could give a false explanation**: only matching minutes were fetched.
+   - v0.3.8 already pulled whole dates. v0.3.9 makes that the only path: `run_protocol` pulls the full trading date for every difference and agreement session, and D-OFFICIAL always uses all of it.
+   - **Regression tests:** Codex's case end to end (an eligible trade elsewhere in the date, so "unexplained" and P-H undetermined), plus the unit-level case.
+2. **Empty or malformed responses could pass.**
+   - Pages must carry the records key, `symbol` equal to the requested one, and object records. A token-only page, a missing or other symbol, or non-object records are malformed: retried, then incomplete.
+   - Calibration fails with no trades, or with any regular-session minute lacking a vendor bar.
+   - **Tests:** four malformed-page cases, an explicit null list, an empty market, and one missing minute.
+3. **The final decision didn't enforce complete coverage.**
+   - `p_h_decision` now requires results for **exactly** the expected (session, extreme, bar) identities: 196 for the saved fixtures.
+   - **The runner is complete** (`run_protocol`):
+     - calibration;
+     - checkpoint R as an owner callback;
+     - full-date and capture-window pulls;
+     - all eight combinations;
+     - exact coverage;
+     - all 60 agreement bars, each checked, plus the daily extremes;
+     - E1 over every pre-split bar in full-date sessions;
+     - V-H over all 1004 anchors under both closing-cross hypotheses;
+     - the final decisions.
+   - Two fitting rules are reported and never chosen.
+   - **Tests:** a single result against the expected set; duplicate and unexpected results; and a synthetic two-session market where exactly H-MIN/CC-TS is right and is selected. Separately: checkpoint R declined; access refused mid-run; a paging failure; flag evidence; a missing expected target.
+4. **Closing-auction rules.**
+   - CC-TS and CC-LAST are separate hypotheses for prices and volume, with the capture boundary `[close, 24:00 New York)` always pulled completely.
+   - Closing-cross volume counts only valid prints whose **combined** conditions allow volume under the ALPACA profile.
+   - **Tests:** Codex's 500-share case (`6` + `9`, adds nothing), and an `incorrect` print.
+
+**Cited:** Alpaca staff on the historical `u` field. The Alpaca community forum, "Persistent IONQ SIP trade/bar mismatch", reply of 2026-07-16: canceled and incorrect trades "are not included in bar calculations however, they do show up as trades". The protocol's validity rule matches Alpaca's bar rule.
+
+**Self-review fixes, within scope.**
+- Volume now uses the vendor's minute bars wherever paging is complete, the same rule for full-date and volume-only sessions, with reconciliation recorded alongside.
+- A permission error mid-run stops cleanly.
+- The agreement count comes from the target set (60 for the fixtures).
+- The protocol states E1's exact bar set, the page validation and the runner's manual pre-conditions (A4, A3).
+- One test expectation of mine was wrong: an in-range cancelled trade makes two rules fit, and the runner correctly declines to choose. It's now a test of that behaviour.
+
+**Exact commands and results** (Git Bash, in `C:\Users\LOQ\hourly-verification`, frozen snapshot):
+- `sha256sum -c MANIFEST.sha256`: 13 files OK.
+- `/c/Users/LOQ/TradingAgents/.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider tests`: **79 passed**.
+- `/c/Users/LOQ/TradingAgents/.venv/Scripts/python.exe -m ruff check --no-cache .`: **All checks passed!**
+
+Repository: only `docs/tasks/M1-12.md` (v0.3.9) and `PROGRESS.md` changed, uncommitted; `git diff --check` clean. Repository tests weren't run (no repository code changed). No keys, no market data, CI not run.
+
+**Proposed roadmap change (not applied; it needs the owner's approval and Codex's review).** In `docs/roadmap.md` §4.3, replace the batch 3 and 4 rows with:
+
+| Batch | Tasks | Purpose | Task order inside the batch | Needs merged first | Notes |
+|---|---|---|---|---|---|
+| **3a** | M1-12 – M1-13, **daily part** | Yahoo daily verification, corporate actions, daily bars | 12, then 13 (done: `0661d46..4f594bf`, accepted by Codex) | Batches 1 and 2 | **Firm checkpoint passed for daily fields.** `H1_PRICE`/`H1_VOLUME` stay BLOCKED in `YAHOO_VERIFICATION`. Merging doesn't complete M1-12 or M1-13. |
+| **3b** | M1-12 – M1-13, **hourly part** | Hourly verification protocol run; then, separately, unblocking and the hourly import | Protocol gates A4 → A3 → A1 + A2 → R → full run → evidence review; then the unblocking commit; then the M1-13 hourly path | 3a | **Firm checkpoint.** M1-12 and M1-13 are **done only when 3b merges.** |
+| **4** | M1-14 – M1-16 | Replay, resampling, data health | 14, 15, 16 | Batches 1 and 2 (M1-01, M1-05, M1-07 – M1-11) | Doesn't depend on Yahoo verification; can run while 3b waits on evidence |
+| **5** | M1-17 | NVDA report | — | 3a and 4; 3b for the hourly section | Package data: smoke check within the task. Until 3b, the report's hourly section shows BLOCKED. **M1 completes only when no field is blocked** (§4.5). |
+
+Also in §4.3:
+- Under the table, add: "Batches 3a/3b split the daily and hourly work (owner decision, date). Batch 4 no longer waits for batch 3, because M1-14 – M1-16 don't use M1-12 or M1-13."
+- The dependency **phases** table is unchanged; it already places M1-13 – M1-16 in phase G.
+
+Elsewhere:
+- `docs/tasks/README.md` (Workflow): add one line, "a task split across two batches is done when its last batch merges".
+- `PROGRESS.md`'s task count stays at 12 of 18 until 3b merges.
+- No architecture or ADR change; roadmap §4.5 (M1 completion) is unchanged.
+
+### 2026-10-12: Claude Code (protocol v0.3.8 package: Codex's four findings, sources, offline harness, batch proposal; uncommitted)
+Codex reviewed v0.3.7: four blocking findings. The owner approved fixing all four and completing the offline preparation package in one run. Limits: no keys, market-data downloads, purchases, commits, merges, pushes or batch 4 work; hourly stays blocked; repository changes only in M1-12.md and PROGRESS.md.
+
+**1. Cancellation handling (finding 1).**
+- **Researched:** Alpaca's historical-trades reference documents an optional `u` field (`canceled` / `incorrect` / `corrected`). Alpaca's official Python `Trade` model has no such field, and its real-time feed sends cancellations (`x`) and corrections (`c`) as separate messages. On Alpaca's forum, staff say corrections are applied in end-of-day batches and bars are regenerated for a few days, and that (symbol, date, exchange, trade ID) identifies a historical trade.
+- **Protocol:** flag presence is now **A2 evidence** (fields present per trade object; counts of each flag value). **H-UNCANCELLED is untestable** unless the pulled data contains flagged `canceled`/`incorrect` records, and untestable never counts as explained. Even when testable, an explanation needs the specific trade to carry the flag.
+- **Harness:** flag counts, fields seen, and an "untestable" outcome. A test shows H-MIN and H-UNCANCELLED are identical without flags.
+
+**2. Separate vendor and official rules (finding 2).**
+- **ALPACA profile:** reproduces Alpaca's bars, and defines the H-MIN, H-ODD and H-UNCANCELLED rules. It is cited to Alpaca's FAQ, including its statement that it "simply" uses first-only or always-update in place of the specifications' more complicated rules.
+- **UTP profile** (§3.14.2, four versions cited): D-OFFICIAL and H-DAY only.
+- **The field-update algorithm is exact:**
+  - open/close stay unset if no trade sets them;
+  - the "first" reading is fixed per rule ("first trade" in Alpaca's wording, which never arises in minute bars; "no open yet" from the UTP wording, for H-DAY);
+  - a bar exists only with every field set and volume > 0;
+  - D-OFFICIAL evaluates only high/low and volume.
+
+**3. Closing auction (finding 3).** Reconciliation assigns minutes **by timestamp truncation only**, so a closing-cross print at 16:00:00.2 is in the 16:00 minute. Placement in the last hourly bar is a **separate Yahoo hypothesis (CC-LAST, against CC-TS)**, giving eight rule combinations. Its window is the rest of the trading date, so every same-date report is captured; reports dated later are a recorded limitation.
+
+**4. Full-session coverage (finding 4).** Every session D-OFFICIAL checks is pulled for its **full trading date** (00:00 – 24:00 New York): the 181 difference sessions **and** the agreement-sample sessions. A test shows a more extreme eligible trade elsewhere in the date defeating a local explanation. Volume-only sessions pull from the close to the end of the date, for CC-LAST.
+
+**Completeness, per Codex's note.** Paging integrity (hard failure) and reconciliation (recorded differences) are kept apart:
+- any paging failure makes the session's coverage missing;
+- any unresolved reconciliation difference makes the session's differences unexplained, and it is resolved only by a reviewed written explanation;
+- the limitation is stated: matching summaries don't prove every trade was delivered.
+
+A new checkpoint **R** has the owner approve a resource estimate, extrapolated from A2's per-date pages and bytes, before the full run.
+
+**Harness** (`C:\Users\LOQ\hourly-verification`, outside any repository): **73 passed** offline (`.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider tests` there), and `ruff check` (default rules) clean.
+- **Coverage:**
+  - paging, retries, malformed pages and repeated tokens;
+  - duplicate conflicts under the (date, exchange, ID) key;
+  - update flags present or absent;
+  - corrections and cancellations, and missing cancellation evidence;
+  - timestamp minutes and closing-cross placement;
+  - full-date coverage;
+  - paging failures recorded apart from reconciliation differences;
+  - calibration failing closed;
+  - every classification outcome;
+  - the real fixture targets and pull list: 181 + up to 60 sessions.
+- **Still manual or unwired:** the agreement-sample comparison, E1 and the volume decision are tested functions, not yet one command. A2's `corrected`-timestamp check is by inspection.
+
+**Self-review fixes, within scope.**
+- My earlier design calibrated a "first" reading that minute bars can't reveal (Alpaca's minute column has no first-only codes). The reading is now fixed per rule and justified by the sources.
+- Calibration pulled the date twice; it now pulls once.
+- The duplicate key followed Alpaca's documented identity.
+- Trade-object fields are now recorded as A2 evidence.
+- Two of my test set-ups were corrected, and lint findings were fixed.
+
+**Validation:** harness 73 passed, offline. Repository: `git diff --check` clean. Only `docs/tasks/M1-12.md` and `PROGRESS.md` changed, uncommitted. Repository tests weren't run, since no repository code changed. No keys used, no market data downloaded, CI not run.
+
+**Concrete batch proposal (replaces the earlier table; nothing started).** Estimates are from roadmap §4.2 and §5.
+
+| Batch | Tasks (order) | Est. | Needs first | Checkpoints |
+|---|---|---|---|---|
+| **3a** | Merge the daily part of M1-12/M1-13 (`0661d46..4f594bf`), hourly fields explicitly BLOCKED | merge only | **Your decision to split batch 3**; Codex agrees | Merge approval. M1 stays incomplete |
+| **3b** | Hourly protocol run: A4, then A3 and A1 + A2, then R, then the full run and evidence review; afterwards, separately, unblock and the M1-13 hourly path | depends on R | v0.3.8 accepted; A4 passes; your approval at R | Every protocol gate; Codex reviews the evidence; separate unblocking commit |
+| **4** | **M1-14** replay, **M1-15** resampler, **M1-16** DataHealth | 8 – 9 h | Only tasks in `main` (M1-01, 05, 07 – 11) | One commit per task; task and batch checks; Codex reviews every commit; merge approval |
+| **M2 spec pack** (docs) | Split M2's work packages into 1 – 3 h task specs: adjusted-price view and leakage protections first, then features and indicators, `FeatureSnapshot`, the strategy interface, `MarketView` (Law 9 `ABSTAIN`), `LineageRecord`, evaluation, walk-forward and the report; plus the roadmap §4.3 batch update | 4 – 6 h drafting | Your **OPEN-06** (first strategies and sources) and initial **OPEN-09** (metrics) | Codex reviews; no M2 code before acceptance |
+| **5** | **M1-17** NVDA CLI (daily complete; hourly section shows BLOCKED) | 3 h | 3a and 4 merged | M1 completes only when no field is blocked (roadmap §4.5) |
+| **6** | M2: adjusted view, feature definitions, indicators, `FeatureSnapshot` | 12 – 17 h | M2 specs accepted; M1 merged (or your explicit choice to start before hourly resolves) | Per-task commits; no look-ahead tests |
+| **7** | M2: strategy interface and first strategies, `MarketView`, `LineageRecord` | 9 – 12 h | Batch 6 | Law 9 abstention tests; replay-identical views |
+| **8** | M2: initial evaluation, walk-forward, HTML report (design principles §2 – 5) | 14 – 20 h | Batch 7 | Walk-forward before any paper run (M4) |
+
+**Suggested long runs:**
+1. Batch 4 together with the M2 spec pack: about 12 – 15 h; code and docs in separate commits and reviews.
+2. Batch 5 with 3a's merge follow-ups.
+3. Batches 6 and 7 together.
+
+Cross-milestone pulls such as an early PostgreSQL move (M3, ADR-008) are **not** proposed: ADR-008 times it at M3, and moving it would need a reviewed plan change.
+
+### 2026-10-12: Claude Code (protocol v0.3.7 work package: rules researched, offline scripts, batch proposal; uncommitted)
+The owner approved one uninterrupted work package with a single report. Its limits: changes only in M1-12.md and PROGRESS.md, left uncommitted; scripts outside the repository; no authenticated requests, market-data downloads or purchases; hourly stays blocked; no merge, push or batch 4.
+
+**1. Protocol findings.** Codex's three blocking findings and A4's pass/fail rule were addressed in v0.3.6 (entry below) and carried into v0.3.7.
+
+**2. Official rules researched and cited (M1-12 v0.3.7, step 3).**
+- **Sources:** the UTP Data Feed Services Specification's sale-condition matrix (§3.14.2), versions 4.1 (September 2026), 3.0a (November 2025), 2.1a (June 2025) and binary 1.2d (undated). All four were downloaded from utpplan.com, and their SHA-256 checksums are recorded.
+- **Agreement across versions:** the consolidated rows are identical for every code that affects high/low or volume. Only v1.2d adds codes 2 and 3, and the reserved code N changes.
+- **Key fact:** the UTP Plan defines **only consolidated (daily) rules**.
+  - G, P, Z and 4 set daily high/low, and last only if first. Odd lots (I) and Form T are volume only.
+  - **There is no official minute profile.** Alpaca's minute rules are a vendor convention, now cited as such and to be confirmed verbatim at A3. My transcription came from a summary.
+- **Also added to the protocol:**
+  - A1/A2 now cover the full session and calibrate the trade-count definition; if neither definition works, A2 fails;
+  - how the daily extreme is located (minute bars, else every trade of the trading date);
+  - the last-bar pull runs one minute past the close for the closing cross;
+  - closing-cross volume is added from trades;
+  - E and N: Alpaca maps them, but the UTP matrix marks them "TBD", so they can't be judged officially;
+  - if more than one rule explains everything, the owner and Codex decide.
+
+**3. Scripts, outside the repository** (`C:\Users\LOQ\hourly-verification`, not a git repository), tested **offline only**: **62 passed** (`.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider tests` run there); ruff (pyflakes, bugbear, import order) clean. A socket guard fails any connection attempt. The real transport refuses to run without `HV_ALLOW_NETWORK=yes`.
+- **Coverage:** paging, including short pages with a token; retries and incomplete responses; malformed pages; repeated tokens; duplicates and conflicts; corrections and cancellations; auctions; inclusive-end widening and half-open bars; half-days; every classification outcome, including Codex's "$100 / $110" case; calibration; unmapped codes; results kept outside the repository.
+- **Real-fixture check:** `hv/targets.py` reproduces, read-only from the saved fixtures, 181 sessions, 28 pre-split, 187 in-range and 9 outside-range extremes, 35 missing bar starts, and 730 sessions in coverage (728 with hourly bars).
+- **Not yet wired into one command:** the agreement sample, E1, volume and the decisions are tested functions.
+
+**4. Self-review fixes, within scope.**
+- An unmapped condition would have crashed the run. Now it fails the calibration closed, or makes only the dependent differences unexplained.
+- A code Alpaca maps but UTP marks "TBD" is handled.
+- A daily-extreme trade outside the session's bars is a named boundary reason.
+- A single hourly rule is required for the P-H decision.
+- The minute alignment is epoch-based.
+- The missing-bar count includes whole missing days.
+- One wrong checksum abbreviation was replaced by the full checksums.
+- Three of my own test set-ups were corrected.
+
+**Not done:** no authenticated request, no market data, no fixture change. The UTP PDFs (public specifications) were downloaded to a scratch folder, and `pypdf` was installed in a scratch venv to read them; the project venv is unchanged. No repository tests run (no repository code changed). Nothing committed.
+
+**5. Batch proposal (for the owner's decision; nothing started).**
+
+| Batch | Contents | Can start | Checkpoints kept |
+|---|---|---|---|
+| **3a** | M1-12 and M1-13, **daily part**, as accepted by Codex (`0661d46..4f594bf`). Merge with `H1_PRICE`/`H1_VOLUME` explicitly BLOCKED | On the owner's merge approval. That **changes the plan**: batch 3 is currently "incomplete, don't merge", so splitting it needs the owner's and Codex's agreement | Merge approval; hourly stays blocked; M1 stays incomplete |
+| **3b** | The hourly protocol run: A4 terms, then A3, A1 and A2, then the full run; evidence review; then, separately, unblocking and the M1-13 hourly path | On approval of v0.3.7 and of the A4 step (no keys before A4 passes) | Every protocol gate; Codex reviews the evidence; separate unblocking commit |
+| **4 (larger)** | **M1-14 replay, M1-15 resampler and M1-16 DataHealth.** Each depends only on tasks already in `main` (M1-01, M1-05, M1-07 – M1-11), not on the Yahoo checkpoint. Tested on synthetic candles; M1-15 handles hourly input generically | **Now**, from `main`, on approval, in parallel with 3b | One commit per task, task checks, batch checks, Codex reviews every commit, merge approval |
+| **5** | **M1-17** NVDA CLI (`init`, `import-yfinance`, `report`). The daily sections are complete; the hourly section reports BLOCKED until 3b resolves | After 3a and 4 are merged | M1 is complete only when no field is blocked (roadmap §4.5) |
+| **Docs track (cross-milestone)** | **M2 spec pack:** split M2's work packages into 1–3 h task specs, including the agreed adjusted-price view and leakage protections, and the roadmap §4.3 batch update | Drafted alongside batch 4, as documentation for review. It needs the owner's **OPEN-06** (first strategies and sources) and initial **OPEN-09** (metrics) | Codex reviews the specs; no M2 code until they're accepted |
+| **6 – 8** | M2 implementation in about three batches: features, indicators and the adjusted view; strategies, MarketView and lineage; evaluation, walk-forward and the HTML report | After the M2 specs are accepted and M1 is complete, or by the owner's explicit choice to start M2 before hourly is resolved | Law 9 abstention, no look-ahead, walk-forward before any paper run |
+
+This plan uses longer runs: batch 4 and the M2 spec drafting could be one approved session of about 10–14 hours of work, with per-task commits and the usual review gates.
+
+### 2026-10-12: Claude Code (hourly protocol revised to v0.3.6; uncommitted, for Codex review)
+Codex reviewed v0.3.5: the six earlier corrections are present, but three gaps block a download, plus a pass/fail rule for A4. The owner approved revising the protocol only: no key use, downloads, purchases, unblocking, merge, push or batch 4.
+
+1. **"Explained" now needs both values and the reason.** A difference counts as explained only if:
+   - the selected hourly rule reproduces Yahoo's hourly extreme, and the trade(s) setting it are identified;
+   - **D-OFFICIAL** reproduces Yahoo's daily extreme, with its trade(s) identified the same way;
+   - the specific rule clause that admits those trades on one side and excludes them on the other is named; or the daily extreme falls in a documented missing hourly bar.
+
+   If minute bars can't locate the daily extreme, the session's full trades are searched. Anything not reproduced is unexplained.
+2. **Exact trade rules, fixed in advance.**
+   - Minute and daily effect profiles (open/close, high/low, volume; all, none or first-only), with the strictest condition winning. The documented differences are listed, e.g. P, Z, 4 and G set the daily high/low only. The UTP matrix governs.
+   - Hourly rules: H-MIN; H-ODD (overrides **only** the odd-lot restriction); H-DAY; H-UNCANCELLED.
+   - Cancellation, correction, auction and closing-cross boundary handling are all defined.
+3. **Complete downloads.** Windows are widened by one minute because the API's `end` is inclusive, and trades are assigned locally to half-open bars. Every page token is followed; failures are retried, then the interval is marked incomplete; duplicates are keyed. Every minute must reproduce the vendor's own SIP minute bar exactly, and a difference relying on incomplete data is unexplained.
+4. **A4 pass/fail.** Terms are checked **first**, before any key use. A4 passes only if local storage, committing the derived outputs (given the repository's visibility) and any individual values are all permitted. Unresolved means no key use or download.
+
+**Checks:** documentation only; `git diff --check` clean. Alpaca's aggregation FAQ and trades reference were read for the definitions. No data downloaded, no tests run, nothing committed.
+
+### 2026-10-12: Claude Code (hourly verification protocol drafted; uncommitted, for Codex review)
+Codex accepted the review fixes `62118a2..4f594bf`: no blocking findings; 124 importer tests, the full suite in both shells and fresh installs, base and `engine` extra, passed in its run. It then corrected Claude Code's hourly plan in six points. The owner approved drafting the protocol only: no purchase, no download, no fixture change, hourly stays blocked, no merge, push or batch 4.
+
+**Draft: M1-12 v0.3.5, "Hourly verification protocol"** (uncommitted), with Codex's corrections:
+1. **Alpaca first, explicit `feed=sip` only.** Access checks A1 (minute bars) and A2 (trades) on a pre-split session must succeed with SIP. IEX is never substituted. A3: the vendor's condition table and the UTP Plan's sale-condition matrix. A4: the data terms.
+2. **Trades are required** for the price rules. Three pre-registered rules: R-ELIG (official eligibility), R-ODD (odd lots may set high/low) and R-ALL. Minute bars serve volume and cross-checks only.
+3. **Complete coverage:** all **181 sessions** in as-traded units (28 pre-split, 153 post-split; 187 in-range and **9 outside-range extremes, including 2023-12-26 09:30**, reproduced). Each difference ends as explained by a rule, explained by a missing bar, or unexplained; any unexplained one keeps hourly prices blocked. A seeded 60-bar agreement sample is a check only.
+4. **Factors:** pre-split × 10 is decisive; post-split × 1 is a control only.
+5. **Massive Starter** is listed as a partial fallback only (minute aggregates, no trades).
+6. **No claim** that the fixture is the only remaining Yahoo copy; current availability is unchecked.
+
+Volume: all 1004 pre-split bars are decisive anchors under the 3% / 50% rule. Raw vendor data stays outside the repository; only reviewed derived results enter it. Unblocking would be a separate commit, with the owner's approval.
+
+**Checks:** documentation only; `git diff --check` clean. No data downloaded, no tests run, nothing committed.
 
 ### 2026-10-12: Claude Code (batch 3 review fixes, approved by the owner)
 Claude Code independently reviewed `0661d46..62118a2`: one blocking finding (B1) and seven suggestions. Codex reproduced B1. The owner approved four follow-up fixes, each with regression tests first and its own commit; no merge, push, batch-3 completion or batch 4.
