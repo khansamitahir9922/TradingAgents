@@ -150,6 +150,22 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-01: versioned feature definitions and the float64 boundary, committed and checked)
+- **Added:** `investment_engine/quant/features.py` and `tests/engine/test_features.py` (33 cases).
+- **`FeatureDefinition`:**
+  - validates a lowercase identifier name, a semantic version, finite int/float parameters with identifier names (booleans, Decimal, strings and lists refused), the `AdjustedBasis`, and a positive integer warm-up;
+  - parameters are copied into a sorted `MappingProxyType`;
+  - `key` is canonical JSON of name, version, parameters and input basis (order-independent, not a Python repr).
+- **`FeatureRegistry(schemas)`:**
+  - checks each definition against its feature's declared `ParamSpec`s: exact parameter names, int vs float, minimum; an undeclared feature name raises;
+  - identical re-registration is a no-op; a different definition under an existing key raises.
+- **`float_inputs`** is the explicit boundary: only finite floats pass. Decimal, int, bool and non-finite values are refused.
+- **Tests first:** the test file failed to import before the module existed; all 33 pass after implementation.
+- **Checks (Git Bash, cwd `C:/Users/LOQ/TradingAgents-m2`):**
+  - task tests: 33 passed;
+  - full suite: **2109 passed, 1 failed** (baseline `test_yfinance_keeps_its_cache_out_of_the_users_home`), 4 skipped, 3 deselected;
+  - `ruff check .` passed after import sorting; `git diff --check` clean.
+
 ### 2026-10-14: Claude Code (M2-00: point-in-time split-adjusted daily view, committed and checked)
 - **Added:** `investment_engine/quant/__init__.py`, `investment_engine/quant/adjusted.py`, `tests/engine/test_adjusted_view.py` (41 cases).
 - **Contract:**
