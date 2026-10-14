@@ -165,6 +165,24 @@ Report directional accuracy against the base rate, and the information coefficie
 - **Naming note for the review:** M2-11's contract says `EvaluationRunStore.append(run: EvaluationRun)`. The stored unit is the whole walk-forward record, because rule 5 requires fold boundaries and versions in the stored run; the per-fold `EvaluationRun`s are inside it.
 - **Acceptance covered:** exact reconstruction of configuration and references; append idempotence and conflicts; direct SQL immutability; the id covering every assumption; required versions and UTC time; upgrades from schema 1 and schema 2 with M1 data intact; the migration ships as package data (the installed check runs in the batch checks).
 - **Tests first, observed:** collection failed before the module existed. One test I added had a broken multi-line string (my script's escaping) and was repaired before the run; 42 passed (run-store and sqlite files).
+- **Checks (Git Bash):** a first check run stopped on two ruff findings (a percent-format in the SVG builder, an unused test import); both fixed and every check rerun. `ruff check .` passed; whitespace clean.
+  - full suite: 1 failed, 2341 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 158.70s (0:02:38) (only failure: the baseline cache-location test)
+
+### 2026-10-14: Claude Code (M2-11b: evaluation run records, committed and checked)
+- **Added:**
+  - code: `investment_engine/evaluation/run_store.py`, `investment_engine/storage/schema/0003_evaluation.sql`;
+  - tests: `tests/engine/test_evaluation_run_store.py` (7 cases), plus one upgrade case in `tests/engine/test_sqlite_store.py` (the M2-07 migration case now also expects `evaluation_records`; no earlier assertion removed).
+  - `docs/tasks/M2-11.md` status.
+- **`EvaluationRecord`:** one complete walk-forward evaluation, holding:
+  - the walk-forward and evaluation configurations (costs included);
+  - the result: each fold's boundaries, purge counts, direction metrics with baseline samples and outcome references, the SIMULATED run with its decision lineage ids and realised input references, the stitched summary and the promotion status;
+  - source, instrument, `as_of`, code and calendar versions, coverage evidence references and reason, and the backfill assumption.
+
+  `record_id` is `eval-` + SHA-256 of tagged canonical content (registered with M2-07's codec), so every assumption changes it.
+- **`EvaluationRunStore`:** an identical append is a no-op; a different record under an existing id raises `EvaluationRunConflict`; `get` rebuilds and re-verifies the record; `ids(instrument)`; no update or delete path. Migration 0003 adds `evaluation_records`, whose triggers refuse UPDATE and DELETE (SQLite syntax, to be rewritten for PostgreSQL in M3).
+- **Naming note for the review:** M2-11's contract says `EvaluationRunStore.append(run: EvaluationRun)`. The stored unit is the whole walk-forward record, because rule 5 requires fold boundaries and versions in the stored run; the per-fold `EvaluationRun`s are inside it.
+- **Acceptance covered:** exact reconstruction of configuration and references; append idempotence and conflicts; direct SQL immutability; the id covering every assumption; required versions and UTC time; upgrades from schema 1 and schema 2 with M1 data intact; the migration ships as package data (the installed check runs in the batch checks).
+- **Tests first, observed:** collection failed before the module existed. One test I added had a broken multi-line string (my script's escaping) and was repaired before the run; 42 passed (run-store and sqlite files).
 - **Checks (Git Bash):** `ruff check .` passed; whitespace clean.
   - full suite: 1 failed, 2328 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 494.51s (0:08:14) (only failure: the baseline cache-location test)
 
