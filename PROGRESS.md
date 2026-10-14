@@ -150,6 +150,26 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-09: honest direction metrics and matched baselines, committed and checked)
+- **Added:** `investment_engine/evaluation/metrics.py` and `tests/engine/test_evaluation_metrics.py` (14 cases).
+- **Inputs:**
+  - `PredictionView(source, prediction_session, view)` supplies the provider and session a MarketView doesn't carry; the walk-forward builds them from lineage snapshots;
+  - `evaluate_direction(views, outcomes, *, config, calendar, trailing=())` joins by provider, instrument and prediction session, checking basis and the exact h-session horizon on the calendar;
+  - a duplicate view, outcome or trailing return, a mismatched horizon, provider or basis, or a view without its outcome all raise.
+- **Metrics** (`MetricValue`: key, value, n, reason):
+  - `direction_accuracy`: BULLISH/BEARISH views with available non-zero outcomes;
+  - `always_up_accuracy_matched` (same scored dates) and `paired_accuracy_difference`;
+  - `always_up_accuracy_full` (all available non-zero outcomes, so selective abstention is visible);
+  - `positive_base_rate`;
+  - `zero_outcome_exclusions`;
+  - last-period direction: the sign of the same-basis h-session return ending at the prediction close, which must be complete and available, and computed, by the view's T. Its matched accuracy, the model's accuracy on that paired sample, their difference, and `last_period_unavailable`;
+  - `information_coefficient`: tie-aware Spearman of the signed strength vs the realised return, zeros included; None with a reason for fewer than 3 or constant samples.
+- **`DirectionEvaluation`:** the counts (eligible, directional, neutral, abstain, unavailable outcomes), the outcome references, and `disclosures` (strength isn't a probability; no significance claimed; overlapping horizons when h > 1).
+- **Tests first, observed:** running the new test file before the module existed failed at collection (`1 error`). After implementing, 13 passed and 1 failed: my test's directional-view count was wrong (5 instead of the table's 6) and was corrected. 14 passed.
+- **Checks (Git Bash):**
+  - full suite: **2290 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected;
+  - `ruff check .` passed; whitespace clean, new files included.
+
 ### 2026-10-14: Claude Code (M2-06 follow-up: unused test imports; check script hardened)
 - **Process deviation, recorded:** `2a8c3ac` was committed with two unused imports in `tests/engine/test_market_view.py` (ruff F401). My task-check script printed ruff's failure but still exited 0, so the commit step continued.
 - **Fix:** removed the imports (`ruff check --fix`). The check script now exits nonzero on any test failure other than the baseline, a missing result line, a ruff error or a whitespace error, and the commit only runs after it succeeds. Every earlier task commit's ruff run printed "All checks passed".
