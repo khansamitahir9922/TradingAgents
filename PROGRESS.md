@@ -150,23 +150,27 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
-### 2026-10-14: Claude Code (M2-11b: evaluation run records, committed and checked)
-- **Added:**
-  - code: `investment_engine/evaluation/run_store.py`, `investment_engine/storage/schema/0003_evaluation.sql`;
-  - tests: `tests/engine/test_evaluation_run_store.py` (7 cases), plus one upgrade case in `tests/engine/test_sqlite_store.py` (the M2-07 migration case now also expects `evaluation_records`; no earlier assertion removed).
-  - `docs/tasks/M2-11.md` status.
-- **`EvaluationRecord`:** one complete walk-forward evaluation, holding:
-  - the walk-forward and evaluation configurations (costs included);
-  - the result: each fold's boundaries, purge counts, direction metrics with baseline samples and outcome references, the SIMULATED run with its decision lineage ids and realised input references, the stitched summary and the promotion status;
-  - source, instrument, `as_of`, code and calendar versions, coverage evidence references and reason, and the backfill assumption.
-
-  `record_id` is `eval-` + SHA-256 of tagged canonical content (registered with M2-07's codec), so every assumption changes it.
-- **`EvaluationRunStore`:** an identical append is a no-op; a different record under an existing id raises `EvaluationRunConflict`; `get` rebuilds and re-verifies the record; `ids(instrument)`; no update or delete path. Migration 0003 adds `evaluation_records`, whose triggers refuse UPDATE and DELETE (SQLite syntax, to be rewritten for PostgreSQL in M3).
-- **Naming note for the review:** M2-11's contract says `EvaluationRunStore.append(run: EvaluationRun)`. The stored unit is the whole walk-forward record, because rule 5 requires fold boundaries and versions in the stored run; the per-fold `EvaluationRun`s are inside it.
-- **Acceptance covered:** exact reconstruction of configuration and references; append idempotence and conflicts; direct SQL immutability; the id covering every assumption; required versions and UTC time; upgrades from schema 1 and schema 2 with M1 data intact; the migration ships as package data (the installed check runs in the batch checks).
-- **Tests first, observed:** collection failed before the module existed. One test I added had a broken multi-line string (my script's escaping) and was repaired before the run; 42 passed (run-store and sqlite files).
-- **Checks (Git Bash):** a first check run stopped on two ruff findings (a percent-format in the SVG builder, an unused test import); both fixed and every check rerun. `ruff check .` passed; whitespace clean.
-  - full suite: 1 failed, 2341 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 158.70s (0:02:38) (only failure: the baseline cache-location test)
+### 2026-10-14: Claude Code (M2-12: NVDA HTML research report renderer, committed and checked; commit-message error recorded)
+- **Process error, recorded:** commit `7028523` contains exactly the M2-12 files (`investment_engine/reporting/__init__.py`, `investment_engine/reporting/html.py`, `tests/engine/test_html_report.py`, the M2-12 status), but carries **M2-11b's commit message** and a duplicate of M2-11b's PROGRESS entry.
+  - Cause: a check failure ended my command before the new entry and message files were written, so the M2-11b ones were reused.
+  - Fixed forward in commit `M2-12 follow-up` (duplicate removed, this entry added), without rewriting history. The real M2-11b commit is `0b7db92`.
+  - The commit helper now refuses an entry whose heading doesn't name the task being committed.
+- **Added:** `investment_engine/reporting/__init__.py`, `investment_engine/reporting/html.py`, `tests/engine/test_html_report.py` (13 cases).
+- **`render_research_report(views, runs, *, lineage_store, generated_at, source, instrument_id, adjusted_closes=())`:**
+  - every view must carry its lineage id, the record must exist in the store, and the view must equal the stored decision (a tampered view is refused);
+  - runs are `EvaluationRecord`s for the same source and instrument.
+- **Sections:**
+  - status chips: SIMULATED / REPLAY · historical research; PAPER EXECUTION NOT CONNECTED; AUTONOMY NOT CONFIGURED; TRADING STATUS CANNOT BE VERIFIED; PROMOTION NOT ASSESSED;
+  - latest view: symbol and word for direction, strength as a 0–1 scale "not a probability", `valid_until` assessed at that historical T, DataHealth per source, abstain reason, rule explanations, BACKFILL_ASSUMED input counts;
+  - inline-SVG chart with ▲▼●✕ markers; counts by direction; the last 40 views;
+  - per evaluation record: configuration, costs, windows, versions, coverage and backfill assumptions, promotion status, per-fold counts, every direction metric (unavailable shows its reason, never 0), strategy vs buy-and-hold vs cash, trades, stitched summary with its label, limitations and disclosures.
+- **Contract extension for the review: `adjusted_closes`.** Each view's decision close is adjusted as of its own T, so plotting those across 2024-06-10 would show a false 90% drop. The chart takes one supplied M2-00 series with a single basis and `as_of`, named in its caption; without it, the report says "No price series supplied".
+- **Safety:** all supplied strings are escaped (a stored `<script>` reason renders as text); no remote `src`/`href`; deterministic output; nothing written; `probability_up` never shown.
+- **Tests first, observed:** collection failed before the module existed. After implementing, one test failed because it edited a view without its stored lineage, and the renderer's lineage check refused it, as designed. The test now stores a record with the malicious text, and a separate test proves tampering is refused. 13 passed.
+- **Checks (Git Bash):**
+  - the first check run stopped on two ruff findings (a percent-format in the SVG builder, an unused test import); both were fixed and every check rerun;
+  - full suite: **2341 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected;
+  - `ruff check .` passed; whitespace clean.
 
 ### 2026-10-14: Claude Code (M2-11b: evaluation run records, committed and checked)
 - **Added:**
