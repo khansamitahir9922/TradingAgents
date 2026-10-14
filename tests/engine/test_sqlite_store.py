@@ -262,3 +262,22 @@ def test_there_is_no_way_to_delete_a_mapping(db):
     resolver = SqliteSymbolResolver(db)
     for name in ("remove", "delete", "pop", "discard", "clear", "__delitem__"):
         assert not hasattr(resolver, name), name
+
+
+@pytest.mark.unit
+def test_later_migrations_upgrade_an_existing_m1_database_without_touching_its_tables(tmp_path):
+    # An M1 database: only script 0001 applied, holding reference data.
+    path = tmp_path / "operational.sqlite3"
+    conn = open_operational_db(path)
+    first_script = SCHEMA_SCRIPTS[0].read_text(encoding="utf-8")
+    conn.executescript(f"BEGIN;\n{first_script}\nINSERT INTO schema_version (version) VALUES (1);\nCOMMIT;")
+    SqliteInstrumentRepository(conn).add(instrument())
+    before = conn.execute("SELECT sql FROM sqlite_master WHERE name IN ('instruments', 'symbol_mappings')"
+                          " ORDER BY name").fetchall()
+    assert apply_schema(conn) == len(SCHEMA_SCRIPTS) >= 2
+    assert SqliteInstrumentRepository(conn).get("EQ_US_NVDA") == instrument()
+    assert conn.execute("SELECT sql FROM sqlite_master WHERE name IN ('instruments', 'symbol_mappings')"
+                        " ORDER BY name").fetchall() == before
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "lineage_records" in tables
+    conn.close()

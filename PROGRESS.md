@@ -155,6 +155,11 @@ Report directional accuracy against the base rate, and the information coefficie
 - **Fix:** removed the imports (`ruff check --fix`). The check script now exits nonzero on any test failure other than the baseline, a missing result line, a ruff error or a whitespace error, and the commit only runs after it succeeds. Every earlier task commit's ruff run printed "All checks passed".
 - **Checks (Git Bash):** full suite **2232 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected; `ruff check .` passed; `git diff --check` clean.
 
+### 2026-10-14: Claude Code (M2-06 follow-up: unused test imports; check script hardened)
+- **Process deviation, recorded:** `2a8c3ac` was committed with two unused imports in `tests/engine/test_market_view.py` (ruff F401). My task-check script printed ruff's failure but still exited 0, so the commit step continued.
+- **Fix:** removed the imports (`ruff check --fix`). The check script now exits nonzero on any test failure other than the baseline, a missing result line, a ruff error or a whitespace error, and the commit only runs after it succeeds. Every earlier task commit's ruff run printed "All checks passed".
+- **Checks (Git Bash):** full suite **2232 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected; `ruff check .` passed; `git diff --check` clean.
+
 ### 2026-10-14: Claude Code (M2-06: MarketView and decision policy 0.1.0, committed and checked)
 - **Added:** `investment_engine/decision/__init__.py`, `investment_engine/decision/market_view.py`, `tests/engine/test_market_view.py` (32 cases).
 - **`MarketView`** has the Part H fields. Its constructor enforces:
