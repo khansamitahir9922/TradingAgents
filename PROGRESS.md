@@ -150,6 +150,30 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-10: cost-inclusive SIMULATED research, committed and checked)
+- **Added:** `investment_engine/evaluation/simulation.py` and `tests/engine/test_research_simulation.py` (17 cases).
+- **`simulate_research(views, *, reader, calendar, source, instrument_id, first, last, at, coverage, config)`:**
+  - **Inputs:** replayed MarketViews, each with exactly its lineage id. SPLIT and DIVIDEND coverage is required; otherwise it raises `AdjustmentUnavailable`.
+  - **Decisions:** each view trades at the next regular open strictly after `generated_at`, if `valid_until` ≥ that open; the latest valid decision for one open wins. BULLISH → long; BEARISH/NEUTRAL → cash; ABSTAIN keeps exposure; unchanged exposure doesn't trade.
+  - **Prices and actions:** raw prices. Splits multiply shares and dividends pay cash per post-split share before an ex-date's open (an ex-date cash research assumption, disclosed).
+  - **Buys:** the most whole shares the cash covers with costs (bps per side, quantized to 0.0001); cash is never negative.
+  - **Benchmarks:** buy-and-hold enters at the same first eligible open with the same cash, costs and actions; cash earns zero interest.
+  - **Metrics:** net return; max drawdown (from the initial cash); daily Sharpe (zero risk-free, ×√252, sample deviation; unavailable for fewer than 2 returns or zero variance); trades, entries, round trips, abstains, expired decisions and decisions outside the window.
+  - **Incomplete runs:** a session without a completed bar, or an unsupported action, makes the run incomplete (`complete=False`, a limitation listing the dates); return metrics become unavailable rather than zero-priced.
+- **`EvaluationRun`:** the contract fields plus `source`, `instrument_id`, `first`, `last`, `as_of`, `cash_curve`, `ending_shares` and `complete`. `run_id` is `run-` + SHA-256 of canonical content, using M2-07's codec (the new dataclasses are registered there for M2-11b). Decision lineage ids and realised-input revisions (bars plus actions read at `as_of`) are both kept.
+- **Acceptance covered:**
+  - next open; same-open exclusion; expiry; the latest of conflicting decisions; repeated exposure; ABSTAIN;
+  - exact 5 and 10 bps arithmetic;
+  - split and dividend value preservation; buy-and-hold alignment;
+  - missing bar → incomplete;
+  - hand-computed net return, drawdown and Sharpe; zero-variance Sharpe unavailable;
+  - a late correction changes realised revisions and the run id but not the decision lineage;
+  - determinism; no broker/OMS/ledger/execution/clock imports.
+- **Tests first, observed:** collection failed before the module existed (`1 error`). Before implementing I also removed a placeholder test that asserted nothing, and made a test use the run's `cash_curve` field instead of an invented method. All 17 passed on the first run after implementing.
+- **Checks (Git Bash):**
+  - full suite: **2307 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected;
+  - `ruff check .` passed; whitespace clean.
+
 ### 2026-10-14: Claude Code (M2-09: honest direction metrics and matched baselines, committed and checked)
 - **Added:** `investment_engine/evaluation/metrics.py` and `tests/engine/test_evaluation_metrics.py` (14 cases).
 - **Inputs:**
