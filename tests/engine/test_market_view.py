@@ -1,7 +1,7 @@
 """MarketView and the decision policy (Law 9; Part H; docs/tasks/M2-06.md)."""
 
 from dataclasses import replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from types import MappingProxyType
 
 import pytest
