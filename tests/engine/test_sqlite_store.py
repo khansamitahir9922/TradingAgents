@@ -295,3 +295,22 @@ def test_a_database_at_schema_2_upgrades_to_the_evaluation_records(tmp_path):
     assert SqliteInstrumentRepository(conn).get("EQ_US_NVDA") == instrument()
     assert conn.execute("SELECT COUNT(*) FROM evaluation_records").fetchone()[0] == 0
     conn.close()
+
+
+@pytest.mark.unit
+def test_a_schema_3_database_gains_the_insert_guards_on_upgrade(tmp_path):
+    conn = open_operational_db(tmp_path / "operational.sqlite3")
+    for number, script in enumerate(SCHEMA_SCRIPTS[:3], start=1):
+        sql = script.read_text(encoding="utf-8")
+        conn.executescript(f"BEGIN;\n{sql}\nINSERT INTO schema_version (version) VALUES ({number});\nCOMMIT;")
+    conn.execute("INSERT INTO lineage_records VALUES ('lin-a', 'EQ_US_NVDA', 't', x'01')")
+    conn.execute("INSERT OR REPLACE INTO lineage_records VALUES ('lin-a', 'EQ_US_NVDA', 't', x'02')")  # schema 3: unguarded
+    assert apply_schema(conn) == len(SCHEMA_SCRIPTS) >= 4
+    with pytest.raises(sqlite3.DatabaseError, match="append-only"):
+        conn.execute("INSERT OR REPLACE INTO lineage_records VALUES ('lin-a', 'EQ_US_NVDA', 't', x'03')")
+    conn.execute("INSERT INTO evaluation_records VALUES ('e', 'EQ_US_NVDA', 't', x'01')")
+    with pytest.raises(sqlite3.DatabaseError, match="append-only"):
+        conn.execute("REPLACE INTO evaluation_records VALUES ('e', 'EQ_US_NVDA', 't', x'02')")
+    assert conn.execute("SELECT content FROM evaluation_records").fetchone()[0] == b"\x01"
+    conn.execute("INSERT INTO lineage_records VALUES ('lin-b', 'EQ_US_NVDA', 't', x'01')")  # new ids still insert
+    conn.close()

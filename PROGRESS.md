@@ -150,6 +150,18 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-15: Claude Code (M2-11b follow-up, B1: append-only insert guards)
+- **Codex finding B1 (P1):** with recursive triggers off (the connection default), `INSERT OR REPLACE` / `REPLACE` overwrote an existing lineage or evaluation record without firing the DELETE triggers.
+- **Owner-approved scope extension (2026-10-15):** `investment_engine/storage/schema/0004_append_only_insert_guards.sql`, recorded in M2-11b's allowed files (with B1 regressions in `tests/engine/test_lineage.py`). It adds BEFORE INSERT triggers on `lineage_records` and `evaluation_records` that refuse any insert of an existing id, before conflict resolution runs, so the replace, ignore and upsert forms all fail. New ids still insert, and the stores' identical-append no-op never reaches SQL. The migration is forward-only, so existing schema-3 databases gain the guards on upgrade.
+- **Regressions, run first and observed failing (7 failed):**
+  - for each table: `INSERT OR REPLACE`, `REPLACE INTO`, `INSERT OR IGNORE` with an existing id must raise "append-only" and leave the original bytes and the reconstructed record unchanged. The upsert form already failed through the UPDATE trigger and is kept as a regression;
+  - a schema-3 database, where replacement still works, gains the guards on upgrade to schema 4; new ids still insert.
+
+  After the fix: 66 passed across the lineage, run-store and SQLite files.
+- **Side issue:** the SQL-portability test also scans comments, so the first comment, which named the forbidden statements, failed it. The comment was reworded; the test is unchanged.
+- **Checks (Git Bash):** see the result line below; `ruff check .` passed; whitespace clean.
+  - full suite: 1 failed, 2351 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 111.19s (0:01:51) (only failure: the baseline cache-location test)
+
 ### 2026-10-14: Claude Code (M2 milestone complete on its branch: batch checks, self-review, report; handed to Codex)
 - **State:** all 14 M2 tasks are committed and checked on `m2/milestone` (range `53c51bd..HEAD`). The combined review package is `docs/reviews/claude-m2-milestone-package.md`: commits, contract extensions, process notes, pending items and report results.
 - **Batch checks (cwd `C:/Users/LOQ/TradingAgents-m2`):**

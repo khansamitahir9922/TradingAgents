@@ -132,3 +132,22 @@ def test_the_store_has_no_update_or_delete_path_and_lists_ids(db):
 def test_the_migration_ships_with_the_package():
     names = {e.name for e in files("investment_engine.storage").joinpath("schema").iterdir()}
     assert "0003_evaluation.sql" in names
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("statement", [
+    "INSERT OR REPLACE INTO evaluation_records VALUES (?, ?, ?, ?)",
+    "REPLACE INTO evaluation_records VALUES (?, ?, ?, ?)",
+    "INSERT INTO evaluation_records VALUES (?, ?, ?, ?) ON CONFLICT (record_id) DO UPDATE SET content = excluded.content",
+    "INSERT OR IGNORE INTO evaluation_records VALUES (?, ?, ?, ?)",
+])
+def test_replacing_an_existing_evaluation_id_through_sql_is_refused_and_the_original_survives(db, statement):
+    store = EvaluationRunStore(db)
+    r = record()
+    store.append(r)
+    original = db.execute("SELECT content FROM evaluation_records WHERE record_id = ?", (r.record_id,)).fetchone()[0]
+    with pytest.raises(sqlite3.DatabaseError, match="append-only"):
+        db.execute(statement, (r.record_id, NVDA, AT.isoformat(), zlib.compress(b"{}")))
+    assert db.execute("SELECT content FROM evaluation_records WHERE record_id = ?", (r.record_id,)).fetchone()[0] == original
+    assert store.get(r.record_id) == r
+    store.append(r)

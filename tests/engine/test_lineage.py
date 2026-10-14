@@ -172,3 +172,23 @@ def test_canonical_json_is_independent_of_mapping_order_and_refuses_unknown_type
         encode(float("nan"))
     with pytest.raises(ValueError):
         encode(datetime(2024, 1, 1))  # naive times are refused, not guessed
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("statement", [
+    "INSERT OR REPLACE INTO lineage_records VALUES (?, ?, ?, ?)",
+    "REPLACE INTO lineage_records VALUES (?, ?, ?, ?)",
+    "INSERT INTO lineage_records VALUES (?, ?, ?, ?) ON CONFLICT (lineage_id) DO UPDATE SET content = excluded.content",
+    "INSERT OR IGNORE INTO lineage_records VALUES (?, ?, ?, ?)",
+])
+def test_replacing_an_existing_lineage_id_through_sql_is_refused_and_the_original_survives(db, statement):
+    store = LineageStore(db)
+    r = record()
+    store.append(r)
+    original = db.execute("SELECT content FROM lineage_records WHERE lineage_id = ?", (r.lineage_id,)).fetchone()[0]
+    assert db.execute("PRAGMA recursive_triggers").fetchone()[0] == 0  # the ordinary connection setting
+    with pytest.raises(sqlite3.DatabaseError, match="append-only"):
+        db.execute(statement, (r.lineage_id, NVDA, AT.isoformat(), zlib.compress(b"{}")))
+    assert db.execute("SELECT content FROM lineage_records WHERE lineage_id = ?", (r.lineage_id,)).fetchone()[0] == original
+    assert store.get(r.lineage_id) == r
+    store.append(r)  # the API's identical append is still a no-op
