@@ -238,3 +238,18 @@ def test_the_revision_cache_answers_exactly_like_the_store_reader(history):
             start, end = CAL.session(start_d).open, CAL.session(end_d).close
             assert cache.candles_visible_at("yfinance", NVDA, Timeframe.D1, start, end, at) ==                 store.candles_visible_at("yfinance", NVDA, Timeframe.D1, start, end, at)
         assert cache.actions_visible_at("yfinance", NVDA, date(2019, 1, 1), date(2027, 1, 1), at) ==             store.actions_visible_at("yfinance", NVDA, date(2019, 1, 1), date(2027, 1, 1), at)
+
+
+@pytest.mark.unit
+def test_an_unfinished_fold_is_reported_incomplete_not_complete(history):
+    folds = make_folds(SESSIONS[0], SESSIONS[-1], calendar=CAL, config=SMALL)
+    last = folds[-1]
+    cutoff = last.test_start + timedelta(days=20)
+    result = walk_forward([last], views=history["views"], reader=history["reader"], calendar=CAL, source="yfinance",
+                          instrument_id=NVDA, coverage_evidence=EVIDENCE, coverage_first=SESSIONS[0],
+                          coverage_last=date(2026, 10, 12), coverage_reason="test", evaluation_config=EVAL,
+                          at=cutoff)
+    [fold] = result.folds
+    assert not fold.run.complete
+    assert fold.test_views == len([v for v in history["views"] if last.test_start <= v.view.generated_at <= cutoff])
+    assert result.stitched[0][1] is None

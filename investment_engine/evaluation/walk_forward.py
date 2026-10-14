@@ -247,7 +247,9 @@ def walk_forward(folds: Sequence[Fold], *, views: Sequence[PredictionView], read
         train = [pv for pv in views if fold.train_start <= pv.view.generated_at <= fold.train_cutoff]
         eligible = sum(training_eligible(outcome(pv.prediction_session, config, fold.train_cutoff), fold.train_cutoff)
                        for pv in train)
-        test = [pv for pv in views if fold.test_start <= pv.view.generated_at < fold.test_end]
+        # Only views that exist by the evaluation cutoff; an unfinished fold's run is reported incomplete.
+        test = [pv for pv in views if fold.test_start <= pv.view.generated_at < fold.test_end
+                and pv.view.generated_at <= at]
         outcomes = [outcome(pv.prediction_session, config, at) for pv in test]
         trailing = []
         for pv in test:

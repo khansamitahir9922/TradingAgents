@@ -297,3 +297,33 @@ def test_config_is_validated():
                 {"costs_bps_per_side": 5}, {"currency": "usd"}):
         with pytest.raises((TypeError, ValueError)):
             replace(CONFIG, **bad)
+
+
+# ------------------------------------------------------------------ B3: windows that run past the cutoff
+
+
+@pytest.mark.unit
+def test_a_window_running_past_the_cutoff_is_incomplete_and_names_the_omitted_sessions(store):
+    cutoff = CAL.session(DAYS[2]).close + timedelta(hours=1)
+    r = run(store, [view(DAYS[0], "BULLISH")], at=cutoff, cov=coverage(cutoff))
+    assert r.last == DAYS[-1] and not r.complete
+    text = " ".join(r.limitations)
+    assert "after the evaluation cutoff" in text and str(DAYS[3]) in text and str(DAYS[-1]) in text
+    net = metric(r, "net_return")
+    assert net.value is None and "incomplete" in net.unavailable_reason
+    assert r.equity_curve[-1][0] == DAYS[2]  # what was valued is still shown, labelled incomplete
+
+
+@pytest.mark.unit
+def test_a_window_ending_exactly_at_the_cutoff_is_complete(store):
+    cutoff = CAL.session(DAYS[-1]).close
+    r = run(store, [view(DAYS[0], "BULLISH")], at=cutoff, cov=coverage(cutoff))
+    assert r.complete and metric(r, "net_return").value is not None
+
+
+@pytest.mark.unit
+def test_an_entirely_future_window_is_incomplete_with_nothing_valued(store):
+    cutoff = CAL.session(DAYS[0]).close - timedelta(days=3)
+    r = run(store, [], at=cutoff, cov=coverage(cutoff))
+    assert not r.complete and r.equity_curve == () and r.trades == ()
+    assert metric(r, "net_return").value is None

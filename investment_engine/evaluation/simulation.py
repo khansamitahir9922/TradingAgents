@@ -21,8 +21,10 @@ return metrics cross the float64 boundary once.
 - Buy-and-hold enters at the same first eligible open with the same cash,
   costs, actions and valuation data; a cash benchmark holds the initial cash.
   Ending equity is marked at the last close without forced liquidation.
-- A session without a completed bar makes the run incomplete: no trade or
-  valuation is invented for it, and return metrics are unavailable.
+- A session without a completed bar, or a requested session that ends after
+  the evaluation cutoff, makes the run incomplete: no trade or valuation is
+  invented for it, the omitted dates are listed, and full-window return
+  metrics are unavailable.
 """
 
 import dataclasses
@@ -230,7 +232,9 @@ def simulate_research(views: Sequence[MarketView], *, reader, calendar, source: 
         if len(v.evidence_refs) != 1:
             raise ValueError("each view needs exactly its lineage id (run it through the M2-07 pipeline)")
 
-    sessions = [s for s in calendar.sessions_between(first, last) if s.close <= at]
+    requested = calendar.sessions_between(first, last)
+    sessions = [s for s in requested if s.close <= at]
+    unfinished = [s.date for s in requested if s.close > at]  # never silently dropped: the run is incomplete
     by_open = {s.open: s for s in sessions}
     schedule: dict[datetime, MarketView] = {}
     expired = outside = 0
@@ -294,6 +298,9 @@ def simulate_research(views: Sequence[MarketView], *, reader, calendar, source: 
         flat_curve.append((s.date, cash_book.cash))
 
     problems = []
+    if unfinished:
+        problems.append(f"{len(unfinished)} requested sessions end after the evaluation cutoff {at.isoformat()}: "
+                        f"{unfinished[0]}..{unfinished[-1]}")
     if missing:
         problems.append("no completed bar for " + ", ".join(str(d) for d in missing))
     if unsupported:
