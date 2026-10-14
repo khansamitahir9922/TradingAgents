@@ -33,23 +33,34 @@ from investment_engine.quant.strategies.base import RuleStrategy
 
 
 class ReplayKnowledgeReader:
-    """Ephemeral reader projection: only revisions actually delivered by this feed."""
+    """Ephemeral reader projection: only revisions actually delivered by this feed.
+
+    Each revision keeps its delivery time (the event's received_at) and feed
+    sequence. A query at T sees a revision only if it is available by T **and**
+    was delivered by T, so re-querying an earlier T after later events have
+    been accepted gives the same answer as at the time. Equal-time events
+    follow the feed sequence: `through_sequence` excludes events delivered at
+    exactly T with a later sequence. Stored timestamps are never changed.
+    """
 
     def __init__(self) -> None:
-        self._candles: dict[tuple, dict[int, Candle]] = {}
-        self._actions: dict[tuple, dict[int, CorporateAction]] = {}
+        self._candles: dict[tuple, dict[int, tuple[Candle, datetime, int]]] = {}
+        self._actions: dict[tuple, dict[int, tuple[CorporateAction, datetime, int]]] = {}
         self._delivered_until: datetime | None = None
+        self._last_sequence: int | None = None
 
     def accept(self, event: ReplayEvent) -> None:
         if self._delivered_until is not None and event.received_at < self._delivered_until:
             raise ValueError("events must be accepted in delivery order")
-        self._delivered_until = event.received_at
+        if self._last_sequence is not None and event.sequence <= self._last_sequence:
+            raise ValueError("event sequences must strictly increase")
+        self._delivered_until, self._last_sequence = event.received_at, event.sequence
         p = event.payload
         target = self._candles if isinstance(p, Candle) else self._actions
         revisions = target.setdefault(p.identity, {})
-        if p.revision in revisions and revisions[p.revision] != p:
+        if p.revision in revisions and revisions[p.revision][0] != p:
             raise ValueError(f"two different payloads for {p.identity} revision {p.revision}")
-        revisions[p.revision] = p
+        revisions.setdefault(p.revision, (p, event.received_at, event.sequence))
 
     def _check_at(self, at: datetime) -> datetime:
         at = check_utc(at, "at")
@@ -57,20 +68,27 @@ class ReplayKnowledgeReader:
             raise ValueError(f"T {at} is later than the last delivered event; nothing after it is known")
         return at
 
+    @staticmethod
+    def _latest(revisions, at: datetime, through_sequence: int | None):
+        known = [p for p, delivered, sequence in revisions.values()
+                 if p.available_from <= at and delivered <= at
+                 and (through_sequence is None or delivered < at or sequence <= through_sequence)]
+        return max(known, key=lambda p: p.revision) if known else None
+
     def candles_visible_at(self, source: str, instrument_id: str, timeframe: Timeframe, start: datetime,
-                           end: datetime, at: datetime) -> list[Candle]:
+                           end: datetime, at: datetime, *, through_sequence: int | None = None) -> list[Candle]:
         at, timeframe = self._check_at(at), Timeframe(timeframe)
         out = []
         for (s, i, tf, start_time), revisions in self._candles.items():
             if (s, i, tf) != (source, instrument_id, timeframe) or not start <= start_time < end:
                 continue
-            visible = [c for c in revisions.values() if c.available_from <= at]
-            if visible:
-                out.append(max(visible, key=lambda c: c.revision))
+            latest = self._latest(revisions, at, through_sequence)
+            if latest is not None:
+                out.append(latest)
         return sorted(out, key=lambda c: c.start_time)
 
     def actions_visible_at(self, source: str, instrument_id: str, start: date, end: date, at: datetime,
-                           types=None) -> list[CorporateAction]:
+                           types=None, *, through_sequence: int | None = None) -> list[CorporateAction]:
         at = self._check_at(at)
         wanted = None if types is None else {ActionType(t) for t in types}
         out = []
@@ -79,9 +97,9 @@ class ReplayKnowledgeReader:
                 continue
             if wanted is not None and action_type not in wanted:
                 continue
-            visible = [a for a in revisions.values() if a.available_from <= at]
-            if visible:
-                out.append(max(visible, key=lambda a: a.revision))
+            latest = self._latest(revisions, at, through_sequence)
+            if latest is not None:
+                out.append(latest)
         return sorted(out, key=lambda a: (a.ex_date, list(ActionType).index(a.action_type)))
 
 

@@ -195,3 +195,77 @@ def test_the_knowledge_reader_only_knows_delivered_revisions_and_refuses_later_t
     with pytest.raises(ValueError):
         reader.candles_visible_at("yfinance", NVDA, Timeframe.D1, utc(2024, 1, 1), utc(2025, 1, 1),
                                   utc(2024, 6, 1))
+
+
+# ------------------------------------------------------------------ B2: historical re-queries respect delivery time
+
+from investment_engine.market.availability import AvailabilityBasis  # noqa: E402
+from investment_engine.market.candles import Candle  # noqa: E402
+from investment_engine.market.corporate_actions import CorporateAction  # noqa: E402
+from investment_engine.market.replay import ReplayEvent  # noqa: E402
+
+E = utc(2024, 6, 7, 20)
+
+
+def _candle(revision, available, close):
+    s = CAL.session(date(2024, 6, 7))
+    basis = AvailabilityBasis.BACKFILL_ASSUMED if revision == 1 else AvailabilityBasis.OBSERVED
+    return Candle("yfinance", NVDA, Timeframe.D1, s.open, s.close, Decimal(close), Decimal(close), Decimal(close),
+                  Decimal(close), "USD", Decimal("1"), BarState.CLOSED, "1.7.0", PriceBasis.RAW_AS_REPORTED,
+                  VolumeBasis.RAW_AS_REPORTED, f"i{revision}", s.close, available, available, revision, available, basis)
+
+
+def _action(revision, available, ratio):
+    basis = AvailabilityBasis.OBSERVED
+    return CorporateAction("yfinance", NVDA, "USD", "America/New_York", ActionType.SPLIT, date(2024, 6, 10),
+                           Decimal(ratio), None, None, None, "1.7.0", f"a{revision}", available, available, revision,
+                           available, basis)
+
+
+def _event(payload, delivered, sequence, kind):
+    return ReplayEvent(kind, payload.source, payload.available_from, delivered, delivered, sequence, payload)
+
+
+@pytest.mark.unit
+def test_a_later_query_at_an_earlier_t_sees_only_revisions_delivered_by_then():
+    reader = ReplayKnowledgeReader()
+    rev1, rev2 = _candle(1, E, "100"), _candle(2, E + timedelta(seconds=3), "101")
+    reader.accept(_event(rev1, E + timedelta(seconds=5), 0, "BAR_CLOSED"))
+    reader.accept(_event(rev2, E + timedelta(seconds=8), 1, "CANDLE_REVISED"))
+    window = (CAL.session(date(2024, 6, 7)).open, E + timedelta(days=1))
+
+    def at(t):
+        return [c.revision for c in reader.candles_visible_at("yfinance", NVDA, Timeframe.D1, *window, t)]
+
+    assert at(E + timedelta(seconds=5)) == [1]  # revision 2 is available at E+3 but not delivered until E+8
+    assert at(E + timedelta(seconds=7, microseconds=999999)) == [1]
+    assert at(E + timedelta(seconds=8)) == [2]
+    assert at(E + timedelta(seconds=4)) == []  # nothing delivered yet
+
+
+@pytest.mark.unit
+def test_actions_respect_delivery_time_on_a_historical_requery():
+    reader = ReplayKnowledgeReader()
+    reader.accept(_event(_action(1, E, "10"), E + timedelta(seconds=5), 0, "CORPORATE_ACTION"))
+    reader.accept(_event(_action(2, E + timedelta(seconds=3), "5"), E + timedelta(seconds=8), 1, "CORPORATE_ACTION"))
+
+    def at(t):
+        return [(a.revision, a.ratio) for a in reader.actions_visible_at("yfinance", NVDA, date(2024, 1, 1),
+                                                                          date(2025, 1, 1), t)]
+
+    assert at(E + timedelta(seconds=5)) == [(1, Decimal("10"))]
+    assert at(E + timedelta(seconds=8)) == [(2, Decimal("5"))]
+
+
+@pytest.mark.unit
+def test_equal_time_events_follow_the_feed_sequence():
+    reader = ReplayKnowledgeReader()
+    t = E + timedelta(seconds=5)
+    reader.accept(_event(_candle(1, E, "100"), t, 4, "BAR_CLOSED"))
+    reader.accept(_event(_candle(2, E + timedelta(seconds=1), "101"), t, 5, "CANDLE_REVISED"))
+    window = (CAL.session(date(2024, 6, 7)).open, E + timedelta(days=1))
+    assert [c.revision for c in reader.candles_visible_at("yfinance", NVDA, Timeframe.D1, *window, t,
+                                                          through_sequence=4)] == [1]
+    assert [c.revision for c in reader.candles_visible_at("yfinance", NVDA, Timeframe.D1, *window, t)] == [2]
+    with pytest.raises(ValueError):
+        reader.accept(_event(_candle(3, E + timedelta(seconds=2), "102"), t, 5, "CANDLE_REVISED"))  # sequence reused

@@ -150,6 +150,24 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-15: Claude Code (M2-07 follow-up, B2: replay knowledge respects delivery time on re-query)
+- **Codex finding B2 (P1):** `ReplayKnowledgeReader` kept only each payload's `available_from`. After later events were accepted, re-querying an earlier T returned revisions not yet delivered at that T (rev 2 available at E+3 and delivered at E+8 was visible at E+5). Actions had the same defect.
+- **Fix (`decision/pipeline.py`):**
+  - each revision keeps its delivery time and feed sequence; `accept` requires non-decreasing delivery and strictly increasing sequences;
+  - a query at T sees a revision only if `available_from <= T` **and** it was delivered by T;
+  - the optional `through_sequence` excludes equal-time events later in the feed sequence;
+  - stored timestamps are unchanged and no store is added.
+
+  M2-07's rule 5 and contract record this.
+- **Regressions, run first and observed failing (3 failed):**
+  - candles: accept both events, then query at E+5, E+7.999999, E+8 and E+4;
+  - actions: the same re-query;
+  - equal-time events: `through_sequence`, and a reused sequence is refused.
+
+  After the fix the pipeline and walk-forward files pass (24); the earlier latency regression, including reversed reader rows, still passes.
+- **Checks (Git Bash):** see the result line below; `ruff check .` passed; whitespace clean.
+  - full suite: 1 failed, 2354 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 128.77s (0:02:08) (only failure: the baseline cache-location test)
+
 ### 2026-10-15: Claude Code (M2-11b follow-up, B1: append-only insert guards)
 - **Codex finding B1 (P1):** with recursive triggers off (the connection default), `INSERT OR REPLACE` / `REPLACE` overwrote an existing lineage or evaluation record without firing the DELETE triggers.
 - **Owner-approved scope extension (2026-10-15):** `investment_engine/storage/schema/0004_append_only_insert_guards.sql`, recorded in M2-11b's allowed files (with B1 regressions in `tests/engine/test_lineage.py`). It adds BEFORE INSERT triggers on `lineage_records` and `evaluation_records` that refuse any insert of an existing id, before conflict resolution runs, so the replace, ignore and upsert forms all fail. New ids still insert, and the stores' identical-append no-op never reaches SQL. The migration is forward-only, so existing schema-3 databases gain the guards on upgrade.
