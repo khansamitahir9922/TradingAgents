@@ -150,6 +150,18 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-04: rule-strategy interface, committed and checked)
+- **Added:** `investment_engine/quant/strategies/__init__.py`, `investment_engine/quant/strategies/base.py`, `tests/engine/test_strategy_interface.py` (21 cases).
+- **Contract:**
+  - `Direction` (BULLISH, BEARISH, NEUTRAL; ABSTAIN is the policy's);
+  - `StrategySignal` validates a non-empty name, a semantic version, the direction, a finite **float** strength in [0, 1] (bool, int and Decimal refused; documented as a scale, not a probability), non-empty reason strings, and non-empty feature keys;
+  - `RuleStrategy` is a runtime-checkable Protocol with required sources, required actions and features.
+- **`declared_snapshot(snapshot, definitions)`:** returns an immutable copy whose values mapping exposes only the declared keys. Any other key, including through `.get`, raises `UndeclaredFeature`. Declared definitions must exist in the snapshot with the same version and input basis; a different version or parameters, or a mismatched recorded version, raise.
+- **Checks (Git Bash):**
+  - task tests: 21 passed;
+  - full suite: **2169 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected;
+  - `ruff check .` passed; `git diff --check` clean.
+
 ### 2026-10-14: Claude Code (M2-03: FeatureSnapshot, committed and checked)
 - **Added:** `investment_engine/quant/snapshot.py` and `tests/engine/test_feature_snapshot.py` (13 cases).
 - **`build_snapshot(instrument_id, source, features, *, at, reader, calendar, health, coverage)`:**
