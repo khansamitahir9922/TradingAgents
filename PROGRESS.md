@@ -150,6 +150,24 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-00: point-in-time split-adjusted daily view, committed and checked)
+- **Added:** `investment_engine/quant/__init__.py`, `investment_engine/quant/adjusted.py`, `tests/engine/test_adjusted_view.py` (41 cases).
+- **Contract:**
+  - `adjusted_daily(reader, source, instrument_id, first, last, *, at, calendar, coverage)` returns `AdjustedBar`s (float64; never stored, not a Candle) with the exact Decimal `factor`, full `BarRef` and the `ActionRef`s of every split used;
+  - the factor counts SPLIT revisions visible at T and effective by T's exchange date, for bars before their ex-date;
+  - prices are divided and volume multiplied in a fresh 60-digit Decimal context per value, then converted once through `money.to_float64`.
+- **Coverage evidence:**
+  - `VerificationEvidence` is a structured, canonical reference: provider, instrument, action type, verified range, request bounds, verification version, status;
+  - `establish_coverage` establishes coverage only from COMPLETE evidence covering every type over the whole range;
+  - `adjusted_daily` re-parses the references through `require_coverage`, so forged established coverage, PARTIAL/FAILED verification, another provider/instrument/type/T or a short range all raise `AdjustmentUnavailable`. Established coverage with zero splits succeeds, and its references survive for lineage.
+- **Completed bars (correction 5):** `completed_daily_bars` refuses FORMING bars, bars off the session boundaries, bars ending or available after T, `received_at < end_time`, foreign identities, duplicates and mixed currencies; split rows from another identity or available after T are refused. It and `visible_actions` are shared with later M2 readers.
+- **Tests first:** the test file failed to import before the module existed. After implementing, two failures came from my code: a shared Decimal context left an Inexact flag, and a filter skipped the query for sessions still open at T, which hid a bar ending after T. Both fixed; no test changed to pass.
+- **Checks (Git Bash, cwd `C:/Users/LOQ/TradingAgents-m2`):**
+  - `.venv/Scripts/python.exe -m pytest -q tests/engine/test_adjusted_view.py tests/engine/test_layering.py tests/engine/test_no_system_clock.py`: **94 passed**;
+  - full suite `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider`: **2076 passed, 1 failed, 4 skipped, 3 deselected**; the failure is the baseline `test_yfinance_keeps_its_cache_out_of_the_users_home`;
+  - `ruff check .` passed after sorting the test's imports; `git diff --check` clean.
+  (Root `.venv` Python used from this worktree; the package imports from the worktree.)
+
 ### 2026-10-14: Claude Code (M2 milestone, step 0: documentation integration)
 - **Owner approval (2026-10-14, relayed with Codex's package review):** fast-forward local `main` to the reviewed `53c51bd` (no push), then build the whole M2 milestone on its own branch from verified daily NVDA data. Apply Codex's corrections first, use the proposed settings as provisional research assumptions, and complete all 14 tasks with tests, task commits and checks. Return the HTML report and one combined package for Codex. Excluded: M1 hourly work, the M2 merge, pushes, keys, market-data downloads, trading.
 - **Merge done:** in the clean `C:/Users/LOQ/TradingAgents-main`, heads rechecked (`0661d46` → `53c51bd`, ancestry verified), then `git merge --ff-only 53c51bd782f9ebc901254e2b74ed48ced75f3195`. Not pushed. M1 now stands at 15 of 18 tasks done.
