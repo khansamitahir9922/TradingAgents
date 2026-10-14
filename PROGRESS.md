@@ -150,6 +150,27 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-02: indicators, committed and checked)
+- **Added:** `investment_engine/quant/indicators.py` and `tests/engine/test_indicators.py` (25 cases).
+- **Indicators:**
+  - `sma`; `rsi` (Wilder: seeded by the simple averages of the first `window` gains/losses, then `(prev*(n-1)+current)/n`; 100 with only gains, 0 with only losses, 50 when flat); `distance_from`;
+  - all take float64 through `float_inputs`; non-positive prices or averages, invalid windows and non-finite results raise.
+  - The seed and recurrence are documented in the module.
+- **Definitions:** `SMA50`, `SMA200`, `RSI14` (warm-up 15), `DIST_SMA200`, all on `SPLIT_ADJUSTED_AS_OF`, plus their parameter schemas and `registry()`. `evaluate(definition, closes)` gives `None` until exactly the declared warm-up and never a partial window.
+- **Acceptance covered:**
+  - hand-computed SMA/RSI, including gains-only, losses-only, flat, the post-seed recurrence and a 17-close series against an independent recurrence;
+  - warm-up boundaries; no look-ahead;
+  - across a synthetic 10-for-1 split through the M2-00 view (about 265 stored sessions): the raw closes drop about 90% while the adjusted ones stay continuous, and SMA(200) equals a manually adjusted reference;
+  - registration with warm-ups.
+- **Tests first / self-review:**
+  - the module was missing before implementation;
+  - one test used definitions as dict keys, which they can't be (their parameter mapping is read-only and unhashable). Changing `features.py` is outside M2-02's allowed files, so the test uses pairs instead;
+  - a probe found `sma([1e308, 1e308], 2)` returned `inf`; outputs are now checked, with tests.
+- **Checks (Git Bash, cwd `C:/Users/LOQ/TradingAgents-m2`):**
+  - task tests: 25 passed;
+  - full suite: **2134 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected;
+  - `ruff check .` passed; `git diff --check` clean.
+
 ### 2026-10-14: Claude Code (M2-01: versioned feature definitions and the float64 boundary, committed and checked)
 - **Added:** `investment_engine/quant/features.py` and `tests/engine/test_features.py` (33 cases).
 - **`FeatureDefinition`:**
