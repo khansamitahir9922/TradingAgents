@@ -8,7 +8,11 @@
 
 Each task has one spec here (`M1-00.md` … `M1-17.md`). A spec is the contract for its task: anyone, whether Claude Code, Codex or a human, can pick it up from the repository alone.
 
-**M2 planning:** [draft M2 pack](M2-README.md), M2-00 – M2-12. The pack is awaiting independent review; it does not authorize M2 code. Existing check/commit/batch discipline applies to future accepted M2 tasks too. Completed M1 and resolved prerequisite decisions remain mandatory.
+**M2:** [M2 pack](M2-README.md), M2-00 – M2-12 (M2-11 split into 11a and 11b). Accepted for implementation by the owner on 2026-10-14 as one milestone package on `m2/milestone`, starting on M1's merged daily scope; M1's hourly parts and completion criteria are unchanged.
+
+**Roles restored (owner, 2026-10-14):** Claude Code implements; Codex reviews. The temporary Copilot assignment has ended; accepted snapshot reviews are retained as history. See `docs/reviews/claude-return-handoff.md`.
+
+**Milestone packages (owner, 2026-10-14):** from M2 on, a whole milestone is approved once and built in one go, with one automatic local commit per task and all task checks, then the batch checks, a self-review and one review of the complete milestone (shared rules §4). Larger packages do not waive milestone prerequisites, verification gates, file scope or owner git approvals.
 
 ## Sections in every spec
 1. **Goal**: what the task delivers.

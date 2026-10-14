@@ -90,7 +90,7 @@ The CI workflow must stay green. CI only runs when the owner pushes or opens a p
 |---|---|---|---|---|
 | **M0** Architecture | — | — | v1.0 frozen, diagrams, PRD, ADR-001 – 009, roadmap, M1 task specs, agent guides; **closed by its reviewed, owner-approved merge into `main`** | documents only |
 | **M1** Market foundation | M0 **merged into `main`** | OPEN-01 (package name) | CLI: replay NVDA → clean daily/hourly candles + health report | **≈ 42–49 h** (detailed) |
-| **M2** Quant + initial evaluation | M1 | OPEN-06; OPEN-09 (initial) | HTML report: NVDA chart with MarketViews + an honest evaluation | ≈ 35–45 h *(provisional)* |
+| **M2** Quant + initial evaluation | M1 **daily scope** (owner amendment, 2026-10-14; see §5) | OPEN-06; OPEN-09 (initial) | HTML report: NVDA chart with MarketViews + an honest evaluation | ≈ 35–45 h *(provisional)* |
 | **M3** Portfolio, policy, risk | M2 | OPEN-07, OPEN-08 | CLI: proposed intents with approve/reject/reduce reasons | ≈ 35–45 h *(provisional)* |
 | **M4** OMS + Execution Worker (simulated) | M3 | OPEN-16 settled (adopted by ADR or explicitly left out); OPEN-09 thresholds; walk-forward in place | Simulated paper run + order log + crash tests on both processes | ≈ 55–70 h *(provisional)* |
 | **M5** Ledger + reconciliation | M4 | **ADR-010** securities ledger model; OPEN-12 | P&L + reconciliation reports | ≈ 35–45 h *(provisional)* |
@@ -226,6 +226,8 @@ Section 4.4 lists the decisions still open.
 | **5a (in progress, review pending)** | M1-17 daily part | Offline daily report, init and daily-import wiring | 17 daily part on its own branch, based on `cc62dbf` | Continuation exception: 3a daily work and 4 committed/checked in branch ancestry | H1 BLOCKED; independent review and merge still pending; no market downloads |
 | **5b (not started)** | M1-17 remaining hourly/full part | Full original report/import acceptance cases | 17 remaining part | **3b and 4** | M1-17 done only after 5b merges; M1 completion criteria unchanged |
 
+**Milestone packages (owner, 2026-10-14).** From M2 on, a whole milestone is approved once, built in one go with automatic local task commits and reviewed by Codex as a whole (shared rules §4).
+
 **Daily continuation (2026-10-13).** The owner told Codex to continue implementation while Copilot reviews. Codex stated that it was taking this as authorization for the proposed daily-only delivery, using checked dependencies in branch ancestry. This permits useful partial work while hourly verification waits; it does not claim that batch 4 passed independent review, authorize a merge, or complete M1-17.
 
 **Batch split (owner decision, 2026-10-13; reviewed by Codex).** Batch 3 was split into 3a (daily, reviewed) and 3b (hourly, waiting on the verification protocol), and the old batch 4 into 4 (M1-14 – M1-16) and 5 (M1-17, after 3b and 4). Each task's dependencies are unchanged; only the batch grouping changed.
@@ -278,16 +280,16 @@ Most implementation choices are **resolved in the task specs**. These remain gen
 Everything below is **provisional**. M2's draft tasks are linked below; M3 – M10 rows remain work packages, with larger rows split into reviewed 1–3 hour tasks before implementation. Names and estimates are for planning only, not a promise of elapsed completion time.
 
 ### M2 — Quant + initial evaluation *(SQLite)*
-**Before it starts:** completed M1, accepted M2 specifications and initial OPEN-09 experiment assumptions. The owner selected **OPEN-06 option A** as the daily NVDA research scope on 2026-10-13; exact rule parameters remain draft. OPEN-08 validity and OPEN-09 costs/windows/promotion thresholds stay provisional. No M2 runtime implementation is approved by this documentation change.
+**Before it starts:** M1's merged daily scope, accepted M2 specifications and initial OPEN-09 experiment assumptions. **Scheduling amendment** (owner, 2026-10-14: M2 starts on M1's **merged daily scope** (`main` `53c51bd`); M1's hourly parts stay unfinished and M1 completion criteria are unchanged. No M2 code reads H1 data.)** This is a planning change, not an architecture change: Part K doesn't order M2 after a finished M1, but it lists hourly candles in M1's visible result, so M1 is not declared complete without them. On 2026-10-14 the owner accepted the M2 specs, approved the whole milestone as one package and accepted the provisional research configuration in the [M2 pack](tasks/M2-README.md) (OPEN-06 option A; OPEN-08 provisional `valid_until`; OPEN-09 horizon, costs and windows provisional; promotion thresholds not accepted).
 
-| Proposed batch | Draft tasks | Est. (planning only) |
+| Group | Tasks | Est. (planning only) |
 |---|---|---|
 | **M2-A** | [M2-00](tasks/M2-00.md) PIT split-adjusted view; [01](tasks/M2-01.md) versioned definitions; [02](tasks/M2-02.md) indicators; [03](tasks/M2-03.md) FeatureSnapshot | 8–10 h |
 | **M2-B** | [04](tasks/M2-04.md) strategy interface; [05](tasks/M2-05.md) two daily strategies; [06](tasks/M2-06.md) MarketView/policy; [07](tasks/M2-07.md) pipeline and complete append-only lineage | 9–11 h |
 | **M2-C** | [08](tasks/M2-08.md) price/total returns and completed labels; [09](tasks/M2-09.md) base-rate direction/IC metrics; [10](tasks/M2-10.md) next-open SIMULATED research with raw prices and explicit costs | 8–9 h |
-| **M2-D** | [11](tasks/M2-11.md) walk-forward, leakage guards and evaluation records; [12](tasks/M2-12.md) honest static HTML report | 6 h |
+| **M2-D** | [11](tasks/M2-11.md) split into [11a](tasks/M2-11a.md) walk-forward and leakage guards and [11b](tasks/M2-11b.md) evaluation run records; [12](tasks/M2-12.md) honest static HTML report | 6 h |
 
-[M2 pack and dependencies](tasks/M2-README.md). These groups support longer uninterrupted runs: the owner can approve combined A/B or C/D after the specs/configuration are accepted, with separate task commits and checks and a combined review package. Whole milestones cannot be combined in a way that bypasses their prerequisite gates, ADRs or merge approvals. M2-11 must be split into smaller specs if implementation planning shows its fold/storage work exceeds three hours. None of these draft groups is an implementation authorization.
+[M2 pack and dependencies](tasks/M2-README.md). The groups are planning labels: the owner approved the whole milestone as one package on 2026-10-14 (14 tasks, M2-11 split into 11a and 11b), with separate task commits and checks and one combined Codex review. The M2 merge needs its own approval.
 
 **Complete when:** the report shows views over NVDA history with honest, cost-inclusive results; replay tests give identical views across runs; lineage explains every view.
 
@@ -415,7 +417,7 @@ The roadmap never schedules a strategy past a step whose thresholds (OPEN-09) ar
 | Needed by | Decisions |
 |---|---|
 | **M1-00** | OPEN-01 package name |
-| **M2** | OPEN-06; OPEN-09 (initial); OPEN-05 if more instruments are needed |
+| **M2** | OPEN-06 (option A, selected); OPEN-09 initial assumptions (provisional, accepted 2026-10-14); OPEN-05 if more instruments are needed |
 | **M3** | OPEN-07, OPEN-08 |
 | **Before M4** | OPEN-09 thresholds; OPEN-16 (follow-up ADR or explicitly out) |
 | **Before M5** | ADR-010; OPEN-12; OPEN-17 (partly) |

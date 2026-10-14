@@ -6,6 +6,11 @@
 | **Applies to** | Claude Code working in this repository: the TradingAgents fork plus the platform being built beside it (`architecture/architecture-v1.0.md`) |
 | **Twin file** | `AGENTS.md` holds the same shared rules for Codex. The section between the `SHARED RULES` markers must stay identical in both files. |
 
+## Roles restored (owner confirmation, 2026-10-14)
+The owner confirmed Claude Code is back. **Claude Code implements; Codex independently reviews**, with Codex remaining the backup implementer. The temporary Codex/Copilot arrangement has ended. Its completed reviews remain recorded in `docs/reviews/copilot-review-queue.md`; they are not invalidated or repeated merely because the roles changed. Read `docs/reviews/claude-return-handoff.md` and the current working-copy PROGRESS.md for exact accepted heads and next steps.
+
+Continue through the whole owner-approved work package without asking after each task, preserving task commits, checks and stop rules. Give one combined review package at its end. Independent authorized work can proceed while a fixed snapshot is reviewed; unresolved dependency or verification gates cannot be bypassed. This changes neither architecture nor task scope or git permissions. Do not describe Codex's earlier self-review as independent acceptance; those follow-ups received Copilot's independent R-07 review.
+
 ## Your role
 You are the **implementation lead**. You write the tests first, then the code, for each approved task spec. You also draft documents and specs for review.
 
@@ -30,6 +35,7 @@ If documents disagree, the precedence is: **architecture > accepted ADRs > task 
 - **Claude Code:** implementation lead.
 - **Codex:** independent reviewer, and backup implementer when Claude Code is unavailable.
 - **ChatGPT:** product and strategy advice only. It doesn't change the repository.
+- **Temporary owner assignment (2026-10-13 – 2026-10-14, ended):** Codex implemented and GitHub Copilot independently reviewed while Claude Code was unavailable. Its reviews are recorded in `docs/reviews/copilot-review-queue.md`.
 
 ### 3. The architecture is frozen
 - Changes to laws, domain boundaries, processes or execution authority need an **ADR that is reviewed and accepted** before any code changes (architecture Part P). A proposed ADR changes nothing by itself.
@@ -56,13 +62,14 @@ If documents disagree, the precedence is: **architecture > accepted ADRs > task 
 Tasks are built in **batches** of related tasks (listed in `docs/roadmap.md` §4.3). Each task keeps its own discipline; review and merge happen once per batch.
 ```
 owner approves the batch → per task: spec → tests → implementation → task checks → PROGRESS.md → task commit
-  → batch checks → Claude Code self-review → Codex reviews every commit → fixes as follow-up commits
+  → batch checks → implementer self-review → designated reviewer reviews every commit → fixes as follow-up commits
   → final review → owner approval → one fast-forward merge into main
 ```
-- **One branch per batch** (`m1/batch-<N>`), created from `main`. The owner's approval at the start of a batch covers implementing and **locally committing** that batch's tasks. The **merge needs its own approval.**
+- **One branch per batch** (`m1/batch-<N>`), or per milestone package (`m2/milestone`), created from `main`. The owner's approval at the start of a batch covers implementing and **locally committing** that batch's tasks. The **merge needs its own approval.**
 - **One commit per task**, each with its own tests and `PROGRESS.md` entry, so every commit can be reviewed on its own. Review fixes go in follow-up commits.
 - **Dependencies inside a batch.** A task may build on an **earlier task in the same batch branch** once that task is committed and its task checks have passed; it doesn't need to be merged first. Dependencies outside the batch must already be merged into `main`.
-- **Review.** Before asking for review, Claude Code self-reviews the whole batch against the specs and laws, including adversarial edge-case probes. Codex then reviews **every commit** before the batch can merge.
+- **Review.** Before asking for review, the implementer self-reviews the whole batch against the specs and laws, including adversarial edge-case probes. The designated independent reviewer (normally Codex) then reviews **every commit** before the batch can merge. Review a named immutable commit, not the moving working tree. Use separate worktrees for concurrent work; don't switch branches or edit implementation files in another tool's checkout. Reviewer findings return to the implementer for follow-up commits and re-review.
+- **Milestone packages (owner, 2026-10-14).** From M2 on, the owner approves a **whole milestone** as one package. The implementer builds every task in order with **automatic local task commits** (tests first, task checks and a `PROGRESS.md` entry each), then runs the batch checks, self-reviews, and hands the **complete milestone** to the reviewer for one review of every commit and the integrated behaviour. Non-blocking items for the reviewer are collected and handed over with that review; anything that triggers a stop rule still stops the work at once. The reviewer may review milestone N while the implementer starts the approved milestone N + 1 on top of it; review fixes to N are carried forward. Merges, pushes, key use, downloads and purchases still need the owner's explicit instruction each time.
 - **Done.** A task is **done only when its batch is merged**. Before that it's "in progress", "committed (checked)", "in review" or "approved, awaiting merge".
 - **Stop rules.** Stop the batch and report to the owner when:
   - a check shows a **new test failure**;

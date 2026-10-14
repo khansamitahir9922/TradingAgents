@@ -4,17 +4,17 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 ---
 
-## Current state (2026-10-13)
+## Current state (2026-10-14)
 
 | | |
 |---|---|
-| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress.** **12 of 18 tasks done** (M1-00 – M1-11). |
-| **`main`** | Local `main` is at **`0661d46`** (`docs: record the batch 2 re-review fix and checks`). **Batch 2 passed Codex's review** (after two rounds of follow-up fixes) and was **fast-forwarded into `main`** with the owner's approval on 2026-10-12; batch 1 (`109a72d`) before it. `main` is 29 commits ahead of `origin/main`. **Nothing has been pushed.** |
-| **Current work** | **Copilot reviewed the daily CLI at `db826f2` with no blockers.** Codex's checked follow-up on `m1/M1-17-daily` adds its provider-label suggestion and an exact port of the standalone R-01 cutoff fix `7ef63f6`. Independent follow-up review is pending. Copilot's original batch-4 review found that one blocker at `cc62dbf`; its old snapshot must not be merged without the fix. Separate M2 documentation suggestion is at `71133c1`; no M2 runtime. Main stays at `0661d46`; M1-17 is not done and hourly remains blocked. |
+| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress, 15 of 18 tasks done** (M1-00 – M1-11, M1-14 – M1-16). M1-12, M1-13 and M1-17 have their **daily parts merged** and their hourly parts unfinished (batch 3b, blocked on A4 permissions). **M2 Quant + initial evaluation: in progress** (daily only), under the owner's 2026-10-14 scheduling amendment. |
+| **`main`** | Local `main` is at **`53c51bd`** (`fix: carry comparison cutoff validation into the daily CLI and label its provider`): the owner approved the fast-forward from `0661d46` on 2026-10-14 after Copilot's R-07 review passed. It contains batch 3a, batch 4 and the daily part of M1-17. **Nothing has been pushed** (`main` is 51 commits ahead of `origin/main`). |
+| **Current work** | **M2 milestone in progress on `m2/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m2`), approved by the owner on 2026-10-14 as one package: step 0 documentation integration, then 14 implementation tasks with automatic local task commits, then one combined Codex review. Local `main` was fast-forwarded to the reviewed `53c51bd` the same day (no push). M2 uses verified **daily** data only; M1 stays in progress until hourly verification (batch 3b) passes. No M2 merge, push, keys, downloads or trading. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
-| **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules plus `market/calendar/` (US equities, cited 2019 – 2026 data), `market/availability.py`, `market/candles.py`, `market/corporate_actions.py` and `market/store/` (schema, append-only writer, point-in-time reader). The `engine` extra adds `pyarrow` and `duckdb`. |
-| **Runtime tests** | Run for every task and batch, and compared against the recorded baseline (`docs/baselines/M1-00-baseline.md`). On `main` (`0661d46`): **527 engine tests**; Git Bash **1786 passed**, PowerShell **1785 passed**, failing sets = baseline. Codex independently reran the engine tests, the full suite and ruff for batch 2. CI not yet run. |
+| **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules, `market/calendar/`, `market/availability.py`, `market/candles.py`, `market/corporate_actions.py`, `market/store/`, `market/importers/` (verified Yahoo daily bars and actions; hourly BLOCKED), `market/replay.py`, `market/resample.py`, `market/data_health.py` and the daily NVDA CLI (`python -m investment_engine`). M2 adds `quant/`, `decision/`, `lineage/`, `evaluation/` and `reporting/` on `m2/milestone`. |
+| **Runtime tests** | Compared against the recorded baseline (`docs/baselines/M1-00-baseline.md`). On `main` (`53c51bd`): Git Bash and PowerShell each **2035 passed, 1 failed** (baseline `test_yfinance_keeps_its_cache_out_of_the_users_home`), 4 skipped, 3 deselected; Claude reran the Git Bash suite on 2026-10-14 with the same result. CI not yet run. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -29,12 +29,12 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-1. **Copilot re-review:** the original reviews are complete: R-01 changes required at `cc62dbf`, R-06 no blockers at `db826f2`. Review standalone cutoff fix `cc62dbf..7ef63f6`, then this branch's new follow-up against `db826f2`; preserve the exact original snapshots and don't rerun stale review instructions.
-2. **Daily-first delivery:** all required follow-up checks are complete below. Only after independent review and the owner's separate approval may a merge be considered. H1, full imports, full comparison and M1 completion remain blocked. No merge or push is authorized here.
-3. **M2 specification drafts:** `5984997..6df10da` on `docs/m2-specs`, in `C:\Users\LOQ\TradingAgents-m2-specs`, self-reviewed and still drafts pending configuration/scope acceptance. OPEN-06 option A is selected; OPEN-08/09 remain provisional. No M2 code; completed M1 remains a prerequisite. Preserve the newer operational handoff when later integrating these documents.
-4. **Batch 3a merge** needs the owner's approval. Preserve the existing stacked branch history; no merge/rebase is authorized here.
-5. **Batch 3b (hourly):** public A4 research has not established all permissions; see `docs/hourly-access-review`. Applicable account terms/publication permissions need resolution before keys, A3/A1/A2, R or downloads. This is an evidence/permission blocker, not a Claude-availability blocker.
-6. Merges, pushes, M2 implementation, key use and market-data downloads still need their own explicit instruction.
+**Working method (owner instruction, 2026-10-14).** Each milestone is approved once as a package and built in one go: tests first, one automatic local commit per task, the task checks, then the batch checks, a self-review and **one Codex review of the whole milestone**. Non-blocking items for Codex are collected and handed over with that review. Blocking problems (a new test failure, a file outside a spec, an ADR or architecture gap, a blocked checkpoint, a contract that can't be implemented safely) still stop the work. Merges, pushes, key use, downloads and purchases each need the owner's explicit word. Shared rules §4 in AGENTS.md and CLAUDE.md record this.
+
+1. **M2 (in progress on `m2/milestone`):** step 0 integrates the reviewed M2 specs with Codex's five package-review corrections (`docs/reviews/codex-m2-package-review-2026-10-14.md`). Then M2-00 – M2-12 (M2-11 split into 11a and 11b: 14 tasks), the batch checks, self-review and the NVDA HTML research report from the saved, verified daily recordings. Then one combined Codex review. The M2 merge needs its own owner approval.
+2. **M1 hourly (batch 3b):** blocked on A4 (account terms and retention/publication permissions); see `docs/hourly-access-review`. Whether any route avoids a given permission is unverified. Key use, access checks, checkpoint R and downloads each need separate authorization. M1 completes only when 3b and M1-17's hourly part (5b) merge.
+3. **Pending for Codex at the M2 review (non-blocking):** the M1 deferred review items in "Open issues"; the M1-08 contract allowing `received_at < end_time` for a CLOSED bar (M2 enforces its own completed-bar cutoff, see M2-00/M2-03); the M2-11 split.
+4. **Planning while Codex reviews M2:** M3 task specs and the OPEN-07/OPEN-08 decisions, prepared for the owner's approval of the next milestone. No M3 code before M2 merges and M3 is approved.
 
 **Owner's conditions for batch 2 (2026-10-12):**
 - complete **2019 – 2026** calendar coverage from **cited official exchange sources**, special closures included;
@@ -149,6 +149,158 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-14: Claude Code (M2 milestone, step 0: documentation integration)
+- **Owner approval (2026-10-14, relayed with Codex's package review):** fast-forward local `main` to the reviewed `53c51bd` (no push), then build the whole M2 milestone on its own branch from verified daily NVDA data. Apply Codex's corrections first, use the proposed settings as provisional research assumptions, and complete all 14 tasks with tests, task commits and checks. Return the HTML report and one combined package for Codex. Excluded: M1 hourly work, the M2 merge, pushes, keys, market-data downloads, trading.
+- **Merge done:** in the clean `C:/Users/LOQ/TradingAgents-main`, heads rechecked (`0661d46` → `53c51bd`, ancestry verified), then `git merge --ff-only 53c51bd782f9ebc901254e2b74ed48ced75f3195`. Not pushed. M1 now stands at 15 of 18 tasks done.
+- **Branch and worktree:** `m2/milestone` from `main`, in `C:/Users/LOQ/TradingAgents-m2`. Every other branch, worktree and the root's uncommitted files are untouched.
+- **Integration:**
+  - the reviewed M2 spec commits `bb86480`, `6df10da` and `71133c1` were cherry-picked unchanged (as `0b2afae`, `54b9297`, `75ce29e`; the spec files are byte-identical to `71133c1`); their PROGRESS conflicts were left for this commit;
+  - PROGRESS.md is a three-way merge (base `cc62dbf`): `53c51bd`'s log, the root working copy's newer handoff entries, and the M2-spec branch's own entries, all kept; status rows and next steps rewritten for the current state;
+  - AGENTS.md, CLAUDE.md and `docs/tasks/README.md` take the root's role-restoration records; the temporary Copilot assignment is marked ended; shared rules §4 records the milestone-package workflow (shared blocks checked identical);
+  - `docs/reviews/` (handoff, Copilot review queue, acceleration plan, Claude's package proposal, Codex's package review) is committed as the record behind these decisions; `.github/copilot-instructions.md` stays out.
+- **Codex's five corrections applied:**
+  1. the daily-only prerequisite amendment is in every controlling text: roadmap overview and §5, `docs/tasks/README.md`, the M2 README, M2-00 and M2-08 (the two specs that required a complete M1); M1's hourly criteria are unchanged;
+  2. integration happens on `m2/milestone`, not on `main`;
+  3. M2-11 is split mechanically: M2-11 keeps the full contract plus a mapping table; M2-11a (folds and leakage guards: rules 1–4 and 6) and M2-11b (run records: rule 5) give files, interfaces, dependencies and acceptance-case mapping; M2-12 depends on both;
+  4. blocking gaps stop the work (recorded in shared rules §4 and here); only non-blocking items wait for the milestone review;
+  5. completed-bar cutoff: M2-00 rule 7 and M2-03 rule 6 require CLOSED bars with `end_time <= T`, availability and replay delivery by T, and refuse `received_at < end_time`, with acceptance cases.
+- **Configuration:** the M2 README records the provisional research settings (OPEN-08 next-session-close validity; 5-session split-adjusted horizon; 5 bps per side and a 10 bps stress run; 24/6/6-month windows; promotion thresholds not accepted). M2-06 and M2-10 note them as resolved for M2.
+- **Also corrected:** Claude's package document no longer claims the internal-only hourly route avoids redistribution permission (Codex review); A4 must establish it.
+- **Checks (documentation only):** `git diff --check` clean; shared-rules blocks identical. No runtime change, so no test run for this commit.
+
+### 2026-10-14: Codex (reviewed Claude's whole-M2 proposal; consolidated authorization prepared)
+
+- Owner relayed Claude's D1–D5 list and said they want a whole milestone completed and reviewed, without reading the technical list. Reviewed the actual uncommitted next-package document, current source heads, frozen laws/contracts/milestone/change rules and M2 specs. Created a concrete planning review note instead of reopening completed R-07 work.
+- Corrected the earlier dependency interpretation: full M1-before-M2 is currently a roadmap/spec rule; frozen Part K doesn't impose that sequencing. Daily-only M2 can proceed under an explicitly approved planning amendment, with verified daily prerequisites merged, M1 kept incomplete and H1 blocked. No laws, process/domain boundaries or execution authority change; no architecture ADR for the scheduling exception alone.
+- Required integration corrections: update all controlling prerequisite text (not only roadmap), integrate docs on `m2/milestone` rather than directly into main, preserve the reviewed contracts/tests when splitting M2-11, defer only nonblocking suggestions, and validate CLOSED inputs/end-time/availability/replay-delivery cutoffs independently of the old M1 receipt contract issue. D3 remains provisional simulation/research config, no trading/promotion. D5 remains unapproved; internal-only data handling alone doesn't establish all applicable disclosure permissions.
+- Prepared a short consolidated owner instruction for Claude covering the precise local reviewed merge and M2 package while excluding keys/downloads/purchases and the final M2 merge. This planning review itself supplies no owner git permission. No runtime changes, tests/CI/downloads, commit, merge or push. Main still `0661d46`; target `53c51bd`; M2 specs `71133c1`. Files remain unstaged; whitespace checked.
+
+### 2026-10-14: Codex (end-of-month target; acceleration proposal for Claude)
+
+- Owner said the workflow is taking too long and all milestones need completion this month. Recorded **October 31, 2026** as the requested planning target, without promising feasibility or altering frozen scope. M10 live is outside v1. The roadmap overview's M2–M9 ranges sum about 340–450 provisional effort hours, excluding remaining M1/external waiting; these are not measured AI elapsed times.
+- Prepared `docs/reviews/october-acceleration-plan.md`: one clearly approved milestone-sized package, uninterrupted task implementation with automatic task commits/checks, one combined independent review, productive independent planning during review, and consolidated owner decisions before each package. Existing check cadence/stop rules/merge permissions remain unchanged.
+- Listed the actual critical gates: prepared reviewed M1 merge, hourly A4/access/R/evidence, M2 OPEN-08/09/configuration, later risk and ledger/broker/hosting ADR decisions. The full M2 draft pack is already reviewed; do not rewrite it or implement before its prerequisites are met. No earlier milestone reorder or scope reduction adopted.
+- Updated Claude handoff to point to the proposal. Files remain unstaged, no commit/merge/push/runtime edits/keys/downloads. Main stays `0661d46`; count remains 12/18 M1 done. Runtime tests/CI not run (documents only); whitespace checked. Claude implements and Codex reviews again.
+
+### 2026-10-14: Claude Code (returned as implementation lead; state verified, next package proposed)
+- **Read:** CLAUDE.md, this file and `docs/reviews/claude-return-handoff.md`. The recorded state is verified:
+  - every head matches the handoff;
+  - `main` and every accepted commit are ancestors of `53c51bd` (a fast-forward is possible);
+  - `7ef63f6` is not an ancestor, but its runtime, spec and test files are byte-identical in `53c51bd`;
+  - all five worktrees are clean.
+- **Fresh check at `53c51bd`.** Claude ran these in a new detached worktree, `C:/Users/LOQ/TradingAgents-reviews/claude-53c51bd`; Codex's checkouts weren't touched.
+  - `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider` (Git Bash): **2035 passed, 1 failed, 4 skipped, 3 deselected**. The only failure is the baseline `test_yfinance_keeps_its_cache_out_of_the_users_home`.
+  - `ruff check .`: passed.
+  - PowerShell and the clean install were not rerun. CI not yet run.
+- **Proposal written (uncommitted):** `docs/reviews/claude-next-package-2026-10-14.md`. It covers:
+  - owner decisions D1 to D4: the M1 fast-forward; whether M2 daily work may start before hourly M1 completes (a roadmap change, not an architecture change); M2's provisional configuration; the hourly gate actions;
+  - an M1 hardening package (H-1 to H-4, from the deferred review items);
+  - a `docs/m2-integration` branch (a simulated merge conflicts only in PROGRESS.md).
+- **No source changes.** No merge, push, commit, keys or downloads. M2 code is still blocked.
+- **Next:** the owner's answers to D1 to D3 and approval of the package; Codex reviews the proposal.
+- **Later the same day, the owner set the working method:** each milestone is completed in one go, with automatic task commits under one package approval, and Codex reviews the whole milestone. Pending items wait for that review.
+  - The proposal was rewritten to match. It now holds: blockers B1 to B4, owner decisions D1 to D5, the complete M2 package (steps 0 to 14, about 33–42 h estimated), the list of items pending for Codex, and an honest October 31 forecast.
+  - Unchanged: merges, pushes, key use and downloads still need their own explicit approval.
+
+### 2026-10-14: Codex (Claude returned; implementation/review roles restored)
+
+- Owner explicitly reported Claude Code is back and asked for a complete handoff and faster, longer work packages. Restored Claude-as-implementer/Codex-as-reviewer now, based on the actual return rather than waiting for a calendar reset date. Copilot assignment ended; completed R-07 acceptance remains valid at exact heads.
+- Wrote `docs/reviews/claude-return-handoff.md`: work done, branches/worktrees/heads, checks and limitations, prepared merge, hourly blockers, M2 draft state, and one combined-review/longer-work-package workflow. Updated AGENTS/CLAUDE role notices (outside identical shared-rule sections), task README, historical Copilot instructions/queue and this root handoff. All remain unstaged; no runtime changes or commit.
+- Verified main remains `0661d46`, daily target `53c51bd`, and prepared main checkout is clean. Source worktrees remain clean and existing root changes are preserved. No merge approval was recorded in the owner's handoff request; the prepared exact fast-forward remains the next approval-dependent action.
+- Runtime tests/CI not rerun (documents only). Whitespace and shared-rule equality checked. No keys, data downloads, push, merge, branch deletion or M2 runtime. **12/18 M1 tasks done** remains current; the approved future merge would make 15/18 while hourly work remains unfinished.
+
+### 2026-10-14: Codex (R-07 accepted; local merge prepared, not performed)
+
+- Owner relayed `d6b46fb0-ae95-45a5-aa10-fcf5cf4dc134/Pasted text.txt`. Copilot reviewed exact standalone `cc62dbf..7ef63f6`, dependent `db826f2..53c51bd`, and docs `6df10da..71133c1`: **no blocking findings in any part**. It reports **147** standalone and **178** combined targeted cases passed, changed-file Ruff passed, snapshot whitespace clean. Earlier CLI count corrected to 79. Full suites/install/CI/live/hourly/authenticated checks were not run by Copilot in this review; previous implementer evidence remains separate.
+- Codex verified all branch heads still match the reviewed commits and all three source worktrees are clean. Rechecked snapshot whitespace and exact ported resample/runtime/spec/test equality between `7ef63f6` and `53c51bd`. No new source change or runtime test rerun in this step; no need to repeat previously passing checks on identical code.
+- Reviewed proposed main diff: **22 existing commits, 37 changed paths**, accepted daily 3a/protocol/schedule plus batch 4/fixes and partial daily CLI. No upstream runtime, architecture/SVG, CI, env-example, secrets or `.claude/` changes. Main `0661d46` is an ancestor of exact target `53c51bd782f9ebc901254e2b74ed48ced75f3195`; `git merge --ff-only` is possible. Standalone `7ef63f6` is not merged separately because its fix already exists exactly in the dependent head.
+- Prepared `C:/Users/LOQ/TradingAgents-main` with `git worktree add C:/Users/LOQ/TradingAgents-main main`: clean, at unchanged main `0661d46d5222955c57309d3cd0b9fd3b6efdfa5c`. Root's branch/dirty role-setup documents and all other worktrees/branches remain preserved. This is reversible checkout preparation, **not a merge**.
+- Updated this root handoff and review queue, left unstaged. No commit, merge, push, key use, market-data download or M2 runtime. M2 documentation `71133c1` remains on its separate branch. Main still has **12/18 M1 tasks done**; proposed approved merge would make 15/18 while hourly M1-12/13/17 stays unfinished.
+- **Next:** obtain the owner's explicit approval for this concrete fast-forward, as AGENTS.md §4/§5 requires; then recheck main/target/checkout, merge only the exact reviewed target, and report final state. Do not interpret the reviewer report as owner merge permission.
+
+### 2026-10-13: Codex (Copilot review received; all follow-ups implemented and checked)
+
+- Review attachment `7494f4c6-771a-4fa3-9c06-38ede792ade0/Pasted text.txt`: **R-01 changes required**, one reproducible point-in-time blocker in `compare_daily`; **R-06 no blockers**, provider-label suggestion; **R-02 no blockers**, now supplied zero-split evidence wording; **R-04/R-05 no blockers**; **R-03 no documentation blocker identified but source/permission verification incomplete**. All acceptance is limited to the reviewed snapshots; no merge authorized.
+- **Standalone R-01 fix:** `7ef63f64f9a5fa7928c0a785dfe8ce937fd775f5`, branch `m1/batch-4-review-fix`, worktree `C:/Users/LOQ/TradingAgents-batch4-review-fix`, base `cc62dbf`. Seven regression cases failed before the fix; inclusive-boundary case passed. Future/naive/inconsistent availability is now rejected and derived availability must match the latest input. **147 target tests passed**; full Git Bash and PowerShell each **2009 passed, 1 baseline failure**; Ruff and fresh installed cutoff smoke passed. Four allowed M1-15 files only.
+- **Dependent CLI follow-up:** `53c51bd782f9ebc901254e2b74ed48ced75f3195`, branch `m1/M1-17-daily`, worktree `C:/Users/LOQ/TradingAgents-daily-cli`, base `db826f2`. Exact resample/test/spec contents from the standalone fix were ported without merge or history rewrite. Added actual provider to the RESEARCH DATA label; two existing output assertions failed first. **178 combined target tests passed**; full Git Bash and PowerShell each **2035 passed, 1 baseline failure**; Ruff and installed base/engine CLI+cutoff smoke passed. Fresh installation environment was created for this review session, with own Python and isolated installed-code checks; project editable installation unchanged.
+- **Only full-suite failure in every run:** `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, recorded in baseline. No new failures. Historical PowerShell CLI failure did not reproduce and was not altered/skipped. Exact commands/output paths are committed in the respective PROGRESS.md files. CI, live providers, keys/downloads/hourly gates not run.
+- **M2 suggestion:** documentation commit `71133c197949a0d6acbb267db0fc3b7ae5c156d2`, `docs/m2-specs`, base `6df10da`, only M2-00 plus handoff. Zero-split evidence must identify completed exhaustive verification for exact provider/instrument/type/range/as-of, request bounds and version; incomplete/failed queries cannot establish absence. Added future acceptance cases. Whitespace clean; no runtime tests needed/run for this documentation change. M2 remains draft and OPEN-08/09 unresolved.
+- **Review record clarification:** Copilot's summary lists 139 tests for its CLI/layering/system-clock selection; Codex independently reran that selection and observed **79** (same 26 CLI cases). Queue asks for a count correction; no raw output was invented and this is not treated as a code blocker.
+- **Preserved:** root's uncommitted reviewer-setup files remain unstaged. Root and detached original review snapshot stay `cc62dbf`; main stays `0661d46`; all existing branches/worktrees kept. No merge, push, secrets or architecture changes. **12/18 M1 tasks done** remains accurate. Copilot re-review of all three follow-ups is **R-07**, pending.
+
+### 2026-10-13: Codex (daily CLI implemented alongside Copilot review)
+
+- Separate worktree `C:/Users/LOQ/TradingAgents-daily-cli`, branch `m1/M1-17-daily`, base `cc62dbf`, scope commit `6c5e35e`, code/checks commit **`db826f20c4f9076e8b53b3b2cc943dc9233b7eb5`**. The owner's instruction was to work on the next task while Copilot reviews; Codex stated the daily-scope assumption before implementation. Checked dependencies remain unmerged in branch ancestry; this is not a passed independent review.
+- Real task delivered: `python -m investment_engine init`, offline provider-specific D1 report, and explicit daily-only import wiring. Exact Decimal values, revisions/corrections, ET/UTC, source/availability/precision labels, corporate actions and DataHealth are shown. Hourly remains BLOCKED/UNAVAILABLE; default full import fails honestly. Tests use existing recordings and synthetic observations under the network guard. No live data or keys.
+- **26 new CLI tests**, **48 CLI/layering/clock tests passed**. Final full suites ran sequentially: Git Bash and PowerShell each **2027 passed, 1 failed, 4 skipped, 3 deselected**. Only failure: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, recorded in baseline. No new failures. Ruff and fresh base/engine installed smoke checks passed. CI not run.
+- Self-review fixed revision currency labels with a regression test first. Actual code/check commands, installation paths and limitations are recorded in the daily branch's PROGRESS.md. This root entry is a cross-worktree handoff, not another commit.
+- Copilot packet **R-06** appended, independently pending. Root role-setup edits and all previous worktrees preserved; root code remains `cc62dbf`, main `0661d46`. No merge/push. **12/18 M1 tasks done** remains accurate; partial unmerged work does not increase that count.
+
+### 2026-10-13: Codex - received Copilot's first partial review
+
+Read the owner's entire Copilot transcript attachment and closing summary (`ae50c017-6198-4e5f-9d10-3f31c6ff3ae9/Pasted text.txt`). Confirmed that the named snapshots still resolve to batch 4 `cc62dbf`, M2 drafts `6df10da`, hourly assessment `699f9fa`; no branch or source changed during that review.
+
+**Actual independent review result:** R-02 reported no blocking findings for exact `5984997..6df10da`. Copilot mentioned a lineage/evidence-reference documentation suggestion but didn't include its location, failure scenario or proposed wording. No change was guessed from that summary. This result is a review of draft documents, not M2 implementation authorization or acceptance of OPEN-08/09.
+
+**Still incomplete:** Copilot explicitly didn't claim R-01's full code review passed. It inspected the proposal/setup/public-assessment documents but didn't return full per-job verdicts. Its public source fetches failed, so R-03 source verification remains limited and **A4 remains unresolved**. Missing permission is a pre-existing gate, not a reported implementation bug. No independent runtime checks were reported. The transcript lists activity/commands without full results, so only its stated conclusions are recorded as received evidence.
+
+**Handoff improved:** updated the queue with per-job received status, a focused continuation prompt and absolute paths. Copilot initially opened the older `codex-claude-extension-integration` checkout, which lacks the new queue/instructions. The prompt points to current workflow files in `C:/Users/LOQ/TradingAgents` and the isolated R-01 review snapshot. Corrected navigation hints for the actual ADR-005 filename and the M1-12 assessment location. No reviewer result, test pass, permission or owner scope approval is fabricated.
+
+**Checks this turn:** attachment read; exact git refs and working-tree status checked; `git diff --check` clean; shared-role instructions left unchanged. Runtime tests/Ruff/CI/fresh install not rerun because only review-tracking documentation changed. No actionable code finding was supplied and no runtime was modified. These tracking/setup edits remain unstaged and uncommitted. Main is still `0661d46`, M1 done count 12/18; no merge/push, keys or downloads. Next: Copilot completes R-01 and remaining verdicts; owner separately decides the prepared daily-first scope change before its implementation.
+
+
+### 2026-10-13: Codex - GitHub Copilot temporary independent reviewer
+
+The owner opened GitHub Copilot on the same project and explicitly assigned it independent reviewing while Codex implements, until Claude returns after its October 15 reset. Recorded the temporary exception in AGENTS.md and CLAUDE.md, kept their shared-rule sections identical, added `.github/copilot-instructions.md`, noted the assignment in the task README and prepared `docs/reviews/copilot-review-queue.md`. This is an administrative workflow change; frozen laws/authority, accepted task scopes, verification and git approvals are unchanged.
+
+**Concrete handoff prepared:** R-01 reviews all eight batch 4 commits at exact `cc62dbf`; R-02 the M2 draft pack at `6df10da`; R-03 public A4 assessment at `699f9fa`; R-04 the unapplied daily-first CLI scope proposal; R-05 these uncommitted reviewer instructions. Copilot reports findings in chat; Codex records them and handles code fixes. No Copilot review result exists yet. The queued status isn't acceptance.
+
+Created an isolated detached review worktree with `git worktree add --detach C:/Users/LOQ/TradingAgents-reviews/copilot-batch4-cc62dbf cc62dbf23e04db27cbecfbd6a1d462ecdd4c3d1c`. The reviewer must not edit implementation files, switch the shared branch, mutate shared handoff documents or modify the project venv. Its review can inspect that stable snapshot while implementation continues elsewhere. Use a separate test environment; full suites in the shared environment must not run concurrently because upstream caches interfere.
+
+**Communication limit:** inspected the available tools and shell; no callable Copilot/IDE chat bridge and no `copilot` CLI command were found. No install, window control, message sending or background monitor was attempted. The owner must paste the prepared starter prompt and relay the response. Future completion messages include the next packet/prompt; direct delivery is never claimed.
+
+**Scope still pending:** the earlier daily-first M1-17 proposal hasn't been approved by this role-change request. Hourly evidence/A4 remain unresolved, M1-17 full task still depends on 3b and 4, and M2 runtime is not authorized. Reviewer acceptance cannot authorize these scope changes, merges, pushes, keys or market-data downloads. Restore the normal Claude implementation/Codex review roles when Claude actually returns and record it here.
+
+**Checks:** exact queue hashes and commit ancestry verified; shared rules identical; documentation links/fences/whitespace checked. `git diff --check` clean. Runtime tests, CI and fresh installation not rerun for this documentation-only setup; latest code evidence remains the 139 targeted passes, both full suites 2001 passes with the sole baseline cache-location failure, Ruff and fresh-install checks recorded above. These workflow documents are **unstaged and uncommitted** for review; no runtime changed, no merge/push or secret staging. Main remains `0661d46` and M1 done count 12/18.
+
+### 2026-10-13: Codex (Copilot R-02 coverage-evidence suggestion)
+
+- Copilot's relayed review of `5984997..6df10da` reported no blockers; its omitted suggestion was supplied in attachment `7494f4c6-771a-4fa3-9c06-38ede792ade0/Pasted text.txt`.
+- Updated only M2-00 and this handoff. Zero-split coverage now explicitly requires references to completed, exhaustive verification for the exact provider/instrument/SPLIT/range/as-of, request bounds and verification version. Empty local queries and incomplete/failed responses cannot prove absence. Added the corresponding future acceptance cases and retained references into M2-07 lineage.
+- This is a spec clarification, not an implemented coverage system, architecture change or accepted OPEN-08/09 configuration. No M2 runtime, merge, push, keys or downloads.
+- Checks: `git diff --check` clean; reviewed the clarification against M2-07's evidence references. Runtime tests and CI not run (documents only). Follow-up awaits Copilot review; the rest of the previously reviewed pack was unchanged.
+
+### 2026-10-13: Codex - owner-authorized self-review, M2 contract clarifications
+
+The owner instructed Codex to self-review and continue without waiting for Claude's October 15 reset. This changes who performs this review; it does **not** authorize merges/pushes, keys/downloads, bypassing the hourly checkpoint or declaring incomplete M1 done. Self-review is labelled honestly; Claude can audit the changes later.
+
+Read every M2 spec and the pack index again. Clarified three draft inconsistencies: FeatureDefinition's key annotation now includes input basis as its canonical-key rule requires; a missing required health entry creates an unavailable snapshot that reaches the ABSTAIN policy instead of raising beforehand; last-period-direction baseline is explicitly the already-completed same-horizon window ending at prediction session close, avoiding an unfinished forward label.
+
+No M2 runtime was implemented. OPEN-08/09 choices and action-coverage/total-return acceptance remain unresolved; complete M1 is still an implementation prerequisite. The read-only pack check (`& 'C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe' 'C:/Users/LOQ/TradingAgents-proposals/m2-pack-check-codex.py'`) and whitespace checks passed. M2 runtime tests and CI not run (documentation only). The separate batch 4 branch contains ongoing DataHealth boundary fixes; public A4 evidence is on `docs/hourly-access-review`. A prepared, unapplied daily-CLI split proposal is outside the repo at `C:/Users/LOQ/TradingAgents-proposals/daily-cli-unblock.patch`; it needs an owner scope decision before implementation.
+
+
+### 2026-10-13: Codex - completed M2 planning pack, documentation only
+
+The owner authorized M2 specification drafting on a separate branch, OPEN-06 option A research scope, with OPEN-09 assumptions provisional, during the longer batch 4 work package. **No M2 code, merge, push, key use or market-data download.** Existing `docs/m2-specs` worktree was preserved at `C:\Users\LOQ\TradingAgents-m2-specs`, based on scheduling commit `5984997`. Claude's untracked M2-00 – M2-07 drafts were continued, not discarded.
+
+**Documents prepared:** M2-00 – M2-12; `docs/tasks/M2-README.md`; a link from the task README; replacement of roadmap's provisional M2 work-package rows with the draft task/batch graph. Each spec has goal, dependencies, allowed files, contracts, choices, acceptance checks and out-of-scope boundaries. Proposed M2-A/B/C/D groups allow longer combined sessions on approval while retaining task commits/checks and milestone prerequisites.
+
+**Codex revised the initial drafts:**
+
+- Full provider/instrument/revision/import/time/basis references and explicit established action coverage, including a verified-empty case.
+- Split-adjusted price view before indicators; a separate labelled total-return/label task instead of an insufficient generic dividend-adjusted OHLC formula. Raw execution/accounting values remain raw.
+- Flat-RSI edge, exact RSI threshold boundaries, finite-value validation and guarded feature access. Feature-window holes and stale decision bars cannot pass just because the 20-session health window is OK.
+- MarketView input checks, a non-circular evidence-reference/hash flow, complete append-only lineage with SQL mutation guards and full DataHealth/configuration.
+- Replay knowledge projection: only revisions already delivered by the feed may enter features/health. The E / E+3 correction with five-second latency is an explicit pipeline acceptance test; unrestricted PIT store reads at delivery T would leak that correction.
+
+**Codex drafted M2-08 – M2-12:** separately labelled price/total returns and completed labels; matched directional base-rate/IC metrics; Decimal raw-price cost-inclusive SIMULATED long/cash research; fold purging, fit isolation and immutable EvaluationRun records; honest static HTML reporting. No numeric-return models or calibrated probabilities in M2. No actual ledger cash, execution replay, broker, Order, OrderIntent, new process or outbox is introduced.
+
+**Decisions still pending:** independent acceptance of all draft contracts, action-coverage evidence and total-return convention; OPEN-08 validity; OPEN-09 horizon/costs/folds/exposure/ABSTAIN assumptions and promotion thresholds. The proposed numerical promotion thresholds remain unaccepted and cannot authorize execution. M2-11 may need a further reviewed split if its fold/storage implementation estimate exceeds three hours. These are draft refinements within the existing Quant/Evaluation/Lineage boundaries, not accepted architecture changes.
+
+**Checks:** from this worktree, `& 'C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe' 'C:/Users/LOQ/TradingAgents-proposals/m2-pack-check-codex.py'` passed: 13 complete numbered specs, required sections, balanced fences, local links, whitespace and an acyclic dependency graph. The read-only helper stays outside the repository. `git diff --check` and `git diff --cached --check` passed. Runtime tests/CI/live checks **not run in this worktree**, because only documents changed. Batch 4's separate code checks: 134 task/clock checks; full Git Bash and PowerShell each 1996 passed with only the recorded cache-location baseline failure; Ruff and fresh installed synthetic replay/resample/health passed. Consult `m1/batch-4`'s PROGRESS for exact commands; this is a cross-branch summary, not an M2 runtime result.
+
+**Handoff for Claude:** independently review Codex's drafts and the batch 4 follow-up commit before treating them as accepted. Resume implementation-lead/reviewer division when Claude is available. The owner authorized local task/follow-up commits during takeover; merges/pushes remain forbidden for this package. Main stays `0661d46`, 12/18 M1 tasks done. Hourly evidence and M1-17 are still blocked by their existing gates.
 
 ### 2026-10-13: Codex (Copilot R-01/R-06 follow-ups in the daily CLI branch)
 
