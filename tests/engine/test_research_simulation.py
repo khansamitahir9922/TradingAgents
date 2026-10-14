@@ -246,9 +246,10 @@ def test_net_return_drawdown_and_sharpe_by_hand(tmp_path):
     assert [v for _, v in r.equity_curve] == [Decimal(x) for x in ("10000", "11000", "9900", "12100")]
     assert metric(r, "net_return").value == pytest.approx(0.21)
     assert metric(r, "max_drawdown").value == pytest.approx(-0.1)
-    rets = [0.1, -0.1, 12100 / 9900 - 1]
-    mean = sum(rets) / 3
-    sd = (sum((x - mean) ** 2 for x in rets) / 2) ** 0.5
+    # B4: the first return runs from the initial cash (10000) to the first close (10000 here, no costs).
+    rets = [0.0, 0.1, -0.1, 12100 / 9900 - 1]
+    mean = sum(rets) / 4
+    sd = (sum((x - mean) ** 2 for x in rets) / 3) ** 0.5
     assert metric(r, "sharpe_daily_annualized").value == pytest.approx(mean / sd * 252 ** 0.5)
 
 
@@ -327,3 +328,38 @@ def test_an_entirely_future_window_is_incomplete_with_nothing_valued(store):
     r = run(store, [], at=cutoff, cov=coverage(cutoff))
     assert not r.complete and r.equity_curve == () and r.trades == ()
     assert metric(r, "net_return").value is None
+
+
+# ------------------------------------------------------------------ B4: the initial-cash boundary in daily Sharpe
+
+
+@pytest.mark.unit
+def test_sharpe_includes_the_entry_cost_from_initial_cash(store):
+    r = run(store, [view(DAYS[0], "BULLISH")])  # flat prices: the only change is the 5 bps entry cost
+    m = metric(r, "sharpe_daily_annualized")
+    first = float(r.equity_curve[0][1]) / 10000 - 1
+    assert first == pytest.approx(-0.000495)
+    rets = [first] + [0.0] * (len(r.equity_curve) - 1)
+    mean = sum(rets) / len(rets)
+    sd = (sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)) ** 0.5
+    assert m.value == pytest.approx(mean / sd * 252 ** 0.5) and m.value < 0
+    assert m.n == len(r.equity_curve)
+
+
+@pytest.mark.unit
+def test_sharpe_includes_a_first_session_price_move(tmp_path):
+    root = tmp_path / "m"
+    writer = MarketDataWriter(root)
+    writer.write_candles([bar(DAYS[0], "100", "100"), bar(DAYS[1], "100", "90"), bar(DAYS[2], "90", "90"),
+                          bar(DAYS[3], "90", "99")], import_id="b")
+    s = {"reader": MarketDataReader(root)}
+    config = replace(CONFIG, costs_bps_per_side=Decimal("0"))
+    r = run(s, [view(DAYS[0], "BULLISH")], config=config, last=DAYS[3])
+    rets = [-0.1, 0.0, 0.1]
+    mean = sum(rets) / 3
+    sd = (sum((x - mean) ** 2 for x in rets) / 2) ** 0.5
+    assert metric(r, "sharpe_daily_annualized").value == pytest.approx(mean / sd * 252 ** 0.5)
+    hold = next(b for b in r.benchmarks if b.name == "buy_and_hold")
+    assert metric(r, "sharpe_daily_annualized", benchmark="buy_and_hold").value == pytest.approx(
+        mean / sd * 252 ** 0.5)
+    assert hold.equity_curve[0][1] == Decimal("9000")

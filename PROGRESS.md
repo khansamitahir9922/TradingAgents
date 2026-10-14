@@ -150,6 +150,18 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-15: Claude Code (M2-10 follow-up, B4: daily Sharpe includes the initial-cash boundary)
+- **Codex finding B4 (P2):** the daily Sharpe used only adjacent closes, so it left out the return from initial cash to the first close: entry costs and the first session's move. Net return and drawdown already started from initial cash.
+- **Fix (`evaluation/simulation.py`):** returns now run from the initial cash through every valued close, for the strategy and both benchmarks. The zero risk-free rate, sample deviation and ×√252 are stated in the module docstring.
+- **Regressions, run first and observed failing (3 failed):**
+  - the hand-calculated case now includes the 0% first return;
+  - a flat-price run where the only change is the 5 bps entry cost now has an available, negative Sharpe;
+  - a first-session drop from 100 to 90 is included, for both the strategy and buy-and-hold.
+
+  After the fix: 35 passed (simulation and walk-forward files). The zero-variance case, with no trade, stays unavailable.
+- **Checks (Git Bash):** see the result line below; `ruff check .` passed; whitespace clean.
+  - full suite: 1 failed, 2360 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 130.24s (0:02:10) (only failure: the baseline cache-location test)
+
 ### 2026-10-15: Claude Code (M2-10 and M2-11a follow-up, B3: windows past the cutoff are incomplete)
 - **Codex finding B3 (P2):** `simulate_research` dropped requested sessions closing after the evaluation cutoff before its completeness check. So a window cut short at the cutoff reported `complete=True` and a full-window net return.
 - **Fix (`evaluation/simulation.py`):** sessions after the cutoff are now listed in an incomplete-run limitation ("N requested sessions end after the evaluation cutoff …: first..last"). Full-window return metrics become unavailable with an "incomplete run" reason; the sessions that were valued stay visible. A window ending exactly at the cutoff stays complete.

@@ -21,6 +21,8 @@ return metrics cross the float64 boundary once.
 - Buy-and-hold enters at the same first eligible open with the same cash,
   costs, actions and valuation data; a cash benchmark holds the initial cash.
   Ending equity is marked at the last close without forced liquidation.
+  Daily Sharpe uses returns from the initial cash through every valued close
+  (zero risk-free rate, sample deviation, x sqrt(252)).
 - A session without a completed bar, or a requested session that ends after
   the evaluation cutoff, makes the run incomplete: no trade or valuation is
   invented for it, the omitted dates are listed, and full-window return
@@ -196,7 +198,10 @@ def _return_metrics(curve, initial: Decimal, incomplete: str) -> tuple[MetricVal
     for v in values:
         peak = max(peak, v)
         drawdown = min(drawdown, v / peak - 1)
-    returns = [b / a - 1 for a, b in zip(values, values[1:], strict=False)]
+    # The first daily return runs from the initial cash to the first close, so entry costs and the first
+    # session's move count (Codex B4); the same for the strategy and both benchmarks.
+    boundary = [base, *values]
+    returns = [b / a - 1 for a, b in zip(boundary, boundary[1:], strict=False)]
     sharpe, reason = None, ""
     if len(returns) < 2:
         reason = "fewer than two daily returns"
