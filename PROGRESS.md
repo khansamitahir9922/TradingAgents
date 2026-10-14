@@ -150,6 +150,37 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-11a: walk-forward folds and leakage guards, committed and checked)
+- **Added:** `investment_engine/evaluation/walk_forward.py` and `tests/engine/test_walk_forward.py` (12 cases).
+- **Folds:**
+  - `WalkForwardConfig` holds months as positive ints (not bool); a step shorter than the test window is refused because test windows would overlap.
+  - `Fold` requires `train_start < train_cutoff < test_start < test_end`.
+  - `make_folds` aligns calendar months to the first covered session (e.g. 2019-01-02; a test start on Saturday 2021-01-02 moves to Monday 2021-01-04). The cutoff is the close of the last session before the test start; test windows are half-open. Only complete test windows count: 11 folds for 2019-01-01..2026-10-09 at 24/6/6.
+- **`walk_forward(folds, *, views, reader, calendar, source, instrument_id, coverage_evidence, coverage_first, coverage_last, coverage_reason, evaluation_config, at, fit_steps=(), impute_required_sources=False)`:**
+  - fit steps and required-source imputation raise `UnsupportedFitStep`;
+  - test decisions are the replay's own `PredictionView`s filtered by window;
+  - training labels are computed at each cutoff and counted eligible or purged (`training_eligible`);
+  - test outcomes are read at the evaluation time;
+  - trailing (last-period) returns are read at each view's T;
+  - coverage is established at each of those times from the evidence;
+  - each fold has `DirectionEvaluation` plus a fresh-cash `simulate_research` run;
+  - warm-up and abstain counts are reported;
+  - the stitched summary is labelled "Normalized stitched fold returns … not a continuous portfolio's dollar P&L";
+  - `promotion` is "PROMOTION NOT ASSESSED: thresholds pending approval"; no output promotes anything.
+- **`RevisionCache`:** an in-memory, read-only projection of one provider's and instrument's stored revisions with the store's `visible_at` semantics. With the plain store reader the test file took 288 s (thousands of DuckDB reads); with the cache it takes 15 s. A test checks that the cache's answers equal the store reader's for many times and ranges.
+- **Acceptance covered:**
+  - fold edges and alignment; non-overlapping half-open tests;
+  - purging of labels ending after the cutoff;
+  - a correction arriving after the cutoff changes neither training-label counts nor test metrics;
+  - fit-step and imputation rejection; determinism;
+  - terminal outcomes unavailable; warm-up/stitched/promotion disclosures;
+  - views outside every fold are never test observations.
+- **Tests first, observed:** collection failed before the module existed. Before implementing I removed a meaningless test, extended the synthetic history to 2 July 2024 so a fourth fold is complete, and moved coverage to evidence form. All passed on the first implemented run; the cache was added after that run for speed.
+- **Checks (Git Bash):**
+  - full suite: see the next line;
+  - `ruff check .` passed; whitespace clean.
+  - full-suite result line: 1 failed, 2319 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 151.35s (0:02:31)
+
 ### 2026-10-14: Claude Code (M2-10: cost-inclusive SIMULATED research, committed and checked)
 - **Added:** `investment_engine/evaluation/simulation.py` and `tests/engine/test_research_simulation.py` (17 cases).
 - **`simulate_research(views, *, reader, calendar, source, instrument_id, first, last, at, coverage, config)`:**
