@@ -2,7 +2,7 @@
 
 Prepared 2026-10-13 on `docs/m2-specs`. Claude drafted M2-00 through M2-07; Codex revised those contracts and drafted M2-08 through M2-12 while Claude was unavailable. **No M2 code has been written or authorized.**
 
-**Accepted for implementation (owner, 2026-10-14)** as one milestone package: the owner approved the whole M2 build on `m2/milestone`, with automatic local task commits and one combined Codex review at the end. Codex's package review (`docs/reviews/codex-m2-package-review-2026-10-14.md`) is applied: the prerequisite amendment below, branch-based integration, the mechanical M2-11 split, stop rules for blocking gaps, and the completed-bar cutoff in M2-00/M2-03.
+**Implemented on `m2/milestone` (all 14 tasks committed and checked, 2026-10-14) and handed to Codex for the milestone review; see `docs/reviews/claude-m2-milestone-package.md`.** Accepted for implementation (owner, 2026-10-14) as one milestone package: the owner approved the whole M2 build on `m2/milestone`, with automatic local task commits and one combined Codex review at the end. Codex's package review (`docs/reviews/codex-m2-package-review-2026-10-14.md`) is applied: the prerequisite amendment below, branch-based integration, the mechanical M2-11 split, stop rules for blocking gaps, and the completed-bar cutoff in M2-00/M2-03.
 
 **Prerequisite (owner's scheduling amendment, 2026-10-14: M2 starts on M1's **merged daily scope** (`main` `53c51bd`); M1's hourly parts stay unfinished and M1 completion criteria are unchanged. No M2 code reads H1 data.)** Law 9 still applies to each strategy's declared sources, which are yfinance D1 plus SPLIT actions.
 

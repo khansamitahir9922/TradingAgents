@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress, 15 of 18 tasks done** (M1-00 – M1-11, M1-14 – M1-16). M1-12, M1-13 and M1-17 have their **daily parts merged** and their hourly parts unfinished (batch 3b, blocked on A4 permissions). **M2 Quant + initial evaluation: in progress** (daily only), under the owner's 2026-10-14 scheduling amendment. |
 | **`main`** | Local `main` is at **`53c51bd`** (`fix: carry comparison cutoff validation into the daily CLI and label its provider`): the owner approved the fast-forward from `0661d46` on 2026-10-14 after Copilot's R-07 review passed. It contains batch 3a, batch 4 and the daily part of M1-17. **Nothing has been pushed** (`main` is 51 commits ahead of `origin/main`). |
-| **Current work** | **M2 milestone in progress on `m2/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m2`), approved by the owner on 2026-10-14 as one package: step 0 documentation integration, then 14 implementation tasks with automatic local task commits, then one combined Codex review. Local `main` was fast-forwarded to the reviewed `53c51bd` the same day (no push). M2 uses verified **daily** data only; M1 stays in progress until hourly verification (batch 3b) passes. No M2 merge, push, keys, downloads or trading. |
+| **Current work** | **M2 implemented: all 14 tasks committed and checked on `m2/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m2`), batch checks done, NVDA report built offline from the verified daily recordings. **Awaiting Codex's milestone review** (`docs/reviews/claude-m2-milestone-package.md`), then a separate owner merge approval. Local `main` is `53c51bd` (no push). M1's hourly parts remain blocked on A4. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules, `market/calendar/`, `market/availability.py`, `market/candles.py`, `market/corporate_actions.py`, `market/store/`, `market/importers/` (verified Yahoo daily bars and actions; hourly BLOCKED), `market/replay.py`, `market/resample.py`, `market/data_health.py` and the daily NVDA CLI (`python -m investment_engine`). M2 adds `quant/`, `decision/`, `lineage/`, `evaluation/` and `reporting/` on `m2/milestone`. |
@@ -149,6 +149,35 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-14: Claude Code (M2 milestone complete on its branch: batch checks, self-review, report; handed to Codex)
+- **State:** all 14 M2 tasks are committed and checked on `m2/milestone` (range `53c51bd..HEAD`). The combined review package is `docs/reviews/claude-m2-milestone-package.md`: commits, contract extensions, process notes, pending items and report results.
+- **Batch checks (cwd `C:/Users/LOQ/TradingAgents-m2`):**
+  - Git Bash full suite: **2341 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected.
+  - PowerShell, `& C:\Users\LOQ\TradingAgents\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider`: **2340 passed, 2 failed**, 4 skipped, 3 deselected. Both failures are recorded baseline failures (`test_every_command_is_registered_when_run_as_a_module`, cp1252; `test_yfinance_keeps_its_cache_out_of_the_users_home`). **No new failures.**
+  - `ruff check .` passed.
+  - **Clean install:**
+    - `py -3.11 -m venv <scratch>/smoke-m2`, then `<scratch>/smoke-m2/Scripts/python.exe -m pip install ".[engine]"`: exit 0;
+    - from the repository root, `-c "import tradingagents, cli.main, investment_engine"`: "clean-install import OK";
+    - from outside the repository, `-I <scratch>/m2_smoke.py`: passed. It imports every M2 module from site-packages, finds schemas 0001–0003 packaged, migrates a new database to version 3, and confirms the lineage table refuses DELETE.
+  - CI not yet run (nothing pushed).
+- **Report:** `C:/Users/LOQ/TradingAgents-proposals/m2-report/nvda-research-report.html`, built by `build_report.py` there (outside the repository, no network).
+  - **Inputs:** the saved verified recordings (2026-10-12, yfinance 1.7.0) through the M1 importers: 1954 daily bars and 33 actions.
+  - **Views:** 1954 with lineage (1443 BULLISH, 219 BEARISH, 93 NEUTRAL, 199 ABSTAIN).
+  - **Evaluation:** 11 complete 24/6/6 folds each at 5 bps (`eval-3d820ee92b21917…`) and at the 10 bps stress cost (`eval-b5724937986ffde…`); all 22 fold runs complete.
+  - **Findings:** rules mostly match always-up; the information coefficient is negative wherever defined; returns trail buy-and-hold in rising folds and lose less in 2022-H1. No profitability or significance is claimed; promotion is not assessed.
+- **Self-review (whole milestone):**
+  - the package's "Where to look hardest" points were re-read against the specs and laws;
+  - probes: empty report inputs give honest text; reverse and fractional split factors are exact (0.5 × 1.5 = 0.75); the real-data run shows the 2021 and 2024 splits with no fictitious loss (strategy equals buy-and-hold in single-trade folds across both splits).
+  - Not found: any new blocking defect. Contract extensions and process deviations are listed in the package for Codex to accept or reject.
+- **Honest corrections:**
+  - the M2-00 and M2-01 entries say their tests "failed to import before the module existed": inferred, not observed. For M2-00 to M2-08 the tests were written first but not run before implementing;
+  - M2-07's code was drafted before its tests;
+  - `2a8c3ac` was committed with a lint failure; `7028523` has M2-11b's message by mistake.
+
+  All four are recorded with their fixes.
+- **This commit:** documents only. It adds the review package, the PROGRESS status and this entry, the M2 README status, and tidies the M2-02 status row (nested by my commit helper).
+- **Next:** Codex reviews the complete milestone. Findings come back as follow-up commits. The M2 merge needs the owner's separate approval. Not authorized: push, keys, downloads, trading, hourly work. While the review runs, M3 planning (specs, OPEN-07/08) can be prepared, but M3 code waits for M2's merge and M3's approval.
 
 ### 2026-10-14: Claude Code (M2-12: NVDA HTML research report renderer, committed and checked; commit-message error recorded)
 - **Process error, recorded:** commit `7028523` contains exactly the M2-12 files (`investment_engine/reporting/__init__.py`, `investment_engine/reporting/html.py`, `tests/engine/test_html_report.py`, the M2-12 status), but carries **M2-11b's commit message** and a duplicate of M2-11b's PROGRESS entry.
