@@ -150,6 +150,27 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-03: FeatureSnapshot, committed and checked)
+- **Added:** `investment_engine/quant/snapshot.py` and `tests/engine/test_feature_snapshot.py` (13 cases).
+- **`build_snapshot(instrument_id, source, features, *, at, reader, calendar, health, coverage)`:**
+  - one T for bars, actions, features and DataHealth; a `health.as_of` or instrument mismatch raises;
+  - the decision bar is the latest session closed at or before T (`decision_session`); a session still open at T is never used;
+  - the window is the consecutive calendar sessions ending there, as long as the longest declared warm-up (200), never before the coverage's first date (the verified history boundary).
+- **Snapshot fields:** the contract fields plus `warmup` (the feature keys still warming up from the history boundary) and `decision_close` (the decision bar's adjusted close).
+- **Unavailable snapshots** carry a reason and no feature values, in these cases:
+  - a missing health entry for `source D1`, naming the source;
+  - unestablished coverage (only `AdjustmentUnavailable` is caught; other errors propagate);
+  - a missing decision bar (yesterday's values are never recycled);
+  - any hole in the window, even one older than M1's 20-session health lookback.
+
+  Warm-up from the boundary is labelled separately and isn't a hole.
+- **References:** `input_refs` are exactly the bars the valued features used (the last 200 for the four definitions; 50 for SMA50 alone). When the snapshot is unavailable, they are the bars examined. Mappings are read-only.
+- **Self-review:** dropped a draft field that fetched the raw decision close through an optional reader method (a hack); raw prices stay with M2-10's simulation.
+- **Checks (Git Bash):**
+  - task tests: 13 passed;
+  - full suite: **2148 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected;
+  - `ruff check .` passed; `git diff --check` clean.
+
 ### 2026-10-14: Claude Code (M2-02 follow-up: RSI14 declares its seeding window)
 - **Gap found while planning M2-03.** M2-02 rule 2 asks for RSI's seeding window "stated in the code"; the first commit didn't declare one, so RSI depended on all history since the boundary. That would make every view's inputs (and lineage) about 2,000 bars, and adding earlier history would change RSI.
 - **Fix:** `RSI14` is now `rsi` v1.0.0 with `{"seed_sessions": 200, "window": 14}` and warm-up 200 (the same window as SMA200); `evaluate` computes it over exactly the last 200 closes, and refuses a seed shorter than `window + 1`. The `rsi()` function and its 15-close minimum are unchanged. This happened before any later task used the definition.
