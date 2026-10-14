@@ -150,6 +150,32 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-05: the two daily rule strategies, committed and checked)
+- **Added:** `investment_engine/quant/strategies/trend.py`, `investment_engine/quant/strategies/pullback.py`, `tests/engine/test_first_strategies.py` (31 cases).
+- **A1 `daily-trend` 0.1.0** (SMA50, SMA200, dist_sma200):
+  - BULLISH when the close is above SMA200 and SMA50 > SMA200;
+  - BEARISH when the close is below SMA200 and SMA50 < SMA200;
+  - otherwise NEUTRAL, equalities included.
+  - Strength `min(1, |dist|/0.10)`.
+- **A2 `daily-pullback` 0.1.0** (rsi14, dist_sma200):
+  - BULLISH when the close is above SMA200 and RSI ≤ 30;
+  - BEARISH when the close is below SMA200 and RSI ≥ 70;
+  - otherwise NEUTRAL.
+  - Strength `min(1, |RSI-50|/50)`.
+- **Shared:**
+  - "close vs SMA200" is the sign of `dist_sma200`;
+  - both strategies read only their declared features through `declared_snapshot`;
+  - each documents `strength_scale` as "not a probability";
+  - required sources `(yfinance, D1)` and actions `(SPLIT,)`;
+  - reasons name the rule and values, e.g. "close 4.2% above SMA200; SMA50 above SMA200";
+  - any declared feature in warm-up gives `None`.
+- **Acceptance:** every table row, both equality cases, inclusive RSI 30/70, strength scales, warm-up, declared sources/actions/features and determinism.
+- **Non-blocking note for the milestone review:** `FeatureDefinition` (M2-01) is unhashable because its parameters are a `MappingProxyType`; tests compare keys instead. Adding a key-based `__hash__` is a small M2-01 follow-up if Codex wants it.
+- **Checks (Git Bash):**
+  - task tests: 31 passed;
+  - full suite: **2200 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected;
+  - `ruff check .` passed; `git diff --check` clean.
+
 ### 2026-10-14: Claude Code (M2-04: rule-strategy interface, committed and checked)
 - **Added:** `investment_engine/quant/strategies/__init__.py`, `investment_engine/quant/strategies/base.py`, `tests/engine/test_strategy_interface.py` (21 cases).
 - **Contract:**
