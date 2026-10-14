@@ -150,6 +150,30 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-06: MarketView and decision policy 0.1.0, committed and checked)
+- **Added:** `investment_engine/decision/__init__.py`, `investment_engine/decision/market_view.py`, `tests/engine/test_market_view.py` (32 cases).
+- **`MarketView`** has the Part H fields. Its constructor enforces:
+  - a finite float strength in [0, 1], zero for ABSTAIN and NEUTRAL;
+  - `probability_up` is always None;
+  - an abstain reason exactly when ABSTAIN;
+  - `valid_until > generated_at`.
+- **`decide(...)`:**
+  - one signal slot per strategy, in order and matching identity and version; the strategy set is non-empty and distinct; the snapshot's health must match its T and instrument;
+  - **Law 9:** not applicable, a missing health entry for any declared required source, or any non-OK status (DEGRADED included) gives ABSTAIN naming each source and status;
+  - an unavailable snapshot or unestablished required-action coverage abstains; established coverage with no actions doesn't;
+  - warm-up abstains.
+- **Combination:**
+  - A1 (first strategy) sets the regime;
+  - a same-direction signal takes the maximum strength;
+  - an opposing signal gives a consistency NEUTRAL with its reason visible;
+  - A1 NEUTRAL stays NEUTRAL;
+  - A1 alone gives A1's direction.
+- **Other fields:** `valid_until` is the next session's close (Friday→Monday and the Juneteenth holiday are tested); `horizon` is "5 sessions"; `regime` is A1's direction; reasons combine every signal's reasons.
+- **Checks (Git Bash):**
+  - task tests: 32 passed;
+  - full suite: **2232 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected;
+  - `ruff check .` passed; `git diff --check` clean.
+
 ### 2026-10-14: Claude Code (M2-05: the two daily rule strategies, committed and checked)
 - **Added:** `investment_engine/quant/strategies/trend.py`, `investment_engine/quant/strategies/pullback.py`, `tests/engine/test_first_strategies.py` (31 cases).
 - **A1 `daily-trend` 0.1.0** (SMA50, SMA200, dist_sma200):
