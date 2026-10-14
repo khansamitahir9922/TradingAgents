@@ -11,8 +11,10 @@ consecutive closes, it is seeded by the simple averages of the first n gains
 max(c, 0) and losses max(-c, 0); each later average is
 (previous * (n - 1) + current) / n. RSI = 100 - 100 / (1 + gain / loss), with
 100 when only gains, 0 when only losses and 50 when both averages are zero.
-The value depends on where the history starts (the seed), so callers pass the
-declared seed-to-T history.
+The value depends on where the history starts (the seed), so RSI14 declares
+its seeding window: it is always computed over exactly the last
+`seed_sessions` (200) closes, the same window as SMA(200). Earlier history
+never changes it, and its inputs are a fixed, listable set of bars.
 """
 
 import math
@@ -88,13 +90,13 @@ def distance_from(close: float, average: float) -> float:
 
 SMA50 = FeatureDefinition("sma", "1.0.0", {"window": 50}, _SPLIT, 50)
 SMA200 = FeatureDefinition("sma", "1.0.0", {"window": 200}, _SPLIT, 200)
-RSI14 = FeatureDefinition("rsi", "1.0.0", {"window": 14}, _SPLIT, 15)
+RSI14 = FeatureDefinition("rsi", "1.0.0", {"seed_sessions": 200, "window": 14}, _SPLIT, 200)
 DIST_SMA200 = FeatureDefinition("dist_sma", "1.0.0", {"window": 200}, _SPLIT, 200)
 DEFINITIONS: tuple[FeatureDefinition, ...] = (SMA50, SMA200, RSI14, DIST_SMA200)
 
 SCHEMAS = {
     "sma": {"window": ParamSpec(int, minimum=1)},
-    "rsi": {"window": ParamSpec(int, minimum=1)},
+    "rsi": {"seed_sessions": ParamSpec(int, minimum=2), "window": ParamSpec(int, minimum=1)},
     "dist_sma": {"window": ParamSpec(int, minimum=1)},
 }
 
@@ -116,7 +118,10 @@ def evaluate(definition: FeatureDefinition, closes: Sequence[float]) -> float | 
     if definition.name == "sma":
         return sma(closes, window)
     if definition.name == "rsi":
-        return rsi(closes, window)
+        seed = definition.params["seed_sessions"]
+        if seed < window + 1:
+            raise ValueError(f"an RSI seeding window of {seed} can't seed a {window}-change average")
+        return rsi(closes[-seed:], window)
     if definition.name == "dist_sma":
         return distance_from(closes[-1], sma(closes, window))
     raise KeyError(f"no computation for feature {definition.name}")

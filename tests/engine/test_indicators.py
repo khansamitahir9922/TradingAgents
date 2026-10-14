@@ -122,7 +122,7 @@ def test_invalid_inputs_raise(call):
 @pytest.mark.unit
 def test_each_definition_is_registered_with_its_warmup_on_the_split_adjusted_view():
     reg = registry()
-    expected = [(SMA50, ("sma", 50, 50)), (SMA200, ("sma", 200, 200)), (RSI14, ("rsi", 14, 15)),
+    expected = [(SMA50, ("sma", 50, 50)), (SMA200, ("sma", 200, 200)), (RSI14, ("rsi", 14, 200)),
                 (DIST_SMA200, ("dist_sma", 200, 200))]
     assert [d.key for d in DEFINITIONS] == [d.key for d, _ in expected]
     for d, (name, window, warmup) in expected:
@@ -140,6 +140,15 @@ def test_evaluate_is_none_during_warmup_and_never_a_partial_window():
     assert evaluate(SMA200, closes + [200.0]) == pytest.approx(100.5)
     assert evaluate(DIST_SMA200, closes + [200.0]) == pytest.approx(200.0 / 100.5 - 1)
     assert evaluate(RSI14, closes[:14]) is None
+
+
+@pytest.mark.unit
+def test_rsi14_uses_exactly_its_declared_seeding_window():
+    closes = [100.0 + (i % 7) - (i % 3) for i in range(260)]
+    assert RSI14.params["seed_sessions"] == 200 and RSI14.warmup_sessions == 200
+    assert evaluate(RSI14, closes[:199]) is None
+    assert evaluate(RSI14, closes) == rsi(closes[-200:], 14)
+    assert evaluate(RSI14, [50.0] * 40 + closes) == evaluate(RSI14, closes)  # earlier history never matters
 
 
 @pytest.mark.unit

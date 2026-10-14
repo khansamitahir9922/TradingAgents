@@ -150,6 +150,12 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-14: Claude Code (M2-02 follow-up: RSI14 declares its seeding window)
+- **Gap found while planning M2-03.** M2-02 rule 2 asks for RSI's seeding window "stated in the code"; the first commit didn't declare one, so RSI depended on all history since the boundary. That would make every view's inputs (and lineage) about 2,000 bars, and adding earlier history would change RSI.
+- **Fix:** `RSI14` is now `rsi` v1.0.0 with `{"seed_sessions": 200, "window": 14}` and warm-up 200 (the same window as SMA200); `evaluate` computes it over exactly the last 200 closes, and refuses a seed shorter than `window + 1`. The `rsi()` function and its 15-close minimum are unchanged. This happened before any later task used the definition.
+- **Tests:** a new case proves earlier history never changes RSI14 and that it equals `rsi(last 200, 14)`; the registration expectation now shows warm-up 200. 26 passed.
+- **Checks (Git Bash):** full suite **2135 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected; `ruff check .` passed; `git diff --check` clean.
+
 ### 2026-10-14: Claude Code (M2-02: indicators, committed and checked)
 - **Added:** `investment_engine/quant/indicators.py` and `tests/engine/test_indicators.py` (25 cases).
 - **Indicators:**
