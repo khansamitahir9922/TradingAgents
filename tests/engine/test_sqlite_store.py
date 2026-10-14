@@ -279,5 +279,19 @@ def test_later_migrations_upgrade_an_existing_m1_database_without_touching_its_t
     assert conn.execute("SELECT sql FROM sqlite_master WHERE name IN ('instruments', 'symbol_mappings')"
                         " ORDER BY name").fetchall() == before
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    assert "lineage_records" in tables
+    assert {"lineage_records", "evaluation_records"} <= tables
+    conn.close()
+
+
+@pytest.mark.unit
+def test_a_database_at_schema_2_upgrades_to_the_evaluation_records(tmp_path):
+    path = tmp_path / "operational.sqlite3"
+    conn = open_operational_db(path)
+    for number, script in enumerate(SCHEMA_SCRIPTS[:2], start=1):
+        sql = script.read_text(encoding="utf-8")
+        conn.executescript(f"BEGIN;\n{sql}\nINSERT INTO schema_version (version) VALUES ({number});\nCOMMIT;")
+    SqliteInstrumentRepository(conn).add(instrument())
+    assert apply_schema(conn) == len(SCHEMA_SCRIPTS) >= 3
+    assert SqliteInstrumentRepository(conn).get("EQ_US_NVDA") == instrument()
+    assert conn.execute("SELECT COUNT(*) FROM evaluation_records").fetchone()[0] == 0
     conn.close()
