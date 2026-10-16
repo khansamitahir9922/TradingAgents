@@ -107,9 +107,7 @@ def test_direct_sql_update_and_delete_are_refused(db):
 def test_the_id_hashes_every_assumption():
     base = record().record_id
     for change in ({"code_version": "x"}, {"calendar_version": "x"}, {"coverage_reason": "x"},
-                   {"backfill_assumption": "x"}, {"evaluation_config": EVAL.__class__(
-                       "eval-stress", Decimal("10000"), "USD", Decimal("10"), "LONG_OR_CASH",
-                       "CASH_ON_EX_DATE_RESEARCH_ASSUMPTION")}):
+                   {"backfill_assumption": "x"}):  # a cost change must be computed, not relabelled (B5)
         assert record(**change).record_id != base
 
 
@@ -151,3 +149,45 @@ def test_replacing_an_existing_evaluation_id_through_sql_is_refused_and_the_orig
     assert db.execute("SELECT content FROM evaluation_records WHERE record_id = ?", (r.record_id,)).fetchone()[0] == original
     assert store.get(r.record_id) == r
     store.append(r)
+
+
+# ------------------------------------------------------------------ B5: the outer record must agree with its folds
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("change", ["cost", "source", "instrument", "cutoff", "label", "fold_version",
+                                    "direction_basis", "stitched", "promotion"])
+def test_a_record_contradicting_its_fold_results_is_refused(change):
+    from dataclasses import replace
+    base = record()
+    fold = base.result.folds[0]
+    kwargs = {}
+    if change == "cost":
+        kwargs["evaluation_config"] = replace(EVAL, costs_bps_per_side=Decimal("10"))
+    elif change == "source":
+        kwargs["source"] = "testvendor"
+    elif change == "instrument":
+        kwargs["instrument_id"] = "EQ_US_MSFT"
+    elif change == "cutoff":
+        kwargs["as_of"] = datetime(2026, 10, 13, tzinfo=UTC)
+    elif change == "label":
+        kwargs["walk_forward_config"] = replace(WF, label_config=LabelConfig(10, LABELS.basis, "labels-other"))
+    elif change == "fold_version":
+        kwargs["walk_forward_config"] = replace(WF, version="wf-other")
+    elif change == "direction_basis":
+        direction = replace(fold.direction, basis=ReturnBasis.TOTAL_RETURN_CLOSE_REINVESTED)
+        kwargs["result"] = replace(base.result, folds=(replace(fold, direction=direction),))
+    elif change == "stitched":
+        kwargs["result"] = replace(base.result, stitched=((fold.fold.test_start, 0.5),))
+    else:
+        kwargs["result"] = replace(base.result, promotion="PROMOTED")
+    with pytest.raises(ValueError):
+        record(**kwargs)
+
+
+@pytest.mark.unit
+def test_a_consistent_record_still_serializes_and_appends_idempotently(db):
+    store = EvaluationRunStore(db)
+    store.append(record())
+    store.append(record())
+    assert store.get(record().record_id) == record()

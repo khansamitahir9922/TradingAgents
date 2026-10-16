@@ -150,6 +150,25 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M2-11b follow-up, B5: evaluation records must agree with their folds)
+- **Codex finding B5 (P1):** `EvaluationRecord` didn't check its outer configuration against its nested fold runs, so a 5 bps calculation could be stored and rendered as 10 bps. The report's stress test built exactly that.
+- **Fix (`evaluation/run_store.py`):** construction now refuses a record unless:
+  - each fold run's configuration, source, instrument and evaluation cutoff equal the outer record's;
+  - each fold's walk-forward version and label configuration equal the walk-forward configuration;
+  - each fold's direction metrics use the label version, basis and horizon;
+  - the stitched summary matches the folds and their net returns;
+  - promotion is `PROMOTION NOT ASSESSED: thresholds pending approval`.
+
+  Contradictions raise and are listed; valid records serialize and append idempotently as before.
+- **Regressions, run first and observed failing (9 failed):** mismatched cost, source, instrument, cutoff, label configuration, fold version, direction basis, stitched value and promotion status.
+- **Tests corrected:**
+  - the report fixture's two records are now computed by actually running `simulate_research` at 5 and at 10 bps on a small synthetic store (`computed_record`), not relabelled;
+  - the old id-hash case that relabelled the cost was removed, because such a record is now refused.
+
+  34 passed (run-store and report files).
+- **Checks (Git Bash):** see the result line below; `ruff check .` passed; whitespace clean.
+  - full suite: 1 failed, 2370 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 148.15s (0:02:28) (only failure: the baseline cache-location test)
+
 ### 2026-10-15: Claude Code (M2-10 follow-up, B4: daily Sharpe includes the initial-cash boundary)
 - **Codex finding B4 (P2):** the daily Sharpe used only adjacent closes, so it left out the return from initial cash to the first close: entry costs and the first session's move. Net return and drawdown already started from initial cash.
 - **Fix (`evaluation/simulation.py`):** returns now run from the initial cash through every valued close, for the strategy and both benchmarks. The zero risk-free rate, sample deviation and ×√252 are stated in the module docstring.

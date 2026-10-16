@@ -2,23 +2,33 @@
 
 import re
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 
 from investment_engine.decision.market_view import ViewDirection
 from investment_engine.evaluation.metrics import MetricValue
+from investment_engine.evaluation.simulation import simulate_research
 from investment_engine.lineage.records import LineageStore
 from investment_engine.market.availability import AvailabilityBasis
+from investment_engine.market.calendar.us_equities import load_us_equities_calendar
 from investment_engine.market.candles import Timeframe
+from investment_engine.market.store.reader import MarketDataReader
+from investment_engine.market.store.writer import MarketDataWriter
 from investment_engine.quant.adjusted import AdjustedBar, AdjustedBasis, BarRef
 from investment_engine.reporting.html import render_research_report
 from investment_engine.storage.sqlite import apply_schema, open_operational_db
 from tests.engine.test_evaluation_run_store import record as evaluation_record
 from tests.engine.test_lineage import record as lineage_record
+from tests.engine.test_research_simulation import (
+    bar as sim_bar,
+    coverage as sim_coverage,
+    view as sim_view,
+)
 
 NVDA = "EQ_US_NVDA"
+CAL = load_us_equities_calendar()
 GENERATED = datetime(2026, 10, 14, 12, tzinfo=UTC)
 AT = datetime(2024, 6, 21, 21, tzinfo=UTC)
 
@@ -30,6 +40,23 @@ def adjusted(i, close):
                        AdjustedBasis.SPLIT_ADJUSTED_AS_OF, GENERATED, Decimal("10"), ref, ())
 
 
+def computed_record(tmp_path, bps):
+    """An EvaluationRecord whose fold run was actually simulated at `bps` (Codex B5: never relabelled)."""
+    base = evaluation_record()
+    config = replace(base.evaluation_config, version=f"eval-{bps}bps", costs_bps_per_side=Decimal(bps))
+    root = tmp_path / f"market-{bps}"
+    days = [s.date for s in CAL.sessions_between(date(2021, 1, 4), date(2021, 1, 15))]
+    MarketDataWriter(root).write_candles([sim_bar(d, "100", str(100 + i)) for i, d in enumerate(days)],
+                                         import_id="b")
+    run = simulate_research([sim_view(days[0], "BULLISH")], reader=MarketDataReader(root), calendar=CAL,
+                            source="yfinance", instrument_id=NVDA, first=days[0], last=days[-1], at=base.as_of,
+                            coverage=sim_coverage(base.as_of), config=config)
+    fold = base.result.folds[0]
+    net = next(m.value for m in run.metrics if m.key == "net_return")
+    result = replace(base.result, folds=(replace(fold, run=run),), stitched=((fold.fold.test_start, net),))
+    return evaluation_record(evaluation_config=config, result=result)
+
+
 @pytest.fixture
 def inputs(tmp_path):
     conn = open_operational_db(tmp_path / "op.sqlite3")
@@ -38,8 +65,7 @@ def inputs(tmp_path):
     lin = lineage_record()
     store.append(lin)
     view = replace(lin.decision, evidence_refs=(lin.lineage_id,))
-    runs = [evaluation_record(), evaluation_record(evaluation_config=replace(
-        evaluation_record().evaluation_config, version="eval-stress", costs_bps_per_side=Decimal("10")))]
+    runs = [computed_record(tmp_path, "5"), computed_record(tmp_path, "10")]  # actual 5 and 10 bps calculations
     prices = [adjusted(i, 100.0 + i) for i in range(5)]
     yield {"conn": conn, "store": store, "views": [view], "runs": runs, "lineage": lin, "prices": prices}
     conn.close()
@@ -59,6 +85,7 @@ def test_source_backed_values_ids_and_costs_are_shown(inputs):
     lin = inputs["lineage"]
     assert lin.lineage_id in html and inputs["runs"][0].record_id in html and inputs["runs"][1].record_id in html
     assert "ABSTAIN" in html and "5 bps" in html and "10 bps" in html
+    assert inputs["runs"][0].record_id != inputs["runs"][1].record_id
     assert "yfinance" in html and NVDA in html and "2026-10-14T12:00:00+00:00" in html
     assert "buy_and_hold" in html.replace("buy-and-hold", "buy_and_hold") or "Buy and hold" in html
 

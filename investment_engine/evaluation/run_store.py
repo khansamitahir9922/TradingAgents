@@ -25,7 +25,11 @@ from datetime import datetime
 from investment_engine.evaluation.metrics import DirectionEvaluation
 from investment_engine.evaluation.returns import ReturnBasis, ReturnObservation
 from investment_engine.evaluation.simulation import EvaluationConfig
-from investment_engine.evaluation.walk_forward import WalkForwardConfig, WalkForwardResult
+from investment_engine.evaluation.walk_forward import (
+    PROMOTION_STATUS,
+    WalkForwardConfig,
+    WalkForwardResult,
+)
 from investment_engine.lineage.records import canonical_json, decode, register
 from investment_engine.market.availability import check_utc
 
@@ -53,7 +57,36 @@ class EvaluationRecord:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} is required")
         object.__setattr__(self, "coverage_evidence_refs", tuple(self.coverage_evidence_refs))
+        self._check_consistency()
         object.__setattr__(self, "record_id", "eval-" + hashlib.sha256(self.content().encode()).hexdigest())
+
+    def _check_consistency(self) -> None:
+        """The outer configuration and labels must describe exactly what the folds computed (Codex B5)."""
+        wf, labels = self.walk_forward_config, self.walk_forward_config.label_config
+        problems = []
+        if self.result.promotion != PROMOTION_STATUS:
+            problems.append(f"promotion status {self.result.promotion!r}; thresholds are not accepted")
+        if len(self.result.stitched) != len(self.result.folds):
+            problems.append("stitched summary and folds differ in length")
+        for i, (fr, (start, value)) in enumerate(zip(self.result.folds, self.result.stitched, strict=False), 1):
+            run, d, fold = fr.run, fr.direction, fr.fold
+            if run.config != self.evaluation_config:
+                problems.append(f"fold {i} ran with {run.config.version} ({run.config.costs_bps_per_side} bps), not "
+                                f"{self.evaluation_config.version} ({self.evaluation_config.costs_bps_per_side} bps)")
+            if (run.source, run.instrument_id) != (self.source, self.instrument_id):
+                problems.append(f"fold {i} is for {run.source} {run.instrument_id}")
+            if run.as_of != self.as_of:
+                problems.append(f"fold {i} was evaluated at {run.as_of}, not {self.as_of}")
+            if (fold.config_version, fold.label_config) != (wf.version, labels):
+                problems.append(f"fold {i} has walk-forward/label configuration {fold.config_version}")
+            if (d.config_version, d.basis, d.horizon_sessions) != (labels.version, labels.basis,
+                                                                   labels.horizon_sessions):
+                problems.append(f"fold {i} direction metrics use {d.config_version} {d.basis} h={d.horizon_sessions}")
+            net = next((m.value for m in run.metrics if m.key == "net_return"), None)
+            if start != fold.test_start or value != net:
+                problems.append(f"stitched entry {i} doesn't match its fold's net return")
+        if problems:
+            raise ValueError("inconsistent evaluation record: " + "; ".join(problems))
 
     def content(self) -> str:
         return canonical_json({f.name: getattr(self, f.name) for f in dataclasses.fields(self) if f.init})
