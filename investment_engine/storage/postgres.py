@@ -15,16 +15,19 @@ Advisory-lock keys are the first 8 bytes of SHA-256 of a name, as a signed
 two transactions can never wait on each other in opposite orders. A hash
 collision only adds serialization; it never lets a conflict through.
 
-psycopg is imported only here and in the other storage modules (M3-00 rule 5).
+psycopg is imported only here and in the other storage modules (M3-00 rule 5),
+and only inside the functions that connect: AppendOnlyViolation is shared with
+the SQLite path, so importing this module must not need the driver (the
+`engine` extra) or create an import cycle with storage.sqlite.
 """
 
 import hashlib
 import re
 from importlib.resources import files
+from typing import TYPE_CHECKING
 
-import psycopg
-
-from investment_engine.storage.sqlite import SchemaVersionError
+if TYPE_CHECKING:
+    import psycopg
 
 _SCRIPT_NAME = re.compile(r"(\d{4})_[a-z0-9_]+\.sql")
 
@@ -33,8 +36,10 @@ class AppendOnlyViolation(RuntimeError):
     """A write that would change or remove an append-only record was refused."""
 
 
-def open_operational_pg(dsn: str) -> psycopg.Connection:
+def open_operational_pg(dsn: str) -> "psycopg.Connection":
     """Connect to the Operational Database at `dsn` (never logged), in autocommit mode with UTC session time."""
+    import psycopg
+
     conn = psycopg.connect(dsn, autocommit=True)
     conn.execute("SET TIME ZONE 'UTC'")
     return conn
@@ -49,14 +54,16 @@ def _pg_schema_scripts() -> list[tuple[int, str]]:
     return sorted(scripts)
 
 
-def _current_version(conn: psycopg.Connection) -> int:
+def _current_version(conn: "psycopg.Connection") -> int:
     if conn.execute("SELECT to_regclass('public.schema_version')").fetchone()[0] is None:
         return 0
     return conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_version").fetchone()[0]
 
 
-def apply_pg_schema(conn: psycopg.Connection) -> int:
+def apply_pg_schema(conn: "psycopg.Connection") -> int:
     """Apply every pending schema script in order, each atomically; return the resulting version."""
+    from investment_engine.storage.sqlite import SchemaVersionError
+
     scripts = _pg_schema_scripts()
     latest = scripts[-1][0] if scripts else 0
     current = _current_version(conn)

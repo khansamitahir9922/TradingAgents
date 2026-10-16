@@ -150,6 +150,12 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-01 follow-up: postgres.py importable without the driver)
+- **Why:** M3-02's database port must raise M3-01's `AppendOnlyViolation` on the SQLite path too. Importing `storage.postgres` at module level imported `psycopg`, which a base install lacks (M3-03 rule 8), and `storage.sqlite`, which would form an import cycle with the port.
+- **Change, within M3-01's allowed file:** `postgres.py` now imports `psycopg` only inside `open_operational_pg` (type hints via `TYPE_CHECKING`), and `SchemaVersionError` only inside `apply_pg_schema`. Behaviour is unchanged, and the class stays where the M3-01 contract puts it. A probe that blocks every `psycopg` import still imports the module and uses `AppendOnlyViolation` and `advisory_key`.
+- **Scope note:** I first made this edit while working on M3-02, whose allowed files don't include `postgres.py`. I reverted it there and made it here instead, as M3-01's own follow-up, so M3-02 stays within its files.
+- **Checks:** the same full-suite run as the M3-00 follow-up above; `test_postgres_schema.py` (26) passed within it.
+
 ### 2026-10-16: Claude Code (M3-00 follow-up: test-database teardown when autovacuum holds it)
 - **Found in a full-suite run during M3-01's follow-up (not a new product failure):** a teardown error in `test_postgres_schema.py::test_instrument_checks_reject_the_same_rows_as_sqlite[row1]`. `DROP DATABASE ... WITH (FORCE)` raised `InsufficientPrivilege: permission denied to terminate process`. Something else, most likely an autovacuum worker, which runs as the superuser, had the fresh database open, and the non-superuser `ie_dev` role may not terminate it.
 - **Fix (`tests/engine/conftest.py`):** `temporary_database` drops through `_drop`. A plain `DROP DATABASE` is retried, up to 20 times every 0.25 s, while it reports `ObjectInUse`; `WITH (FORCE)` is used only as the last resort. The database is still always dropped or the error is raised; nothing is left silently.
