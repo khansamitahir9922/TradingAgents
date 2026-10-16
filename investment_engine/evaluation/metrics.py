@@ -60,6 +60,9 @@ class DirectionEvaluation:
     metrics: tuple[MetricValue, ...]
     outcome_refs: tuple[ReturnObservation, ...]
     disclosures: tuple[str, ...]
+    trailing_refs: tuple[ReturnObservation, ...] = ()  # the trailing returns used by the last-period baseline
+    last_period_sample: tuple[date, ...] = ()  # prediction sessions in its paired sample
+    last_period_excluded: tuple[date, ...] = ()  # scored sessions without a usable trailing return
 
 
 def _ranks(values: Sequence[float]) -> list[float]:
@@ -172,18 +175,19 @@ def evaluate_direction(views: Sequence[PredictionView], outcomes: Sequence[Retur
                  "no available outcome")
     zero_excluded = sum(1 for _, o in directional if o.value == 0)
 
-    paired, lp_missing = [], 0
+    paired, lp_missing, excluded = [], 0, []
     for v, o in scored:
         t = by_trailing.get((v.source, v.view.instrument_id, v.prediction_session))
         at = v.view.generated_at
         if (t is None or t.value is None or t.value == 0 or t.outcome_end > at or t.available_from > at
                 or t.as_of > at):
             lp_missing += 1
+            excluded.append(v.prediction_session)
             continue
-        paired.append((v, o, _sign(t.value)))
-    lp = _rate(sum((s > 0) == (o.value > 0) for _, o, s in paired), len(paired), "last_period_accuracy_matched",
+        paired.append((v, o, _sign(t.value), t))
+    lp = _rate(sum((s > 0) == (o.value > 0) for _, o, s, _ in paired), len(paired), "last_period_accuracy_matched",
                "no scored date has a completed, available trailing return")
-    model_on_lp = _rate(sum(correct(v, o.value) for v, o, _ in paired), len(paired),
+    model_on_lp = _rate(sum(correct(v, o.value) for v, o, _, _ in paired), len(paired),
                         "direction_accuracy_on_last_period_sample", "no paired last-period sample")
 
     ic_sample = [(v, o) for v, o in directional if o.value is not None]
@@ -211,4 +215,6 @@ def evaluate_direction(views: Sequence[PredictionView], outcomes: Sequence[Retur
         neutral_views=sum(v.view.direction is ViewDirection.NEUTRAL for v, _ in joined),
         abstain_views=sum(v.view.direction is ViewDirection.ABSTAIN for v, _ in joined),
         unavailable_outcomes=sum(o.value is None for _, o in joined),
-        metrics=metrics, outcome_refs=tuple(o for _, o in joined), disclosures=tuple(disclosures))
+        metrics=metrics, outcome_refs=tuple(o for _, o in joined), disclosures=tuple(disclosures),
+        trailing_refs=tuple(t for _, _, _, t in paired), last_period_sample=tuple(v.prediction_session for v, *_ in paired),
+        last_period_excluded=tuple(excluded))

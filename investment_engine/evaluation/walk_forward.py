@@ -230,6 +230,14 @@ def walk_forward(folds: Sequence[Fold], *, views: Sequence[PredictionView], read
     if impute_required_sources:
         raise UnsupportedFitStep("required sources are never imputed (Law 9): missing data abstains")
     at = check_utc(at, "at")
+    folds = tuple(folds)
+    for f in folds:
+        if not isinstance(f, Fold):
+            raise TypeError("folds must be Fold records")
+    for a_fold, b_fold in zip(folds, folds[1:], strict=False):
+        if b_fold.test_start < a_fold.test_end:
+            raise ValueError("fold test windows must be in order and must not repeat or overlap: "
+                             f"{a_fold.test_start}..{a_fold.test_end} then {b_fold.test_start}..{b_fold.test_end}")
     views = sorted(views, key=lambda pv: pv.view.generated_at)
 
     def cover(t: datetime, types):

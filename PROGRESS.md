@@ -150,6 +150,13 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M2-09 and M2-11a follow-up, S2 and S3: fold guard and auditable last-period sample)
+- **S2 (Codex suggestion):** `walk_forward` now validates the supplied fold collection. Test windows must be in order and may not repeat or overlap; otherwise it raises. `make_folds` already produced valid folds, so the report is unaffected. Regressions (run first, 3 failed): duplicate, overlapping and out-of-order folds.
+- **S3 (Codex suggestion):** `DirectionEvaluation` now keeps `trailing_refs` (the trailing ReturnObservations actually used), `last_period_sample` (the paired prediction sessions) and `last_period_excluded` (scored sessions without a usable trailing return). They default to empty, so existing constructions stay valid, and they are stored with the record. Regression (run first, failed): the sample, exclusions and references for the hand-built table.
+- After the changes: 52 passed (walk-forward, metrics and run-store files).
+- **Checks (Git Bash):** see the result line below; `ruff check .` passed; whitespace clean.
+  - full suite: 1 failed, 2377 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 204.26s (0:03:24) (only failure: the baseline cache-location test)
+
 ### 2026-10-16: Claude Code (M2-12 follow-up, B6: the report checks its source and time labels)
 - **Codex finding B6 (P2):** the renderer didn't compare each view's lineage provider with the declared report source, and it accepted data later than the report's generation time.
 - **Fix (`reporting/html.py`):** rendering raises when a view's lineage snapshot comes from another provider than `source`, or when any view time, evaluation-record cutoff or price-series cutoff is later than `generated_at`. Historical views and the chart's separately labelled common basis are unaffected; extra health sources aren't prohibited.

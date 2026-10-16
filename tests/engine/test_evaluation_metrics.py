@@ -176,3 +176,18 @@ def test_outcome_refs_are_the_observations_used():
     views, outcomes = table()
     r = evaluate_direction(views, outcomes, config=CONFIG, calendar=CAL)
     assert set(r.outcome_refs) == set(outcomes)
+
+
+# ------------------------------------------------------------------ S3: the last-period sample is auditable
+
+
+@pytest.mark.unit
+def test_the_last_period_sample_and_its_trailing_returns_are_kept():
+    views, outcomes = table()
+    trail = [trailing(DAYS[0], 0.01), trailing(DAYS[1], 0.02),
+             trailing(DAYS[2], -0.01, available_from=at(DAYS[2]) + timedelta(seconds=1)),
+             trailing(DAYS[3], -0.02)]
+    r = evaluate_direction(views, outcomes, config=CONFIG, calendar=CAL, trailing=trail)
+    assert r.last_period_sample == (DAYS[0], DAYS[1], DAYS[3])
+    assert r.last_period_excluded == (DAYS[2],)
+    assert set(r.trailing_refs) == {trail[0], trail[1], trail[3]}

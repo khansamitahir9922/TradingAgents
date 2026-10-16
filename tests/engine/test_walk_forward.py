@@ -253,3 +253,21 @@ def test_an_unfinished_fold_is_reported_incomplete_not_complete(history):
     assert not fold.run.complete
     assert fold.test_views == len([v for v in history["views"] if last.test_start <= v.view.generated_at <= cutoff])
     assert result.stitched[0][1] is None
+
+
+# ------------------------------------------------------------------ S2: the fold collection is validated
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("arrangement", ["duplicate", "overlap", "out_of_order"])
+def test_duplicate_overlapping_or_unordered_folds_are_refused(history, arrangement):
+    folds = make_folds(SESSIONS[0], SESSIONS[-1], calendar=CAL, config=SMALL)
+    if arrangement == "duplicate":
+        folds = (folds[0], folds[0])
+    elif arrangement == "overlap":
+        folds = (folds[0], replace(folds[1], test_start=folds[0].test_end - timedelta(days=5),
+                                   train_cutoff=folds[0].test_end - timedelta(days=6)))
+    else:
+        folds = (folds[1], folds[0])
+    with pytest.raises(ValueError, match="fold"):
+        run(history, folds)
