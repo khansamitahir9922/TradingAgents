@@ -10,6 +10,8 @@ from investment_engine.storage import postgres as pg
 from investment_engine.storage.sqlite import SchemaVersionError, apply_schema, open_operational_db
 
 TS = datetime(2026, 10, 16, 12, tzinfo=UTC)
+LATEST = pg._pg_schema_scripts()[-1][0]  # later M3 scripts add PostgreSQL-only tables (M3-01 rule 1)
+MIRRORED = {"schema_version", "instruments", "symbol_mappings", "lineage_records", "evaluation_records"}
 
 
 @pytest.fixture
@@ -24,13 +26,15 @@ def tables(c) -> set[str]:
 
 
 @pytest.mark.postgres
-def test_a_fresh_database_migrates_to_version_4_and_reapplying_is_a_no_op(conn):
-    assert pg.apply_pg_schema(conn) == 4
+def test_a_fresh_database_migrates_to_the_latest_version_and_reapplying_is_a_no_op(conn):
+    assert LATEST >= 4
+    assert pg.apply_pg_schema(conn) == LATEST
     before = tables(conn)
     assert {"schema_version", "instruments", "symbol_mappings", "lineage_records", "evaluation_records"} <= before
-    assert pg.apply_pg_schema(conn) == 4
+    assert pg.apply_pg_schema(conn) == LATEST
     assert tables(conn) == before
-    assert [r[0] for r in conn.execute("SELECT version FROM schema_version ORDER BY version")] == [1, 2, 3, 4]
+    assert [r[0] for r in conn.execute("SELECT version FROM schema_version ORDER BY version")] == list(
+        range(1, LATEST + 1))
 
 
 @pytest.mark.postgres
@@ -43,8 +47,8 @@ def test_the_connection_is_autocommit_and_in_utc(conn):
 @pytest.mark.postgres
 def test_a_database_newer_than_the_code_is_refused(conn):
     pg.apply_pg_schema(conn)
-    conn.execute("INSERT INTO schema_version (version) VALUES (5)")
-    with pytest.raises(SchemaVersionError, match="version 5"):
+    conn.execute("INSERT INTO schema_version (version) VALUES (%s)", (LATEST + 1,))
+    with pytest.raises(SchemaVersionError, match=f"version {LATEST + 1}"):
         pg.apply_pg_schema(conn)
 
 
@@ -52,12 +56,12 @@ def test_a_database_newer_than_the_code_is_refused(conn):
 def test_a_failing_script_leaves_no_partial_schema_and_no_version(conn, monkeypatch):
     pg.apply_pg_schema(conn)
     real = pg._pg_schema_scripts()
-    broken = (5, "CREATE TABLE half_made (x int);\nSELECT this_is_not_sql;")
+    broken = (LATEST + 1, "CREATE TABLE half_made (x int);\nSELECT this_is_not_sql;")
     monkeypatch.setattr(pg, "_pg_schema_scripts", lambda: [*real, broken])
     with pytest.raises(psycopg.Error):
         pg.apply_pg_schema(conn)
     assert "half_made" not in tables(conn)
-    assert conn.execute("SELECT max(version) FROM schema_version").fetchone()[0] == 4
+    assert conn.execute("SELECT max(version) FROM schema_version").fetchone()[0] == LATEST
     assert conn.info.transaction_status == psycopg.pq.TransactionStatus.IDLE
 
 
@@ -88,8 +92,8 @@ def pg_columns(c) -> dict[str, list[tuple]]:
 def test_tables_columns_nullability_and_keys_match_sqlite_version_4(conn, tmp_path):
     pg.apply_pg_schema(conn)
     expected = sqlite_columns(tmp_path / "op.sqlite3")
-    actual = pg_columns(conn)
-    assert actual.keys() == expected.keys()
+    actual = {t: c for t, c in pg_columns(conn).items() if t in MIRRORED}  # the SQLite-mirrored tables
+    assert set(expected) == MIRRORED and actual.keys() == expected.keys()
     for table in expected:
         # SQLite reports a single-column INTEGER PRIMARY KEY as nullable; PostgreSQL never does.
         normalize = [(n, notnull or pk, pk) for n, notnull, pk in expected[table]]

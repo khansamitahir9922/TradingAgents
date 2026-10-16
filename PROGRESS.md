@@ -150,6 +150,16 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-01 follow-up: schema tests follow the latest PostgreSQL script)
+- **Why:** M3-04 onwards add PostgreSQL-only scripts (0005 and up), which M3-01 rule 1 allows. Several M3-01 tests had version 4 written into them. Without this change they would fail, and fixing them inside a later task would leave that task's allowed files.
+- **Change (`tests/engine/test_postgres_schema.py` only):**
+  - `LATEST` is the highest packaged script number. Migration, re-apply, newer-schema refusal and failing-script rollback now assert against it.
+  - The comparison with SQLite version 4 is limited to the five mirrored tables, and asserts that set exactly.
+  - No assertion is weakened: every mirrored table, column, key and check is still compared.
+  - Verified with a temporary `0005_probe_only.sql` present and then removed: 37 tests (this file and the M3-03 copy tests) passed both ways.
+- **Checks (Git Bash), shared with the M3-03 follow-up:** see the result line below; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2544 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 235.35s (0:03:55) (only failure: the baseline cache-location test)
+
 ### 2026-10-16: Claude Code (M3-03: copy SQLite data into PostgreSQL and switch the CLI)
 - **`storage/copy_sqlite.py`:** `copy_sqlite_to_postgres(path, target, *, calendars) -> CopyReport`.
   - The source opens read-only (`mode=ro`); source schemas 1–4 are accepted, and tables a schema doesn't have count zero.
