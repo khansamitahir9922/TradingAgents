@@ -36,12 +36,15 @@ dev = [
     "pytest-subtests>=0.13",
     "pyarrow>=26.0.0",
     "duckdb>=1.5.6",
+    "psycopg[binary]>=3.3.6",
 ]
-# The investment_engine market-data store (Parquet + DuckDB). Optional so the
-# core install stays lean: pip install "tradingagents[engine]".
+# The investment_engine market-data store (Parquet + DuckDB) and the Operational
+# Database driver (PostgreSQL from M3, ADR-008). Optional so the core install
+# stays lean: pip install "tradingagents[engine]".
 engine = [
     "pyarrow>=26.0.0",
     "duckdb>=1.5.6",
+    "psycopg[binary]>=3.3.6",
 ]
 # Amazon Bedrock support (AWS SigV4 auth + boto3). Optional so the core install
 # stays lean: pip install "tradingagents[bedrock]".
@@ -70,6 +73,7 @@ markers = [
     "unit: fast isolated unit tests",
     "integration: tests requiring external services; run only when asked for, with -m integration",
     "smoke: quick sanity-check tests",
+    "postgres: needs the local test PostgreSQL (INVESTMENT_ENGINE_TEST_PG_DSN); skips visibly without it",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

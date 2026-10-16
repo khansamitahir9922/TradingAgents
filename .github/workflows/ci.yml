@@ -21,8 +21,23 @@ jobs:
         include:
           - python-version: "3.12"
             tz: America/New_York
+    # A disposable PostgreSQL for the `postgres` tests (docs/tasks/M3-00.md rule 7). The password guards a
+    # throwaway CI database, not a real secret.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci-throwaway-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       TZ: ${{ matrix.tz }}
+      INVESTMENT_ENGINE_TEST_PG_DSN: host=localhost port=5432 dbname=postgres user=postgres password=ci-throwaway-password
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

@@ -73,6 +73,81 @@ def _no_network(request, monkeypatch):
 
     monkeypatch.setattr(curl_requests.Session, "request", refuse)
     monkeypatch.setattr(curl_requests.AsyncSession, "request", refuse)
+    _guard_postgres(request, monkeypatch)
+
+
+# ---------------------------------------------------------------- PostgreSQL (docs/tasks/M3-00.md rule 4)
+# libpq connects without Python's sockets, and its settings can also come from PG* environment variables and
+# service files. So every psycopg entry point is wrapped: unmarked tests can't connect at all, and `postgres`
+# tests reach only a pinned numeric loopback address, judged on the effective parameters. Refusals name the
+# offending keyword, never a value (the DSN may hold a password).
+PG_ALLOWED_KEYWORDS = frozenset({"host", "port", "dbname", "user", "password", "connect_timeout",
+                                 "application_name", "sslmode"})
+PG_LOOPBACK = {"localhost": "127.0.0.1", "127.0.0.1": "127.0.0.1", "::1": "::1"}
+PG_CONNECTION_OPTIONS = ("autocommit", "prepare_threshold", "context", "row_factory", "cursor_factory")
+# The real connect functions, looked up at call time so the harness tests can put a recorder here.
+PG_REAL: dict[str, object] = {}
+
+
+class PostgresGuardError(OSError):
+    """A test tried to open a PostgreSQL connection it isn't allowed to open."""
+
+
+def pg_effective_params(conninfo: str = "", **kwargs) -> dict[str, str]:
+    """The checked connection parameters, with hostaddr pinned to loopback; raises PostgresGuardError."""
+    from psycopg.conninfo import conninfo_to_dict
+
+    try:
+        params = {k: str(v) for k, v in conninfo_to_dict(conninfo, **kwargs).items() if v is not None}
+    except Exception:
+        raise PostgresGuardError("PostgreSQL connection string could not be parsed") from None
+    unsupported = sorted(set(params) - PG_ALLOWED_KEYWORDS)
+    if unsupported:
+        raise PostgresGuardError(f"PostgreSQL connection keyword(s) not allowed in tests: {', '.join(unsupported)}")
+    if params.get("host", "") not in PG_LOOPBACK:
+        raise PostgresGuardError("PostgreSQL tests may connect only to one loopback host (localhost, 127.0.0.1, ::1)")
+    if not params.get("port", "5432").isdigit():
+        raise PostgresGuardError("PostgreSQL port must be a single number")
+    params["hostaddr"] = PG_LOOPBACK[params["host"]]
+    return params
+
+
+def _guard_postgres(request, monkeypatch):
+    try:
+        import psycopg
+        from psycopg.conninfo import make_conninfo
+    except ImportError:  # the base install has no PostgreSQL driver: nothing to guard
+        return
+    allowed = request.node.get_closest_marker("postgres") is not None
+
+    def neutralize():
+        # Every ambient libpq setting is removed for the test's duration; only the explicit DSN counts.
+        for name in [n for n in os.environ if n.upper().startswith("PG")]:
+            monkeypatch.delenv(name)
+
+    if allowed:
+        neutralize()
+    PG_REAL.setdefault("sync", psycopg.Connection.connect)
+    PG_REAL.setdefault("async", psycopg.AsyncConnection.connect)
+
+    def checked(conninfo, kwargs):
+        if not allowed:
+            raise PostgresGuardError("test tried to connect to PostgreSQL; mark it postgres")
+        neutralize()  # again at connect time, in case the test itself set one
+        options = {k: kwargs.pop(k) for k in PG_CONNECTION_OPTIONS if k in kwargs}
+        return make_conninfo("", **pg_effective_params(conninfo, **kwargs)), options
+
+    def connect(conninfo="", **kwargs):
+        pinned, options = checked(conninfo, kwargs)
+        return PG_REAL["sync"](pinned, **options)
+
+    async def connect_async(conninfo="", **kwargs):
+        pinned, options = checked(conninfo, kwargs)
+        return await PG_REAL["async"](pinned, **options)
+
+    monkeypatch.setattr(psycopg, "connect", connect)
+    monkeypatch.setattr(psycopg.Connection, "connect", staticmethod(connect))
+    monkeypatch.setattr(psycopg.AsyncConnection, "connect", staticmethod(connect_async))
 
 
 @pytest.fixture(autouse=True)

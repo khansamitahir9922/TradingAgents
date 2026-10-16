@@ -56,6 +56,12 @@ def test_storage_libraries_are_imported_only_by_the_market_data_store():
 
 
 @pytest.mark.unit
+def test_the_postgresql_driver_is_imported_only_by_the_storage_package():
+    # docs/tasks/M3-00.md rule 5: one place owns the Operational Database driver.
+    assert _offenders({"psycopg"}, PACKAGE / "storage") == []
+
+
+@pytest.mark.unit
 def test_the_package_imports_and_declares_its_version():
     import investment_engine
 

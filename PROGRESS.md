@@ -150,6 +150,34 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-00: PostgreSQL development and test setup)
+- **Driver:** `psycopg[binary]>=3.3.6` added to the `dev` and `engine` extras (wheel evidence in the step-0 entry). Markers: `postgres` is registered in `pyproject.toml`.
+- **Guard (`tests/conftest.py`, rule 4):** `_no_network` now also wraps `psycopg.connect`, `Connection.connect` and `AsyncConnection.connect`.
+  - Unmarked tests can't connect.
+  - In `postgres` tests every `PG*` variable is removed, at set-up and again at each connect, so values a test sets itself are neutralized too.
+  - The effective parameters (`conninfo_to_dict` of the DSN plus keyword overrides) must use only the allowed keywords and one loopback host. `hostaddr` is pinned to the numeric loopback address.
+  - Refusals name keywords, never values. The real functions are looked up through `PG_REAL`, so the probes use a recorder.
+- **Fixture (`tests/engine/conftest.py`):**
+  - `pg_database` gives each test an `ie_test_<hex>` database from `template0`, created through `INVESTMENT_ENGINE_TEST_PG_DSN`;
+  - teardown is `temporary_database`, which drops the database `WITH (FORCE)` in a `finally`;
+  - without the variable, tests skip with the documented reason.
+- **Also:** a layering rule (psycopg only under `investment_engine/storage/`), a CI `postgres:17` service with a throwaway password, and `docs/dev/postgresql.md`.
+- **Deviations, recorded honestly:**
+  - **Tests-first not observed:** the guard and fixture were written before `test_postgres_harness.py`, so no red run exists.
+  - **No nested pytest run:** "dropped even after a failing test" is tested through `temporary_database`, the fixture's own teardown, raising inside the block with an open connection, rather than a nested pytest run.
+  - **Async probes run without an event loop:** they drive the coroutine directly, because Windows' event loop opens a socket pair that the existing socket guard refuses.
+- **Task tests:** `tests/engine/test_postgres_harness.py`, 49 passed. Coverage:
+  - 27 refusal probes (9 forms × 3 entry points);
+  - 15 neutralization probes (5 variables × 3 entry points);
+  - supported local forms, and the unmarked-test refusal for each entry point;
+  - the skip reason;
+  - two real-server tests: a fresh, empty, loopback database, and the drop after a failure.
+- **Checks (Git Bash):** see the result line below; `ruff check .` passed; whitespace clean. No `postgres` test skipped.
+  - full suite: 1 failed, 2440 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 110.87s (0:01:50) (only failure: the baseline cache-location test)
+- **Clean install** (dependencies changed), with a fresh `py -3.11` venv and `pip install ".[engine]"`:
+  - the CI import from the repository root passed;
+  - from outside the repository, `psycopg` 3.3.6 (binary) and `investment_engine` loaded from site-packages.
+
 ### 2026-10-16: Claude Code (M3 step 0: specs accepted, PostgreSQL checked, milestone started)
 - **Approval (owner, 2026-10-16):** D1–D18 as recommended and the complete M3 milestone (15 tasks, the 52 h estimate and the 4 h task exception), built on `m3/milestone` from `docs/m3-specs`, with local task commits, all checks and one combined Codex review. Not authorized: merge, push, API keys, market-data downloads, M4.
 - **Specs:** Codex accepted the pack at `6085fd9` (`docs/reviews/codex-m3-spec-accepted-6085fd9.md`, imported byte-for-byte, SHA-256 `e5d94318…`). Status rows now say accepted. Codex's three notes are folded in:
