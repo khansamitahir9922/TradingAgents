@@ -150,6 +150,31 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-03: copy SQLite data into PostgreSQL and switch the CLI)
+- **`storage/copy_sqlite.py`:** `copy_sqlite_to_postgres(path, target, *, calendars) -> CopyReport`.
+  - The source opens read-only (`mode=ro`); source schemas 1–4 are accepted, and tables a schema doesn't have count zero.
+  - The target is migrated first, then everything is copied in one managed transaction. Instruments and mappings go through the stores, so mapping overlap rules and locks apply. Record content is copied byte for byte with the same ids.
+  - Every copied lineage and evaluation record is read back through its store and must hash to its id. Evaluation records are also checked against the supplied calendars (R1, R2). Identical rows count as present; a different row, a corrupted record or an unknown calendar version aborts with nothing written (`CopyConflict` or `ValueError`).
+- **`config.py`:** `ENV_PG_DSN = "INVESTMENT_ENGINE_PG_DSN"`, and `operational_db_dsn()`, which raises `OperationalDatabaseNotConfigured` naming the variable and the setup guide, never a value. The docstrings of the module and of `operational_db_path` now say SQLite is only a copy source.
+- **CLI:**
+  - `init`, `report` and `import-yfinance` open PostgreSQL. Report and import connections are read-only (`default_transaction_read_only`), and without a schema they say to run `init`.
+  - New `db status` (schema version and row counts) and `db copy-from-sqlite PATH`, which passes the calendar versions the code ships. Those are labelled as M2 labelled them: `us-equities-` plus 16 hex digits of SHA-256 over the packaged calendar files.
+  - psycopg errors print a fixed message naming `INVESTMENT_ENGINE_PG_DSN` without its value. A missing driver gives the `.[engine]` instruction, and psycopg is imported only when a PostgreSQL command runs.
+- **`docs/dev/postgresql.md`:** the CLI's own database (`investment_engine`) and DSN, and the copy command.
+- **Tests first:** `tests/engine/test_copy_sqlite.py` was written first and failed at collection; after the implementation, 11 passed. They cover:
+  - an exact copy of a full M2 database (byte-identical content, both evaluation formats, a re-run with everything present, an unchanged source hash);
+  - schemas 1, 2 and 3; schema 5 refused;
+  - an aborting conflict; an aborting corrupted record; an unsupported calendar named, with nothing written;
+  - an unset DSN; `init`, `status` and copy on PostgreSQL, with output free of the password and of `dbname=`;
+  - a base-install probe with psycopg blocked, where `--help` works and `db status` names `.[engine]`.
+- **`tests/engine/test_cli.py`:** back-end set-up only. Tests are marked `postgres`, and the `app` fixture sets the DSN to a fresh test database. Direct checks use the port, and the stored `active_from` is compared as `date(1999, 1, 22)`. Two assertions were added so nothing is weakened now that the Operational Database isn't a file under the data directory:
+  - the read-only report also leaves the instrument and mapping rows unchanged;
+  - "report without init" also creates no table.
+
+  `tests/test_cli_commands.py` needed no change.
+- **Checks (Git Bash):** see the result line below; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2544 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 179.55s (0:02:59) (only failure: the baseline cache-location test)
+
 ### 2026-10-16: Claude Code (M3-02: existing stores on PostgreSQL through the database port)
 - **`investment_engine/storage/database.py` (new): the port.**
   - **Adapters:** `SqliteDatabase` and `PostgresDatabase`. Both require autocommit connections, so a read never opens a hidden transaction.

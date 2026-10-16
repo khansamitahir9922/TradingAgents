@@ -1,4 +1,8 @@
-"""Offline acceptance checks for the daily part of M1-17; H1 remains blocked."""
+"""Offline acceptance checks for the daily part of M1-17; H1 remains blocked.
+
+The Operational Database is PostgreSQL from M3 (docs/tasks/M3-03.md), so these tests use a fresh test
+database each; the market-data store stays under the test's data directory.
+"""
 
 import hashlib
 import subprocess
@@ -12,6 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from investment_engine.clock import ReplayClock
+from investment_engine.config import ENV_PG_DSN, operational_db_dsn
 from investment_engine.market.calendar.us_equities import load_us_equities_calendar
 from investment_engine.market.candles import BarState, PriceBasis, Timeframe, VolumeBasis
 from investment_engine.market.corporate_actions import ActionType, AmountBasis, ex_date_start
@@ -23,21 +28,29 @@ from investment_engine.market.store.writer import (
 )
 from investment_engine.market.symbols import SymbolMapping
 from investment_engine.money import Money
-from investment_engine.storage.database import SqliteDatabase
-from investment_engine.storage.sqlite import SqliteSymbolResolver, open_operational_db
+from investment_engine.storage.database import PostgresDatabase
+from investment_engine.storage.postgres import open_operational_pg
+from investment_engine.storage.sqlite import SqliteSymbolResolver
 
 CAL = load_us_equities_calendar()
 NVDA = "EQ_US_NVDA"
 FRIDAY = datetime(2024, 6, 7, 21, tzinfo=UTC)
 SATURDAY = datetime(2024, 6, 8, tzinfo=UTC)
 RUNNER = CliRunner()
+pytestmark = pytest.mark.postgres
+
+
+def operational():
+    """A port onto the test's Operational Database (the CLI's own DSN)."""
+    return PostgresDatabase(open_operational_pg(operational_db_dsn()))
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
+def app(tmp_path, monkeypatch, pg_database):
     from investment_engine import cli
 
     monkeypatch.setenv("INVESTMENT_ENGINE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv(ENV_PG_DSN, pg_database)
     monkeypatch.setattr(cli, "LiveClock", lambda: ReplayClock(SATURDAY))
     result = RUNNER.invoke(cli.app, ["init"])
     assert result.exit_code == 0, result.output
@@ -64,11 +77,11 @@ def history(app, source="yfinance", missing=()):
     days = [s.date for s in CAL.sessions_between(date(2024, 5, 1), date(2024, 6, 7))]
     writer.write_candles([candle(d, source) for d in days if d not in missing], import_id=source + "-original")
     if source != "yfinance":
-        conn = open_operational_db(root / "operational.sqlite3")
+        db = operational()
         try:
-            SqliteSymbolResolver(SqliteDatabase(conn)).add(SymbolMapping(NVDA, source, "NVDA.TEST", date(1999, 1, 22), None))
+            SqliteSymbolResolver(db).add(SymbolMapping(NVDA, source, "NVDA.TEST", date(1999, 1, 22), None))
         finally:
-            conn.close()
+            db.connection.close()
     return writer
 
 
@@ -83,13 +96,13 @@ def report(app, *, end=SATURDAY, as_of=None, provider="yfinance", start="2024-06
 def test_init_is_idempotent_and_seed_dates_are_cited(app):
     cli, root = app
     assert RUNNER.invoke(cli.app, ["init"]).exit_code == 0
-    conn = open_operational_db(root / "operational.sqlite3")
+    db = operational()
     try:
-        assert conn.execute("SELECT COUNT(*) FROM instruments").fetchone()[0] == 1
-        assert conn.execute("SELECT COUNT(*) FROM symbol_mappings").fetchone()[0] == 1
-        assert conn.execute("SELECT active_from FROM instruments").fetchone()[0] == "1999-01-22"
+        assert db.fetchone("SELECT COUNT(*) FROM instruments")[0] == 1
+        assert db.fetchone("SELECT COUNT(*) FROM symbol_mappings")[0] == 1
+        assert db.fetchone("SELECT active_from FROM instruments")[0] == date(1999, 1, 22)
     finally:
-        conn.close()
+        db.connection.close()
     import json
     from importlib.resources import files
     seed = json.loads(files("investment_engine").joinpath("reference/us_equities_seed.json").read_text())
@@ -101,6 +114,7 @@ def test_report_has_exact_values_sources_bases_and_times_and_is_read_only(app):
     history(app)
     _, root = app
     before = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob("*") if p.is_file()}
+    before_db = database_rows()
     result = report(app)
     assert result.exit_code == 0, result.output
     for text in (NVDA, "XNAS", "provider=yfinance", "REPLAY", "PAPER-ONLY PLATFORM", "PARTIAL M1",
@@ -113,6 +127,15 @@ def test_report_has_exact_values_sources_bases_and_times_and_is_read_only(app):
     assert "H1 UNAVAILABLE" in result.output and "comparison UNAVAILABLE" in result.output
     after = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob("*") if p.is_file()}
     assert before == after
+    assert database_rows() == before_db  # the Operational Database too (it no longer lives under root)
+
+
+def database_rows():
+    db = operational()
+    try:
+        return [db.fetchall(f"SELECT * FROM {t} ORDER BY 1") for t in ("instruments", "symbol_mappings")]
+    finally:
+        db.connection.close()
 
 
 @pytest.mark.unit
@@ -330,24 +353,30 @@ def test_recorded_import_to_report_uses_real_importers_offline(app, monkeypatch)
 
 
 @pytest.mark.unit
-def test_report_without_init_creates_no_database(tmp_path, monkeypatch):
+def test_report_without_init_creates_no_database(tmp_path, monkeypatch, pg_database):
     from investment_engine import cli
 
     monkeypatch.setenv("INVESTMENT_ENGINE_DATA_DIR", str(tmp_path / "unused"))
+    monkeypatch.setenv(ENV_PG_DSN, pg_database)
     result = RUNNER.invoke(cli.app, ["report", "--from", "2024-06-03T00:00:00Z", "--to", SATURDAY.isoformat(),
                                    "--as-of", SATURDAY.isoformat()])
     assert result.exit_code != 0 and "init" in result.output
     assert not (tmp_path / "unused").exists()
+    db = operational()
+    try:  # nothing was created in the Operational Database either
+        assert db.fetchall("SELECT tablename FROM pg_tables WHERE schemaname = 'public'") == []
+    finally:
+        db.connection.close()
 
 
 @pytest.mark.unit
 def test_init_never_replaces_a_conflicting_reference_identity(app):
     cli, root = app
-    conn = open_operational_db(root / "operational.sqlite3")
-    conn.execute("UPDATE instruments SET currency = 'EUR' WHERE instrument_id = ?", (NVDA,))
-    conn.close()
+    db = operational()
+    db.execute("UPDATE instruments SET currency = 'EUR' WHERE instrument_id = :id", {"id": NVDA})
+    db.connection.close()
     result = RUNNER.invoke(cli.app, ["init"])
     assert result.exit_code != 0 and "conflicts" in result.output
-    conn = open_operational_db(root / "operational.sqlite3")
-    assert conn.execute("SELECT currency FROM instruments WHERE instrument_id = ?", (NVDA,)).fetchone()[0] == "EUR"
-    conn.close()
+    db = operational()
+    assert db.fetchone("SELECT currency FROM instruments WHERE instrument_id = :id", {"id": NVDA})[0] == "EUR"
+    db.connection.close()

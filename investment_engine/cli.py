@@ -2,37 +2,43 @@
 
 This entry point constructs Clocks. It never submits orders or controls trading.
 Optional storage/vendor imports are delayed until their commands need them.
+The Operational Database is PostgreSQL from M3 (ADR-008; docs/tasks/M3-03.md),
+reached through $INVESTMENT_ENGINE_PG_DSN, whose value is never printed.
 """
 
+import hashlib
 import json
 import sqlite3
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from importlib.resources import files
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import typer
 from rich.console import Console
 
 from investment_engine.clock import LiveClock, ReplayClock
-from investment_engine.config import market_store_dir, operational_db_path
+from investment_engine.config import (
+    ENV_PG_DSN,
+    OperationalDatabaseNotConfigured,
+    market_store_dir,
+    operational_db_dsn,
+)
 from investment_engine.market.calendar.us_equities import load_us_equities_calendar
 from investment_engine.market.candles import Timeframe
 from investment_engine.market.data_health import SourceKey, evaluate_health
 from investment_engine.market.instruments import Instrument
 from investment_engine.market.replay import ReplayFeed
 from investment_engine.market.symbols import SymbolMapping
-from investment_engine.storage.database import SqliteDatabase
-from investment_engine.storage.sqlite import (
-    SqliteInstrumentRepository,
-    SqliteSymbolResolver,
-    apply_schema,
-    open_operational_db,
-)
+from investment_engine.storage.database import AppendOnlyViolation, TransactionAborted
+from investment_engine.storage.sqlite import SqliteInstrumentRepository, SqliteSymbolResolver
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False,
                   help="Research-data tools. Daily support only; hourly verification is blocked.")
 console = Console(highlight=False, markup=False, soft_wrap=True)
+db_app = typer.Typer(no_args_is_help=True, help="The Operational Database (PostgreSQL from M3).")
+app.add_typer(db_app, name="db")
 HOURLY_REASON = "independent hourly price and volume verification pending"
 
 
@@ -62,9 +68,14 @@ def _import_bars(instrument_id, timeframe, start, end, **kwargs):
 
 
 def _fail(exc: Exception) -> None:
-    if isinstance(exc, ModuleNotFoundError) and exc.name in {"pyarrow", "duckdb"}:
+    if isinstance(exc, ModuleNotFoundError) and exc.name in {"pyarrow", "duckdb", "psycopg"}:
         _print('Storage engines unavailable. Install: pip install -e ".[engine]"')
-    elif isinstance(exc, (ValueError, KeyError, FileNotFoundError, sqlite3.Error)):
+    elif type(exc).__module__.split(".")[0] == "psycopg":
+        # Driver messages can describe the connection; the DSN may hold a password. Never echo them.
+        _print(f"Cannot use the Operational Database ({type(exc).__name__}); check {ENV_PG_DSN} "
+               "(its value is not shown) and docs/dev/postgresql.md.")
+    elif isinstance(exc, (ValueError, KeyError, FileNotFoundError, sqlite3.Error, OperationalDatabaseNotConfigured,
+                          AppendOnlyViolation, TransactionAborted)):
         _print(f"Cannot complete command: {exc}")
     else:
         # Vendor exceptions can include URLs or credentials; do not echo their text.
@@ -72,11 +83,30 @@ def _fail(exc: Exception) -> None:
     raise typer.Exit(1)
 
 
+def _open_db(*, read_only: bool):
+    """The Operational Database on PostgreSQL: (raw connection, database port)."""
+    from investment_engine.storage.database import PostgresDatabase
+    from investment_engine.storage.postgres import open_operational_pg
+
+    dsn = operational_db_dsn()
+    conn = open_operational_pg(dsn)
+    if read_only:
+        conn.execute("SET default_transaction_read_only = on")
+    return conn, PostgresDatabase(conn)
+
+
+def _schema_version(conn) -> int:
+    from investment_engine.storage.postgres import _current_version
+
+    return _current_version(conn)
+
+
 def _read_db():
-    path = operational_db_path().resolve()
-    if not path.is_file():
+    conn, db = _open_db(read_only=True)
+    if _schema_version(conn) < 1:
+        conn.close()
         raise FileNotFoundError("Reference database unavailable; run 'python -m investment_engine init' first")
-    return sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, isolation_level=None)
+    return conn, db
 
 
 def _timestamp(text: str) -> datetime:
@@ -109,9 +139,10 @@ def initialize() -> None:
         instrument = Instrument(**{**fields, "active_from": date.fromisoformat(fields["active_from"])})
         mapping_fields = seed["mapping"]
         mapping = SymbolMapping(**{**mapping_fields, "valid_from": date.fromisoformat(mapping_fields["valid_from"])})
-        conn = open_operational_db(operational_db_path())
-        version = apply_schema(conn)
-        db = SqliteDatabase(conn)  # transitional until M3-03 moves the CLI to PostgreSQL
+        from investment_engine.storage.postgres import apply_pg_schema
+
+        conn, db = _open_db(read_only=False)
+        version = apply_pg_schema(conn)
         instruments, resolver = SqliteInstrumentRepository(db), SqliteSymbolResolver(db)
         try:
             existing = instruments.get(instrument.instrument_id)
@@ -122,10 +153,11 @@ def initialize() -> None:
             for name in ("asset_class", "currency", "exchange", "timezone", "active_from"):
                 if getattr(existing, name) != getattr(instrument, name):
                     raise ValueError(f"stored reference identity conflicts with seed: {name}")
-        rows = conn.execute(
+        rows = [(r[0], r[1], r[2], db.as_date(r[3]), db.as_date(r[4])) for r in db.fetchall(
             "SELECT instrument_id, provider, symbol, valid_from, valid_to FROM symbol_mappings "
-            "WHERE instrument_id = ? AND provider = ?", (mapping.instrument_id, mapping.provider)).fetchall()
-        exact = (mapping.instrument_id, mapping.provider, mapping.symbol, mapping.valid_from.isoformat(), None)
+            "WHERE instrument_id = :instrument_id AND provider = :provider",
+            {"instrument_id": mapping.instrument_id, "provider": mapping.provider})]
+        exact = (mapping.instrument_id, mapping.provider, mapping.symbol, mapping.valid_from, None)
         if exact not in rows:
             # The repository refuses overlapping/conflicting mappings; never overwrite.
             resolver.add(mapping)
@@ -198,8 +230,7 @@ def report(instrument: str = "EQ_US_NVDA", provider: str = "yfinance", timeframe
         if not provider.strip():
             raise ValueError("provider must not be empty")
         reader_type, _ = _load_store()
-        conn = _read_db()
-        db = SqliteDatabase(conn)  # transitional until M3-03 moves the CLI to PostgreSQL
+        conn, db = _read_db()
         instruments, resolver = SqliteInstrumentRepository(db), SqliteSymbolResolver(db)
         identity = instruments.get(instrument)
         timezone = ZoneInfo(identity.timezone)
@@ -259,9 +290,8 @@ def import_yfinance(instrument: str = "EQ_US_NVDA", daily_from: str = "2019-01-0
         if start < date(2019, 1, 1) or end <= start:
             raise ValueError("daily range requires 2019-01-01 <= start < end (excluded)")
         reader_type, writer_type = _load_store()
-        conn = _read_db()
+        conn, db = _read_db()
         # Importers read reference data only; market writes go through their writer.
-        db = SqliteDatabase(conn)  # transitional until M3-03 moves the CLI to PostgreSQL
         instruments, resolver = SqliteInstrumentRepository(db), SqliteSymbolResolver(db)
         instruments.get(instrument)
         calendar = load_us_equities_calendar()
@@ -283,6 +313,58 @@ def import_yfinance(instrument: str = "EQ_US_NVDA", daily_from: str = "2019-01-0
             raise typer.Exit(1)
     except typer.Exit:
         raise
+    except Exception as exc:
+        _fail(exc)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+TABLES = ("instruments", "symbol_mappings", "lineage_records", "evaluation_records")
+
+
+def shipped_calendars() -> dict[str, object]:
+    """The calendar versions this code ships, labelled the way evaluation records were (M2-11b, M3-03 rule 5):
+    "us-equities-" + the first 16 hex digits of SHA-256 over the packaged calendar data files, in name order."""
+    data = sorted((e for e in files("investment_engine.market.calendar").joinpath("data").iterdir()
+                   if e.name.endswith(".json")), key=lambda e: e.name)
+    version = "us-equities-" + hashlib.sha256(b"".join(e.read_bytes() for e in data)).hexdigest()[:16]
+    return {version: load_us_equities_calendar()}
+
+
+@db_app.command("status")
+def db_status() -> None:
+    """Show the Operational Database's schema version and row counts; never its connection details."""
+    conn = None
+    try:
+        conn, db = _open_db(read_only=True)
+        version = _schema_version(conn)
+        _print(f"Operational Database: PostgreSQL schema={version}")
+        if version >= 1:
+            present = {r[0] for r in db.fetchall(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'")}
+            _print(" ".join(f"{t}={db.fetchone(f'SELECT COUNT(*) FROM {t}')[0]}" for t in TABLES if t in present))
+    except Exception as exc:
+        _fail(exc)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+@db_app.command("copy-from-sqlite")
+def db_copy_from_sqlite(path: str) -> None:
+    """Copy an M1-M2 SQLite Operational Database into PostgreSQL; the file is only read."""
+    conn = None
+    try:
+        from investment_engine.storage.copy_sqlite import copy_sqlite_to_postgres
+
+        conn, db = _open_db(read_only=False)
+        report = copy_sqlite_to_postgres(Path(path), db, calendars=shipped_calendars())
+        _print(f"Copied from SQLite schema {report.source_schema} into PostgreSQL schema {report.target_schema}; "
+               "the source was opened read-only and is unchanged.")
+        _print("copied: " + " ".join(f"{t}={report.copied[t]}" for t in TABLES))
+        _print("already present: " + " ".join(f"{t}={report.already_present[t]}" for t in TABLES))
+        _print(f"records verified against their ids: {report.verified_ids}")
     except Exception as exc:
         _fail(exc)
     finally:

@@ -31,6 +31,19 @@ Create a **Windows user** environment variable (Start → "Edit environment vari
 
 Restart VS Code and any terminal so they see it. Never put the password in `.env`, a commit or a chat. Code and tests refer only to the variable's name, and never print its value.
 
+## 5. The CLI's database
+The CLI (`python -m investment_engine`) uses its own database, separate from the test server's maintenance database:
+1. In SQL Shell, as `ie_dev`, run `CREATE DATABASE investment_engine;`.
+2. Add a second Windows user variable:
+   - **Name:** `INVESTMENT_ENGINE_PG_DSN`
+   - **Value:** `host=localhost port=5432 dbname=investment_engine user=ie_dev password=<your password>`
+3. Run `python -m investment_engine init`, then `python -m investment_engine db status`.
+
+To bring over an existing M1–M2 SQLite file (`~/.investment_engine/operational.sqlite3` by default), run `python -m investment_engine db copy-from-sqlite <path>`:
+- the file is opened read-only and never changed;
+- every record keeps its id and is checked against it after the copy;
+- a conflict, a damaged record or an unknown calendar version stops the copy, and nothing is written.
+
 ## How the tests use it
 - Tests marked `postgres` each get a new database, `ie_test_<random hex>`, created from `template0` and dropped afterwards, even when the test fails.
 - Without the variable those tests **skip** with the reason "PostgreSQL test DSN not set (see docs/dev/postgresql.md)". From M3 on, a check run counts only if no `postgres` test skipped.
