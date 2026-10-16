@@ -150,6 +150,28 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-04: audit store)
+- **`investment_engine/audit/events.py`:**
+  - `Actor`: an OPERATOR with a role, or a PROCESS without one; `os_user` is attribution only.
+  - `AuditEvent`: actor, dotted action, target, before and after, real command time `at`, replay `business_at` (Codex re-review R2), reason of at most 1,000 characters, correlation id and idempotency key. Its `event_id` is `aud-` + SHA-256 of the canonical content. `before` and `after` must be codec-registered values and are normalized, so round trips compare equal.
+  - `AuditStore`: PostgreSQL only. `append` raises unless the port's managed transaction is open, so a change and its event commit or roll back together. An identical append is a no-op; different content under an id raises `AuditConflict`. `for_target` and the half-open `between` read events in `(at, event_id)` order and re-verify each id.
+- **`audit/registry.py`:** the fixed module list `AuditStore` imports for fresh-process decoding; empty here, extended by later tasks.
+- **`schema_pg/0005_audit.sql`:** a PostgreSQL-only table. UPDATE, DELETE and TRUNCATE are refused, and so is inserting an existing id, through `ie_refuse_change` and a BEFORE INSERT guard.
+- **Tests first:** `tests/engine/test_audit.py` was written first and failed at collection. Three of my own test statements then named a column that doesn't exist (`reason`, which lives in the content); I corrected them to update `action`, and rewrote the conflict test to plant a different event under an id. 15 passed. They cover:
+  - a rolled-back change leaving no event;
+  - append outside a transaction refused;
+  - an identical no-op and a planted conflict;
+  - the UPDATE, DELETE, TRUNCATE and both ON CONFLICT routes refused;
+  - field round trips and ordered queries;
+  - refused bad values, actors and roles;
+  - id hashing;
+  - a DSN-shaped secret in the environment never reaching an event;
+  - SQLite refused;
+  - a fresh subprocess decoding a test-registered type through the registry;
+  - the `57d4316` and lineage ids unchanged.
+- **Checks (Git Bash):** see the result line below; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2559 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 244.49s (0:04:04) (only failure: the baseline cache-location test)
+
 ### 2026-10-16: Claude Code (M3-03 follow-up: copy and status tests follow the latest PostgreSQL script)
 - **Change (`tests/engine/test_copy_sqlite.py` only):** the copy report's target schema and `db status` output are compared with `LATEST_PG`, the highest packaged script, instead of a written-in 4. This is for the same reason as the M3-01 follow-up above, and the checks are shared with it.
   - full suite: 1 failed, 2544 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 235.35s (0:03:55) (only failure: the baseline cache-location test)
