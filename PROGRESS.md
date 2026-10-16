@@ -150,6 +150,33 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-07: raw reference prices and PortfolioSnapshot)
+- **`portfolio/reference.py` (Codex B1):**
+  - **`RawReference`:** a raw Decimal close; floats are refused by type, so M2's adjusted `decision_close` can't enter.
+  - **`decision_reference`:** finds exactly one decision bar in the view's lineage (the D1 bar of the snapshot's session, provider and instrument) and reads exactly that revision. A missing bar, two candidates, another provider, instrument, revision or session, a non-CLOSED bar or a currency mismatch gives `Unavailable` with the reason.
+  - **The `Knowledge` port:** `StoreKnowledge` (live: available and received by T) and `ReplayKnowledge` over M2's `ReplayKnowledgeReader` (delivery time and equal-time `through_sequence`). Both answer `candle_revision`, `latest_closed` and `actions_between`.
+- **`portfolio/snapshot.py`:**
+  - **`StartingState`:** declared; its `state_id` excludes `recorded_at` and `declared_by`; whole shares; Decimal cash only.
+  - **`PortfolioSnapshot`:** `held()` is 0 when nothing is held; DECLARED source only, LEDGER refused until M5.
+  - **`build_snapshot` valuation:** held positions are valued at the raw close of the latest completed session's bar. A missing or not-yet-known bar is `Unavailable`; an older bar is never used (S2).
+  - **`build_snapshot` actions:** missing or short action coverage, or a split or dividend since the start for a held instrument, is `Unavailable` ("ledger needed (M5)").
+  - **`build_snapshot` drawdown baseline:** it restarts after a clear (D3, S6), with the clear's equity as a floor when recorded.
+  - **`PortfolioSnapshotStore`:** `declare_start` is Admin-only, once per account, audited and serialized by the account-control lock; RESEARCH uses replay time and PAPER can't backdate. Snapshots are append-only (`get`, `latest`, `history`).
+- **`schema_pg/0008_portfolio.sql`** adds `starting_states` and `portfolio_snapshots` (append-only). The audit registry lists `portfolio.reference` and `portfolio.snapshot`. The Admin CLI gains `accounts declare-start`.
+- **Contract notes for Codex (non-blocking):**
+  - **Extra parameters:** `build_snapshot` also takes `source` (whose bars value holdings), and the `Knowledge` port gains `actions_between` for rule 4.
+  - **`ReplayKnowledge` reads M2's `ReplayKnowledgeReader` internals** (`_candles`, `_check_at`) for exact-revision lookups. `decision/pipeline.py` isn't in M3-07's files. A public `candle_revision` on the reader would be cleaner in a later reviewed change.
+- **Tests first:** both test files were written first and failed at collection. Corrections to my tests:
+  - test bars needed valid OHLC, and the store refuses FORMING bars by design;
+  - the store never backdates a correction, so "available before T, delivered after" is tested in replay;
+  - the rise-and-fall peak scenario got its own price series;
+  - the float-cash check had been converting the value first.
+
+  One code fix: snapshots were stored as their id-hash content and are now stored as the type-tagged record. 8 reference tests and 11 snapshot tests passed.
+- **Process note:** a failed file write (an invalid newline argument) truncated the untracked `test_portfolio_snapshot.py`, and a retry appended to the empty file. I rebuilt it in full from this session's own text, with all corrections applied, before running anything; nothing in git was affected.
+- **Checks (Git Bash):** see the result line below; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2613 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 243.77s (0:04:03) (only failure: the baseline cache-location test)
+
 ### 2026-10-16: Claude Code (M3-06: versioned risk limits, policy rules and halts)
 - **`risk/limits.py` and `policy/rules.py`:**
   - **`RiskLimits` (D1–D9):** fractions are Decimals in (0, 1]; `long_only` must be true; counts are positive integers; `min_price` and `min_quantity` are positive Decimals, and `min_quantity` must be whole shares.

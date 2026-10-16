@@ -281,3 +281,30 @@ def restricted_remove(account_id: str, instrument_id: str, operator: str = typer
                       effective_at: str | None = typer.Option(None, "--effective-at")) -> None:
     """Lift a restriction (a new policy version)."""
     _restricted(account_id, instrument_id, False, operator, reason, effective_at)
+
+
+@accounts_app.command("declare-start")
+def declare_start(account_id: str, operator: str = typer.Option(..., "--operator"),
+                  reason: str = typer.Option(..., "--reason"), cash: str = "100000",
+                  effective_at: str | None = typer.Option(None, "--effective-at")) -> None:
+    """Declare an account's starting state (D14: cash only by default); once per account in M3."""
+    from decimal import Decimal, InvalidOperation
+
+    from investment_engine.audit.events import AuditStore
+    from investment_engine.portfolio.snapshot import PortfolioSnapshotStore
+
+    try:
+        amount = Decimal(cash)
+    except InvalidOperation:
+        amount = None
+
+    def go(registry):
+        if amount is None:
+            raise ValueError(f"cash must be a decimal number, not {cash!r}")
+        store = PortfolioSnapshotStore(registry._db, AuditStore(registry._db), registry, registry._clock)
+        declared = store.declare_start(account_id, by=_actor(registry, operator), reason=reason, cash=amount,
+                                       effective_at=_when(effective_at))
+        _say(f"Account {account_id}: DECLARED starting state {declared.cash:,.2f} USD cash, "
+             f"{len(declared.positions)} positions, effective {declared.effective_at.isoformat()}; no ledger "
+             "until M5")
+    _run(go)
