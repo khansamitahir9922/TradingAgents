@@ -150,6 +150,33 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-08: OrderIntent contract and position sizer)
+- **`oms/intents.py`:**
+  - `Side`; `IntentState`, with all nine G2 states (CONVERTED exists for M4's contract).
+  - `intent_id_for`: `int-` + SHA-256 of the account, view lineage, instrument and sizer version.
+  - `OrderIntent`: frozen, with the Part H fields plus the gate's inputs (reference bar, view validity, snapshot, policy and limit versions). It refuses fractional or non-positive quantities, floats, naive times, non-LIMIT or non-DAY orders, and a bad `supersedes`. `MATERIAL` lists the seven fields Law 12 freezes.
+- **`policy/decisions.py`:** `CheckResult` (a reason is always set) and `PolicyDecision`, which passes exactly when all its checks pass.
+- **`risk/decisions.py`:** `RiskOutcome`, `RiskDecision` (`reduced_quantity` exactly for REDUCE, whole shares), and `NotRun(stage, reason)` (B3). All are codec-registered; audit-registry entries come with M3-09, whose files include the registry.
+- **`portfolio/sizer.py`:** `size(...)` with `SIZER_VERSION = "sizer-target-weight-1"`.
+  - **Order of decisions:** ABSTAIN, then an expired view, then NEUTRAL each give no intent, with the reason.
+  - **BULLISH:** targets 10% of equity. The limit is the reference + 1%, rounded down to the cent; the quantity is floored to whole shares.
+  - **BEARISH:** sells everything held, at the reference - 1% rounded up; nothing when flat.
+  - **No intent** when below one share or already at the target.
+  - **Consistency:** the reference must come from the view's lineage (provider, instrument, bar) and match the holding's bar revision, or `size` raises (B1).
+  - **The rest:** target session = the next regular session after T; `created_at = at`; no clock read.
+- **File-name note:** both acceptance areas (intent contract and sizer) are in `tests/engine/test_sizer.py`; there is no separate `test_order_intent.py`.
+- **Tests first:** written first and red at collection; 10 passed after the implementation. They cover:
+  - the first BUY from the cash-only account (82 shares at 121.20 for 120.00 and $100,000);
+  - hand-calculated sizes, including exactly one share;
+  - below one share, at target, NEUTRAL, ABSTAIN and expired;
+  - BEARISH with and without a holding, and both rounding directions;
+  - reference and holding mismatches raising;
+  - determinism, and the id depending on the sizer version;
+  - value refusals and frozenness;
+  - decision-contract round trips and refusals.
+- **Checks (Git Bash):** see the result line below; whitespace clean; no `postgres` test skipped. Ruff first flagged a nested `if` in `risk/decisions.py`. I combined it while the suite was already running; ruff then passed at the end of the same check run, and the 10 task tests passed again on the fixed file.
+  - full suite: 1 failed, 2623 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 237.84s (0:03:57) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-07: raw reference prices and PortfolioSnapshot)
 - **`portfolio/reference.py` (Codex B1):**
   - **`RawReference`:** a raw Decimal close; floats are refused by type, so M2's adjusted `decision_close` can't enter.
