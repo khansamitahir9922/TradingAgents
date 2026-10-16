@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress, 15 of 18 tasks done** (M1-00 – M1-11, M1-14 – M1-16). M1-12, M1-13 and M1-17 have their **daily parts merged** and their hourly parts unfinished (batch 3b, blocked on A4 permissions). **M2 Quant + initial evaluation: in progress** (daily only), under the owner's 2026-10-14 scheduling amendment. |
 | **`main`** | Local `main` is at **`53c51bd`** (`fix: carry comparison cutoff validation into the daily CLI and label its provider`): the owner approved the fast-forward from `0661d46` on 2026-10-14 after Copilot's R-07 review passed. It contains batch 3a, batch 4 and the daily part of M1-17. **Nothing has been pushed** (`main` is 51 commits ahead of `origin/main`). |
-| **Current work** | **M2 implemented: all 14 tasks committed and checked on `m2/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m2`), batch checks done, NVDA report built offline from the verified daily recordings. **Awaiting Codex's milestone review** (`docs/reviews/claude-m2-milestone-package.md`), then a separate owner merge approval. Local `main` is `53c51bd` (no push). M1's hourly parts remain blocked on A4. |
+| **Current work** | **M2 fixes for Codex's review (B1–B6, S1–S4) complete on `m2/milestone`; awaiting Codex's re-review** (`docs/reviews/claude-m2-rereview-package.md`), then a separate owner merge approval. Local `main` is `53c51bd` (no push). M1's hourly parts remain blocked on A4. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules, `market/calendar/`, `market/availability.py`, `market/candles.py`, `market/corporate_actions.py`, `market/store/`, `market/importers/` (verified Yahoo daily bars and actions; hourly BLOCKED), `market/replay.py`, `market/resample.py`, `market/data_health.py` and the daily NVDA CLI (`python -m investment_engine`). M2 adds `quant/`, `decision/`, `lineage/`, `evaluation/` and `reporting/` on `m2/milestone`. |
@@ -149,6 +149,17 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-16: Claude Code (M2 fixes for Codex's review complete; handed back for re-review)
+- B1–B6, S2 and S3 are fixed in follow-up commits with regressions run first (each observed failing). S4 and the accepted final interfaces are documented; S1 is fixed in the external build script. The table and results are in `docs/reviews/claude-m2-rereview-package.md`.
+- **Batch checks:**
+  - Git Bash full suite: 2377 passed, 1 failed (baseline);
+  - PowerShell: 2376 passed, 2 failed (both baseline);
+  - ruff passed;
+  - clean install with schemas 0001–0004: passed.
+  - CI not yet run.
+- **Report:** regenerated from `9f8ab57`. Byte metadata now matches the saved file. Results are unchanged apart from the Sharpe values (B4).
+- **Next:** Codex re-reviews `57d4316..m2/milestone`; then the owner decides on the M2 merge. Not authorized: push, M3, keys, downloads.
 
 ### 2026-10-16: Claude Code (M2 re-review: S4 documents and accepted final interfaces)
 - **Final interfaces:** Codex accepted the contract extensions in principle. The specs now record them in "Final interfaces" sections: M2-02 (RSI14 seed), M2-03 (`warmup`, `decision_close`), M2-07 (`run_views` signature, compressed lineage, 0004 guards), M2-09 (`PredictionView`, `calendar`, `trailing`, audit fields), M2-10 (`Benchmark`, extra `EvaluationRun` fields, B3/B4 rules), M2-11a (`walk_forward`, `FoldResult`, `WalkForwardResult`, `RevisionCache`, S2/B3 rules), M2-11b (`EvaluationRecord` and its store, B5) and M2-12 (`adjusted_closes`, B6 checks). M2-11a and M2-11b no longer claim the old contract applies "exactly".
