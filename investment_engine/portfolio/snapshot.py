@@ -257,9 +257,9 @@ class PortfolioSnapshotStore:
                 if zlib.decompress(bytes(existing[0])).decode() != content:
                     raise ValueError(f"{snapshot.snapshot_id} is already stored with different content")
                 return
-            self._db.execute("INSERT INTO portfolio_snapshots VALUES (:id, :account, :as_of, :content)",
+            self._db.execute("INSERT INTO portfolio_snapshots VALUES (:id, :account, :as_of, :equity, :content)",
                              {"id": snapshot.snapshot_id, "account": snapshot.account_id, "as_of": snapshot.as_of,
-                              "content": zlib.compress(content.encode(), 6)})
+                              "equity": snapshot.equity, "content": zlib.compress(content.encode(), 6)})
 
     @staticmethod
     def _load(blob) -> PortfolioSnapshot:
@@ -279,6 +279,13 @@ class PortfolioSnapshotStore:
         row = self._db.fetchone("SELECT content FROM portfolio_snapshots WHERE account_id = :id AND as_of <= :at "
                                 "ORDER BY as_of DESC, snapshot_id DESC LIMIT 1",
                                 {"id": account_id, "at": check_utc(at, "at")})
+        return None if row is None else self._load(row[0])
+
+    def peak(self, account_id: str, *, since: datetime, at: datetime) -> PortfolioSnapshot | None:
+        """The stored snapshot with the highest equity in [since, at]: all `build_snapshot` needs from history."""
+        row = self._db.fetchone("SELECT content FROM portfolio_snapshots WHERE account_id = :id AND as_of >= :since "
+                                "AND as_of <= :at ORDER BY equity DESC, as_of, snapshot_id LIMIT 1",
+                                {"id": account_id, "since": check_utc(since, "since"), "at": check_utc(at, "at")})
         return None if row is None else self._load(row[0])
 
     def history(self, account_id: str, *, since: datetime, at: datetime) -> list[PortfolioSnapshot]:

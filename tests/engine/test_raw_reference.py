@@ -204,3 +204,21 @@ def test_in_replay_a_correction_available_before_t_but_delivered_after_it_is_not
     assert original.close == Decimal("120.5000")
     assert knowledge.latest_closed("yfinance", NVDA, DAY, at=T).revision == 1
     assert knowledge.latest_closed("yfinance", NVDA, DAY, at=late).revision == 2
+
+
+@pytest.mark.unit
+def test_a_caller_that_fed_every_event_can_query_after_the_last_one(store):
+    """The pipeline proposes at the view's time, after the last delivered bar (M3-12)."""
+    _, reader = store
+    (candle,) = stored(reader)
+    known = ReplayKnowledgeReader()
+    known.accept(event(candle, 1, received=SESSION.close + timedelta(minutes=1)))
+    later = T + timedelta(minutes=30)
+    with pytest.raises(ValueError):
+        decision_reference(lineage(ref_of(candle)), knowledge=ReplayKnowledge(known), instruments=Instruments(),
+                           at=later)
+    vouched = ReplayKnowledge(known, complete_through=later)
+    assert decision_reference(lineage(ref_of(candle)), knowledge=vouched, instruments=Instruments(),
+                              at=later).close == Decimal("120.5000")
+    with pytest.raises(ValueError):  # beyond what the caller vouched for: refused again
+        vouched.latest_closed("yfinance", NVDA, DAY, at=later + timedelta(seconds=1))

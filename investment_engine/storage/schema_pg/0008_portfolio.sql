@@ -17,6 +17,7 @@ CREATE TABLE portfolio_snapshots (
     snapshot_id TEXT NOT NULL PRIMARY KEY,
     account_id  TEXT NOT NULL REFERENCES accounts (account_id),
     as_of       TIMESTAMPTZ NOT NULL,
+    equity      NUMERIC NOT NULL,  -- for the drawdown peak query, without decoding every snapshot
     content     BYTEA NOT NULL
 );
 

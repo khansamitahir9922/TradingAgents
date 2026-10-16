@@ -263,3 +263,21 @@ def test_the_cli_declares_a_research_start(pg_database, monkeypatch, tmp_path):
     again = runner.invoke(cli.app, ["accounts", "declare-start", "R1", "--operator", "owner", "--reason", "again",
                                     "--effective-at", "2024-06-03T20:05:00Z"])
     assert again.exit_code != 0 and "once" in again.output
+
+
+@pytest.mark.postgres
+@pytest.mark.unit
+def test_the_peak_query_returns_the_highest_equity_snapshot_in_range(stores, tmp_path):
+    store, db, _ = stores
+    closes = dict(zip(DAYS[:5], ("120", "124", "121", "123", "122"), strict=True))
+    writer = MarketDataWriter(tmp_path / "peaks")
+    writer.write_candles([observation(d, close=f"{c}.0000") for d, c in closes.items()], import_id="bars")
+    knowledge = StoreKnowledge(MarketDataReader(tmp_path / "peaks"), CAL)
+    starting = state(positions=((NVDA, Decimal("100")),), cash="0")
+    taken = [snapshot(knowledge, at=at_close(d), starting=starting) for d in DAYS[:5]]
+    with db.transaction():
+        for s in taken:
+            store.append(s)
+    assert store.peak("R1", since=START, at=at_close(DAYS[4])) == taken[1]  # 12,400 on the second day
+    assert store.peak("R1", since=at_close(DAYS[2]), at=at_close(DAYS[4])) == taken[3]  # after it: 12,300
+    assert store.peak("R1", since=at_close(DAYS[4]) + timedelta(days=1), at=at_close(DAYS[4])) is None

@@ -150,6 +150,17 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-07 follow-up: complete replay knowledge, and the drawdown peak query)
+- **Why:** M3-12 proposes over a replay at the view's time, which comes after the last delivered bar. M2's `ReplayKnowledgeReader` refuses any time later than its last delivered event, because more events might still arrive. Separately, building each snapshot reloaded the account's whole snapshot history to find its drawdown peak, so a run of proposals slowed down quadratically.
+- **Change, within M3-07's allowed files:**
+  - `ReplayKnowledge` takes `complete_through`. The caller uses it to declare that every event delivered up to that time has been fed. Queries up to that time are then answered from what was delivered; anything later is still refused. `actions_between` clamps its query time to the last delivered event in the same case.
+  - `portfolio_snapshots` gained an `equity NUMERIC NOT NULL` column. `SnapshotStore.peak(account_id, since=, at=)` returns the highest-equity snapshot in a range.
+  - `0008_portfolio.sql` was **edited in place**, not given a new script: it is unmerged, and only per-test databases have used it. This is flagged for review.
+- **Still reads M2 internals:** `ReplayKnowledge` reads the private `_check_at` and `_delivered_until` of `ReplayKnowledgeReader`. This is flagged for the milestone review.
+- **Tests:** two added, `test_a_caller_that_fed_every_event_can_query_after_the_last_one` and `test_the_peak_query_returns_the_highest_equity_snapshot_in_range`. Both files passed (21).
+- **Checks (Git Bash):** ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2743 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 345.53s (0:05:45) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-11: risk checks: approve, reject or reduce)
 - **`risk/checks.py`:** `RiskInputs`, `HaltRequest`, `check_risk`, `reduced_version` and `average_daily_value`.
   - **Checks, in order, all reported:** `fresh_data`; `halt`; `drawdown` (D3; at the threshold a BUY is rejected and a HaltRequest returned unless already halted); `min_price` (D6); `position` (D1, BUY only); `cash` (D2, BUY only, gross exposure included); `liquidity` (D4, BUY and SELL); `daily_buys` (D5).

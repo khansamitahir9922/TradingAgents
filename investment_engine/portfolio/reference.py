@@ -92,13 +92,23 @@ class StoreKnowledge:
 
 
 class ReplayKnowledge:
-    """Replay knowledge over M2's ReplayKnowledgeReader, optionally up to an equal-time feed sequence."""
+    """Replay knowledge over M2's ReplayKnowledgeReader, optionally up to an equal-time feed sequence.
 
-    def __init__(self, reader, *, through_sequence: int | None = None, calendar=None) -> None:
+    The reader refuses a T later than its last delivered event, since later events may still be coming.
+    A caller that has fed every event delivered up to some time (the intent pipeline does, before proposing
+    at that time) says so with `complete_through`; queries up to that time are then answered from what was
+    delivered."""
+
+    def __init__(self, reader, *, through_sequence: int | None = None, calendar=None,
+                 complete_through: datetime | None = None) -> None:
         self._reader, self._through, self._calendar = reader, through_sequence, calendar
+        self._complete = None if complete_through is None else check_utc(complete_through, "complete_through")
 
     def _known(self, identity: tuple, at: datetime) -> list[Candle]:
-        at = self._reader._check_at(at)  # refuses a T later than the last delivered event
+        if self._complete is not None and check_utc(at, "at") <= self._complete:
+            at = check_utc(at, "at")
+        else:
+            at = self._reader._check_at(at)  # refuses a T later than the last delivered event
         revisions = self._reader._candles.get(identity, {})  # M2's projection; read-only use
         return [p for p, delivered, sequence in revisions.values()
                 if p.available_from <= at and delivered <= at
@@ -118,7 +128,11 @@ class ReplayKnowledge:
         return latest if latest is not None and latest.state is BarState.CLOSED else None
 
     def actions_between(self, source: str, instrument_id: str, first: date, last: date, *, at: datetime) -> list:
-        return self._reader.actions_visible_at(source, instrument_id, first, last + timedelta(days=1), at,
+        query_at = at
+        if self._complete is not None and check_utc(at, "at") <= self._complete \
+                and self._reader._delivered_until is not None:
+            query_at = min(at, self._reader._delivered_until)  # nothing was delivered between the two
+        return self._reader.actions_visible_at(source, instrument_id, first, last + timedelta(days=1), query_at,
                                                through_sequence=self._through)
 
 
