@@ -150,6 +150,27 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-10: policy checks)
+- **`policy/checks.py`:** `check_policy(intent, *, account, autonomy, rules, instrument, snapshot, view_lineage, calendar, at)` runs every check, in order, each with a fixed-template reason:
+  - `autonomy`: Level 0 fails;
+  - `promotion`: every PAPER intent fails, "PROMOTION NOT ASSESSED", naming the strategy versions (D15, Law 19); RESEARCH passes;
+  - `instrument`: must be ACTIVE and inside its dates on the target session;
+  - `restricted`: the rules version's list (D8);
+  - `long_only`: a SELL can't exceed the holding (D2);
+  - `trading_window`: a regular session, DAY LIMIT and a D1 view (D7, D12).
+
+  The decision passes only if all pass, with `decided_at = at`. No store, clock or external text is read. Inconsistent inputs raise rather than decide: another account's intent, snapshot or setting, another instrument, or a rules version other than the intent's.
+- **Tests first:** `tests/engine/test_policy_checks.py` was written first and red at collection; 7 passed after the implementation. They cover:
+  - each check failing alone with its exact reason, and all passing;
+  - several failures reported together, and PAPER failing promotion at Levels 1 and 2;
+  - long-only with an oversized SELL, and instruments outside their active dates;
+  - rules versions applying exactly as published;
+  - determinism and the inconsistent-input refusals.
+
+  The package-wide no-system-clock test covers the new module.
+- **Checks (Git Bash):** see the result line below; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2731 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 272.13s (0:04:32) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-09: intent store and the G2 state machine)
 - **`oms/intent_states.py`:**
   - `ALLOWED` is exactly the frozen G2 table, and `FINAL` the six terminal states.
