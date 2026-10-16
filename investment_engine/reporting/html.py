@@ -140,15 +140,25 @@ def render_research_report(views: Sequence[MarketView], runs: Sequence[Evaluatio
         if len(v.evidence_refs) != 1:
             raise ValueError("every reported view needs its lineage id (M2-07)")
         record = lineage_store.get(v.evidence_refs[0])  # KeyError if the lineage isn't stored
+        if record.snapshot.source != source:
+            raise ValueError(f"view at {v.generated_at} was computed from {record.snapshot.source}, not the declared "
+                             f"report source {source}")
+        if v.generated_at > generated_at:
+            raise ValueError(f"view at {v.generated_at} is after the report's generation time {generated_at}")
         if record.decision != MarketView(**{**v.__dict__, "evidence_refs": ()}):
             raise ValueError(f"view at {v.generated_at} doesn't match its stored lineage {v.evidence_refs[0]}")
         entries.append((v, record))
     for p in adjusted_closes:
+        if p.as_of > generated_at:
+            raise ValueError(f"the price series is as of {p.as_of}, after the report's generation time")
         if p.source != source or p.instrument_id != instrument_id or p.basis is not AdjustedBasis.SPLIT_ADJUSTED_AS_OF:
             raise ValueError("the price series must be this source's and instrument's split-adjusted view")
     for run in runs:
         if not isinstance(run, EvaluationRecord) or (run.source, run.instrument_id) != (source, instrument_id):
             raise ValueError("evaluation records must be for the reported source and instrument")
+        if run.as_of > generated_at:
+            raise ValueError(f"evaluation record {run.record_id} reads outcomes at {run.as_of}, after the report's "
+                             "generation time")
 
     out = [f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
            f'<meta name="viewport" content="width=device-width, initial-scale=1">'

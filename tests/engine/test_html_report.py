@@ -186,3 +186,30 @@ def test_counts_of_views_by_direction_are_shown(inputs):
     assert re.search(r"ABSTAIN\D{0,40}1", html)
     assert str(ViewDirection.ABSTAIN) in html
     assert MetricValue  # metric rows come from MetricValue records
+
+
+# ------------------------------------------------------------------ B6: source and time labels are checked
+
+
+@pytest.mark.unit
+def test_a_view_from_another_provider_than_the_declared_source_is_refused(inputs):
+    with pytest.raises(ValueError, match="source"):
+        render(inputs, source="testvendor", runs=[], adjusted_closes=())
+
+
+@pytest.mark.unit
+def test_views_runs_and_prices_later_than_the_report_time_are_refused(inputs):
+    view_time = inputs["views"][0].generated_at
+    with pytest.raises(ValueError, match="after the report"):
+        render(inputs, generated_at=view_time - timedelta(days=10), runs=[], adjusted_closes=())
+    run_cutoff = inputs["runs"][0].as_of
+    with pytest.raises(ValueError, match="after the report"):
+        render(inputs, generated_at=run_cutoff - timedelta(seconds=1), adjusted_closes=())
+    with pytest.raises(ValueError, match="after the report"):
+        render(inputs, generated_at=GENERATED - timedelta(seconds=1), runs=[])  # the price series is as of GENERATED
+
+
+@pytest.mark.unit
+def test_valid_historical_dates_render(inputs):
+    html = render(inputs)  # a 2024 view, 2026-10-12 evaluation records, prices as of the report time
+    assert "2024-06-21" in html
