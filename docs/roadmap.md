@@ -5,7 +5,7 @@
 | **Document status** | **v0.4, for review.** v0.3: Codex review passed; merged into `main` with the owner's approval (M0, `906ae85`, 2026-10-09). v0.4 adopts the **batch workflow** (§1.1, §4.3), records the owner's one-month window, and updates M0's completed status. Earlier notes:<br>v0.2 applied Codex's first roadmap review: workflow, baseline, Yahoo verification, availability.<br>v0.3 applies the M1 spec review: complete split history, per-field verification, replay timing, provider separation, the resampler cutoff, the frozen DataHealth states, and blocking on failed verification. |
 | **Date** | 2026-10-08 |
 | **Sources** | `architecture/architecture-v1.0.md` Part K (milestones and promotion gates; v1.0 FROZEN), `docs/PRD.md` (milestone table, OPEN-01 – OPEN-17), `architecture/adr/`. Where this roadmap and the architecture disagree, the architecture wins. |
-| **Estimates** | **M1 is detailed**. M2 is **done** (merged into local `main` at `b7c5d2a`, 2026-10-16). M3 has a **draft specification pack** (M3-00 – M3-14), awaiting Codex's re-review of v0.2 and the owner's decisions D1–D18. M4 – M10 remain provisional work packages, split into reviewed 1–3 hour tasks before implementation. |
+| **Estimates** | **M1 is detailed**. M2 is **done** (merged into local `main` at `b7c5d2a`, 2026-10-16). M3 has a **draft specification pack** (M3-00 – M3-14), awaiting Codex's re-review of v0.3 and the owner's decisions D1–D18. M4 – M10 remain provisional work packages, split into reviewed 1–3 hour tasks before implementation. |
 
 This roadmap splits the frozen milestones into **tasks of about 1–3 hours** each. A task is small enough to build, test and review in one sitting, and to hand over between Claude Code and Codex using only the repository's documents.
 

@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress, 15 of 18 tasks done** (M1-00 – M1-11, M1-14 – M1-16). M1-12, M1-13 and M1-17 have their **daily parts merged** and their hourly parts unfinished (batch 3b, blocked on A4 permissions). **M2 Quant + initial evaluation: done** (daily only; merged 2026-10-16), under the owner's 2026-10-14 scheduling amendment. **M3 Portfolio, policy, risk:** draft spec pack for review. |
 | **`main`** | Local `main` is at **`b7c5d2a`** (`docs: hand the R1 and R2 fixes back for a second re-review with checks and report`): the owner approved the fast-forward from `53c51bd` on 2026-10-16 after Codex's final M2 review passed (`docs/reviews/codex-m2-accepted-b7c5d2a.md`). It contains M1's merged scope and all of M2. **Nothing has been pushed** (`main` is 84 commits ahead of `origin/main`). |
-| **Current work** | **M3 specification pack drafted on `docs/m3-specs`** (worktree `C:/Users/LOQ/TradingAgents-m3-specs`): v0.2 of M3-00 – M3-14 and proposed decisions D1–D18, revised for Codex's review of `1ce5250` (B1–B6, S1–S7) and awaiting Codex's re-review (`docs/reviews/claude-m3-spec-package.md`) and the owner's decisions. **No M3 code.** M2 is done (local `main` `b7c5d2a`, no push). M1's hourly parts remain blocked on A4. |
+| **Current work** | **M3 specification pack drafted on `docs/m3-specs`** (worktree `C:/Users/LOQ/TradingAgents-m3-specs`): v0.3 of M3-00 – M3-14 and proposed decisions D1–D18, revised for Codex's reviews of `1ce5250` (B1–B6, S1–S7) and `e7ec7e1` (R1–R3, S1–S4), awaiting Codex's re-review (`docs/reviews/claude-m3-spec-package.md`) and the owner's decisions. **No M3 code.** M2 is done (local `main` `b7c5d2a`, no push). M1's hourly parts remain blocked on A4. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules, `market/calendar/`, `market/availability.py`, `market/candles.py`, `market/corporate_actions.py`, `market/store/`, `market/importers/` (verified Yahoo daily bars and actions; hourly BLOCKED), `market/replay.py`, `market/resample.py`, `market/data_health.py` and the daily NVDA CLI (`python -m investment_engine`). M2 added `quant/`, `decision/`, `lineage/`, `evaluation/` and `reporting/` (merged). |
@@ -34,7 +34,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 1. **M2: done** (merged into local `main` at `b7c5d2a`, 2026-10-16; not pushed). *History:* step 0 integrates the reviewed M2 specs with Codex's five package-review corrections (`docs/reviews/codex-m2-package-review-2026-10-14.md`). Then M2-00 – M2-12 (M2-11 split into 11a and 11b: 14 tasks), the batch checks, self-review and the NVDA HTML research report from the saved, verified daily recordings. Then one combined Codex review. The M2 merge needs its own owner approval.
 2. **M1 hourly (batch 3b):** blocked on A4 (account terms and retention/publication permissions); see `docs/hourly-access-review`. Whether any route avoids a given permission is unverified. Key use, access checks, checkpoint R and downloads each need separate authorization. M1 completes only when 3b and M1-17's hourly part (5b) merge.
 3. **Pending for Codex at the M2 review (non-blocking):** the M1 deferred review items in "Open issues"; the M1-08 contract allowing `received_at < end_time` for a CLOSED bar (M2 enforces its own completed-bar cutoff, see M2-00/M2-03); the M2-11 split.
-4. **M3:** the draft pack (`docs/tasks/M3-README.md`, M3-00 – M3-14) (v0.2) and proposed decisions D1–D18 await Codex's re-review and the owner's choices. M3 code needs the owner's milestone approval; M3-00 also needs a local PostgreSQL (D16).
+4. **M3:** the draft pack (`docs/tasks/M3-README.md`, M3-00 – M3-14) (v0.3) and proposed decisions D1–D18 await Codex's re-review and the owner's choices. M3 code needs the owner's milestone approval; M3-00 also needs a local PostgreSQL (D16).
 
 **Owner's conditions for batch 2 (2026-10-12):**
 - complete **2019 – 2026** calendar coverage from **cited official exchange sources**, special closures included;
@@ -149,6 +149,20 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-16: Claude Code (M3 specification pack v0.3: Codex's re-review of `e7ec7e1` applied)
+- **Codex accepted the B1–B6 fixes in v0.2; they're kept unchanged.** v0.3 fixes three integration blockers:
+  - **R1:** M3-02 now lists every existing caller of the store constructors (the CLI and seven test files, re-inventoried), with set-up-only changes. The CLI stays on SQLite, wrapped, until M3-03, so M3-02 commits with the whole suite passing. The external M2 report script is updated outside the repository.
+  - **R2:** privileged commands authorize the named operator at the real command time (LiveClock) and act at the business time (replay for RESEARCH). Audit events carry `at` and `business_at`; approvals store `approved_at` and `approval_recorded_at`. The operator registry is never backdated.
+  - **R3:** expiry is per account: `expire_due(account_id, at)`, an account-scoped store query, account validation before any mutation, `intents expire --account` and a separate live-time `--paper` sweep.
+- **Clarifications:**
+  - S1: ambient `PG*` settings are neutralized and the connection is allowed with a pinned loopback; explicit unsupported parameters are refused.
+  - S2: hashed identities exclude command provenance, so replay ids are reproducible from the same setup inputs.
+  - S3: risk gets `admitted_buys_excluding_self` and `already_admitted`.
+  - S4: D18 says the rest of a partial sell is not sold automatically.
+- **Codex's re-review record** is imported byte-for-byte as `docs/reviews/codex-m3-spec-rereview-e7ec7e1.md`.
+- **Checks:** documents only; `git diff --check` clean; estimates (52 h) and backward dependencies rechecked by script. No runtime tests (no code changed). CI not yet run.
+- **Next:** Codex re-reviews `e7ec7e1..docs/m3-specs`; the owner answers D1–D18 and decides on M3 approval and the PostgreSQL install. Not authorized: M3 code, merge, push, keys, downloads.
 
 ### 2026-10-16: Claude Code (M3 specification pack v0.2: Codex's review of `1ce5250` applied)
 - **Blocking findings:**

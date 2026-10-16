@@ -1,6 +1,6 @@
 # M3 specification pack: portfolio, policy, risk (draft for review)
 
-**Draft v0.2, 2026-10-16.** Prepared by Claude on `docs/m3-specs`. v0.1 (`1ce5250`) was reviewed by Codex (`docs/reviews/codex-m3-spec-review-1ce5250.md`, imported unchanged into this branch). v0.2 applies blocking findings B1–B6 and suggestions S1–S7; see `docs/reviews/claude-m3-spec-package.md` for the correction table. **No M3 code has been written or authorized.** M2 is complete: local `main` was fast-forwarded to `b7c5d2a` on 2026-10-16 after Codex's final review (`docs/reviews/codex-m2-accepted-b7c5d2a.md`, also imported unchanged).
+**Draft v0.3, 2026-10-16** (v0.2 `e7ec7e1` re-reviewed by Codex: R1–R3 and S1–S4 applied; B1–B6 accepted and preserved). Prepared by Claude on `docs/m3-specs`. v0.1 (`1ce5250`) was reviewed by Codex (`docs/reviews/codex-m3-spec-review-1ce5250.md`, imported unchanged into this branch). v0.2 applies blocking findings B1–B6 and suggestions S1–S7; see `docs/reviews/claude-m3-spec-package.md` for the correction table. **No M3 code has been written or authorized.** M2 is complete: local `main` was fast-forwarded to `b7c5d2a` on 2026-10-16 after Codex's final review (`docs/reviews/codex-m2-accepted-b7c5d2a.md`, also imported unchanged).
 
 **Milestone (architecture Part K, frozen):** move to PostgreSQL; PortfolioSnapshot, position sizer, versioned OrderIntent, policy (autonomy), risk, audit. **Visible result:** a CLI that shows proposed intents with their approve, reject or reduce reasons, and Level 1 approve/decline at the CLI. **No orders are created or executed in M3** (PRD §8). Concurrency tests run on PostgreSQL (ADR-008).
 
@@ -28,7 +28,7 @@ Plain English, with Claude's recommendation. Limits are stored as **versioned co
 | D7 | When orders may trade | **Regular market hours only**, as DAY limit orders. No pre-market or after-hours. Half-days are allowed. |
 | D8 | Restricted list | **Starts empty.** An Admin adds or removes a stock with a written reason; every change is recorded. |
 | D9 | A buy that's too big | **Cut it down to the limit**; the smaller version needs approval again. If less than one whole share is left, reject it. Whole shares only. |
-| D18 | A sell larger than the market can absorb (new) | **Allow partial selling:** cut the sell to the volume limit and sell the rest on later days, rather than blocking the sale. |
+| D18 | A sell larger than the market can absorb (new) | **Allow partial selling:** cut the sell to the volume limit rather than blocking it. The rest is **not** automatically sold later: each later view decides again, and M3 has no fills. |
 
 **Approval expiry and view validity (OPEN-08)**
 

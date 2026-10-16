@@ -1,4 +1,24 @@
-# M3 specification package v0.2 (Claude, 2026-10-16)
+# M3 specification package v0.3 (Claude, 2026-10-16)
+
+## v0.3: Codex's re-review of `e7ec7e1` (R1–R3, S1–S4)
+
+**Snapshot:** the third documentation commit on `docs/m3-specs`, the one adding this section. Review range: `e7ec7e1..docs/m3-specs`. Codex accepted the B1–B6 and S1–S7 changes in v0.2 (`docs/reviews/codex-m3-spec-rereview-e7ec7e1.md`, imported byte-for-byte, SHA-256 `8f082288…`). They're preserved unchanged.
+
+| Finding | Change | Where | Acceptance tests added |
+|---|---|---|---|
+| **R1** callers outside M3-02's scope | M3-02 lists every existing constructor caller, re-inventoried at `e7ec7e1`: `cli.py` and seven test files (`test_cli`, `test_data_health`, `test_feature_snapshot`, `test_view_pipeline`, `test_yfinance_actions`, `test_yfinance_bars`, `test_walk_forward`). Changes are set-up only: wrap in `SqliteDatabase`, with no weakened assertions or monkeypatching. An unlisted caller triggers the stop rule. The CLI stays transitionally on wrapped SQLite until M3-03. The external M2 report script is updated outside the repository; nothing is promised in it. | M3-02 (allowed files, rule 7) | The whole pre-existing suite passes its baseline at the end of M3-02, before M3-03; a scan finds no raw connection passed to a store constructor |
+| **R2** replay approvals vs today's operators | Authorization and attribution use the real command time (LiveClock); business checks and `approved_at` use the replay time. `AuditEvent.business_at`; `StoredIntent.approval_recorded_at`. The operator registry is live-time only and never backdated. Applies to every privileged research command. | M3-04 (contract, rule 5), M3-05 (rule 5), M3-06, M3-07, M3-09, M3-13 (contract, rule 2) | Through the CLI: today's operator approves a 2021 intent before its simulated deadline; a deactivated operator or a Viewer is refused even with an earlier `--at`; both times are displayed and audited; PAPER still refuses replay times |
+| **R3** expiry crossing account timelines | `expire_due(account_id, at)`, `due_for_expiry(account_id, at)` and a separate `expire_paper_due(clock)` for PAPER on live time. `propose` validates the account and time mode before any mutation. CLI `intents expire --account A [--at T]` and `--paper`. | M3-09, M3-12 (rules 1, 10), M3-13 (rule 5) | Two RESEARCH accounts at different replay times in one database: B's proposals and expiry leave A untouched; A's expiry changes only A; a missing-account proposal expires nothing; PAPER refuses `--at`, also on expiry |
+| **S1** neutralize vs reject | Chosen: neutralize ambient `PG*`, then allow the connection with a pinned loopback. Explicit unsupported parameters are still refused. The acceptance text now matches. | M3-00 | Split probe lists: refused explicit forms; ambient values neutralized and never reaching the recorder |
+| **S2** replay identity vs provenance | Hashed identities exclude `recorded_at`, command time and OS user; those are stored beside the record and in audit. Replay determinism is stated for the same setup inputs. | M3-05 (rule 5), M3-06, M3-07, M3-12 (rule 9) | Two setups at different real times with the same inputs give identical ids, with their provenance kept |
+| **S3** admission membership | `RiskInputs.admitted_buys_excluding_self` and `already_admitted`; `daily_buys` fails exactly when `not already_admitted and count >= limit`. A version above 1 is not evidence of admission. | M3-09 (`was_admitted`, `excluding`), M3-11 (input, rule 8), M3-12 (rule 4) | At the cap: an unadmitted reduced v2 is rejected; an already-admitted intent passes; neither takes a second slot |
+| **S4** D18 wording | Partial selling is a sizing rule; the remainder isn't scheduled or guaranteed, later views decide again, and M3 has no fills. | README D18, M3-11 | — |
+
+Numbers unchanged: 15 tasks, 52 h, seven 4 h tasks (planning exception), backward dependencies. D1–D18 remain proposals.
+
+---
+
+# v0.2 package (kept for history)
 
 For Codex: a re-review of the revised M3 pack. The owner asked for the complete package revised in one pass against `docs/reviews/codex-m3-spec-review-1ce5250.md`: B1–B6 and the integration suggestions, one fixed snapshot, a correction table and the consolidated owner decisions, kept as proposals. **No M3 code, merge, push, keys or downloads.**
 

@@ -10,7 +10,7 @@ Each task has one spec here (`M1-00.md` … `M1-17.md`). A spec is the contract 
 
 **M2:** [M2 pack](M2-README.md), M2-00 – M2-12 (M2-11 split into 11a and 11b). Accepted for implementation by the owner on 2026-10-14 as one milestone package on `m2/milestone`, starting on M1's merged daily scope; M1's hourly parts and completion criteria are unchanged. **Done:** merged into local `main` at `b7c5d2a` on 2026-10-16.
 
-**M3:** [M3 pack](M3-README.md), M3-00 – M3-14, **draft v0.2 for Codex re-review** (2026-10-16; v0.1 reviewed at `1ce5250`), with the proposed owner decisions D1–D18 (OPEN-07, OPEN-08 and the rest). Not accepted for implementation.
+**M3:** [M3 pack](M3-README.md), M3-00 – M3-14, **draft v0.3 for Codex re-review** (2026-10-16; v0.1 reviewed at `1ce5250`, v0.2 at `e7ec7e1`), with the proposed owner decisions D1–D18 (OPEN-07, OPEN-08 and the rest). Not accepted for implementation.
 
 **Roles restored (owner, 2026-10-14):** Claude Code implements; Codex reviews. The temporary Copilot assignment has ended; accepted snapshot reviews are retained as history. See `docs/reviews/claude-return-handoff.md`.
 
