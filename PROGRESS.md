@@ -150,6 +150,45 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-06: versioned risk limits, policy rules and halts)
+- **`risk/limits.py` and `policy/rules.py`:**
+  - **`RiskLimits` (D1–D9):** fractions are Decimals in (0, 1]; `long_only` must be true; counts are positive integers; `min_price` and `min_quantity` are positive Decimals, and `min_quantity` must be whole shares.
+  - **`PolicyRules` (D7, D8, D12, D13):** `restricted` and `view_timeframes` are sorted, de-duplicated tuples (B2). The session, order type and time-in-force are fixed to the v1 values, and `H1` is refused (D12).
+  - **`Halt`:** carries a `baseline_equity`.
+  - **`load_limits_file`:** strict; floats (via `parse_float`) and unknown keys are refused.
+  - **`LimitStore`:** PostgreSQL only, sharing one port with the audit store and account registry.
+    - **Publishing:** `publish_risk` and `publish_policy` take the account-control lock, require an Admin at the real command time, number versions consecutively (`risk-<n>`, `policy-<n>`), and write one audit event each.
+    - **Times:** RESEARCH needs `effective_at` and can't move back; PAPER can't backdate.
+    - **Reads:** `risk_at` and `policy_at` raise `NoLimits` when nothing is effective.
+    - **Restricted list:** `restrict` and `unrestrict` each publish a new policy version.
+    - **Halts:** `set_halt` (Core Engine) latches a halt; `clear_halt` (Admin) clears it.
+- **Contract deviations, both kept within the M3-06 rules:**
+  - `clear_halt(..., equity_now=None, effective_at=None)`. `equity_now` is optional because snapshots arrive in M3-07: without it, the baseline restarts from the next snapshot, under M3-07 rule 5's `baseline_at`. `effective_at` was added for RESEARCH clears.
+  - The proposed file's header records the owner's 2026-10-16 approval of D1–D9 and D13. It's still applied only by an explicit `limits publish`.
+- **`schema_pg/0007_limits.sql`:** `risk_limit_versions`, `policy_rule_versions` and `halts`, all append-only. The audit registry lists `policy.rules` and `risk.limits`, and package data includes `risk/proposed_limits.json`.
+- **Admin CLI (groups added through `GROUPS`; no change to `cli.py`):**
+  - `limits publish ACCOUNT [--file]` (default: the packaged proposal), `limits show [--at]` and `limits clear-halt`;
+  - `restricted add|remove`;
+  - domain lookup errors such as `NoLimits` are printed plainly.
+- **Tests first:** `tests/engine/test_limits.py` was written first and failed at collection. Two mistakes in my own tests:
+  - `DELETE` on an empty table fires no row trigger, so it can't prove the guard; replaced with `TRUNCATE`;
+  - events at the same command time are ordered by id, so the assertion now filters halt events.
+
+  21 passed. They cover:
+  - fail-closed lookups, and the packaged values equal to D1–D9 and D13;
+  - effective-at-T versions; UPDATE, DELETE and TRUNCATE refused;
+  - float and unknown-key file refusals, and nine validation refusals that publish nothing and write no event;
+  - order-independent tuples; `H1` refused;
+  - restricted add and remove as versions, with events, refused for a Trader;
+  - a latched halt that a Trader can't clear, and an Admin clear that sets the baseline;
+  - research replay-time versions and no paper backdate;
+  - four concurrent publishes giving `risk-1` to `risk-4`;
+  - fresh-process decoding of RiskLimits, PolicyRules (empty and non-empty) and Halt events;
+  - CLI publish, show, restrict and refusals.
+- **Checks (Git Bash):** see the result line below; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2594 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 298.24s (0:04:58) (only failure: the baseline cache-location test)
+- **Clean install** (package data changed): a fresh `py -3.11` venv with `pip install ".[engine]"`. From outside the repository, `proposed_limits.json` loads (9 risk and 6 policy keys) and `schema_pg` 0005–0007 ship.
+
 ### 2026-10-16: Claude Code (M3-05 follow-up: the Admin CLI registers its own command groups)
 - **Why:** M3-06, M3-13 and M3-14 add Admin CLI groups, but only M3-05's allowed files include `cli.py`. Editing the registration lines in a later task would leave that task's scope.
 - **Change, within M3-05's allowed files:** `admin_cli.py` keeps a `GROUPS` map and a `register(app)` function; `cli.py` calls it once. Later tasks add their groups to `GROUPS` in `admin_cli.py` only. Commands and behaviour are unchanged.

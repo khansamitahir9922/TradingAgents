@@ -7,4 +7,6 @@ adds its module here, and nothing else.
 
 MODULES: tuple[str, ...] = (
     "investment_engine.policy.accounts",  # M3-05
+    "investment_engine.policy.rules",  # M3-06
+    "investment_engine.risk.limits",  # M3-06
 )

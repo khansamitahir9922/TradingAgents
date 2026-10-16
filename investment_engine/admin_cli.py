@@ -20,8 +20,11 @@ import typer
 from investment_engine.clock import LiveClock
 
 accounts_app = typer.Typer(no_args_is_help=True, help="Accounts and their autonomy levels (Admin only).")
+limits_app = typer.Typer(no_args_is_help=True, help="Versioned risk limits, policy rules and halts (Admin only).")
+restricted_app = typer.Typer(no_args_is_help=True, help="The restricted list; each change is a new policy version.")
 operators_app = typer.Typer(no_args_is_help=True, help="Local named operators and their roles (Admin only).")
-GROUPS: dict[str, typer.Typer] = {"accounts": accounts_app, "operators": operators_app}  # later tasks add theirs
+GROUPS: dict[str, typer.Typer] = {"accounts": accounts_app, "operators": operators_app,  # later tasks add theirs
+                                  "limits": limits_app, "restricted": restricted_app}  # M3-06
 
 
 def register(app: typer.Typer) -> None:
@@ -43,21 +46,31 @@ def _when(text: str | None) -> datetime | None:
     return None if text is None else _timestamp(text)
 
 
-def _run(command: Callable[..., None]) -> None:
-    """Open the Operational Database, run `command(context)`, print refusals plainly, close."""
+def _run(command: Callable[..., None], *, limits: bool = False) -> None:
+    """Open the Operational Database, run `command(registry[, limit_store])`, print refusals plainly, close."""
     from investment_engine.audit.events import AuditStore
     from investment_engine.cli import _fail, _open_db
     from investment_engine.policy.accounts import AccountRegistry, NotAuthorized
+    from investment_engine.risk.limits import LimitStore
 
     conn = None
     try:
         conn, db = _open_db(read_only=False)
-        registry = AccountRegistry(db, AuditStore(db), LiveClock())
-        command(registry)
+        clock, audit = LiveClock(), AuditStore(db)
+        registry = AccountRegistry(db, audit, clock)
+        if limits:
+            command(registry, LimitStore(db, audit, registry, clock))
+        else:
+            command(registry)
     except NotAuthorized as exc:
         from investment_engine.cli import _print
 
         _print(f"Not authorized: {exc}. Nothing was changed.")
+        raise typer.Exit(1) from None
+    except LookupError as exc:  # domain lookups (NoLimits, unknown ids): their text names ids, never secrets
+        from investment_engine.cli import _print
+
+        _print(f"Cannot complete command: {exc}")
         raise typer.Exit(1) from None
     except typer.Exit:
         raise
@@ -181,3 +194,90 @@ def list_accounts() -> None:
         if not rows:
             _say("no accounts")
     _run(go)
+
+
+# ---------------------------------------------------------------- limits (M3-06)
+
+
+def _limits_line(risk, policy) -> str:
+    return (f"{risk.version}: position <= {risk.max_position_fraction}, gross <= {risk.max_gross_exposure_fraction}, "
+            f"long only, drawdown halt at {risk.drawdown_halt_fraction}, order <= {risk.max_order_adv_fraction} of "
+            f"{risk.adv_sessions}-session ADV, <= {risk.max_new_buys_per_session} new buys/session, price >= "
+            f"{risk.min_price}, quantity >= {risk.min_quantity}; {policy.version}: {policy.session} "
+            f"{policy.order_type} {policy.time_in_force}, band {policy.limit_band_fraction}, timeframes "
+            f"{','.join(policy.view_timeframes)}, restricted {','.join(policy.restricted) or 'none'}")
+
+
+@limits_app.command("publish")
+def publish_limits(account_id: str, file: str | None = typer.Option(None, "--file"),
+                   operator: str = typer.Option(..., "--operator"), reason: str = typer.Option(..., "--reason"),
+                   effective_at: str | None = typer.Option(None, "--effective-at")) -> None:
+    """Publish risk limits and policy rules from a file (default: the packaged proposed D1-D9, D13 file)."""
+    from importlib.resources import files
+    from pathlib import Path
+
+    from investment_engine.risk.limits import load_limits_file
+
+    text = (Path(file).read_text(encoding="utf-8") if file
+            else files("investment_engine.risk").joinpath("proposed_limits.json").read_text(encoding="utf-8"))
+
+    def go(registry, limits):
+        risk, policy = load_limits_file(text)
+        by, when = _actor(registry, operator), _when(effective_at)
+        published = (limits.publish_risk(account_id, risk, by=by, reason=reason, effective_at=when),
+                     limits.publish_policy(account_id, policy, by=by, reason=reason, effective_at=when))
+        _say(f"Account {account_id} published " + _limits_line(*published))
+    _run(go, limits=True)
+
+
+@limits_app.command("show")
+def show_limits(account_id: str, at: str | None = typer.Option(None, "--at")) -> None:
+    """Show the limits, rules and halt state effective at a time (default: now)."""
+    def go(registry, limits):
+        when = _when(at) or registry._clock.now()
+        _say(f"Account {account_id} at {when.isoformat()}: "
+             + _limits_line(limits.risk_at(account_id, when), limits.policy_at(account_id, when)))
+        halt = limits.halt_at(account_id, when)
+        _say("halt: none" if halt is None else
+             f"halt: {'HALTED' if halt.halted else 'cleared'} since {halt.at.isoformat()} ({halt.reason})")
+    _run(go, limits=True)
+
+
+@limits_app.command("clear-halt")
+def clear_halt(account_id: str, operator: str = typer.Option(..., "--operator"),
+               reason: str = typer.Option(..., "--reason"),
+               effective_at: str | None = typer.Option(None, "--effective-at")) -> None:
+    """Clear a latched drawdown halt (Admin). The drawdown is then measured from the next snapshot."""
+    def go(registry, limits):
+        cleared = limits.clear_halt(account_id, by=_actor(registry, operator), reason=reason,
+                                    effective_at=_when(effective_at))
+        _say(f"Account {account_id}: halt cleared at {cleared.at.isoformat()}. The drawdown baseline restarts "
+             "from the value at the next snapshot; if the limit is unchanged and the value keeps falling, the "
+             "halt triggers again.")
+    _run(go, limits=True)
+
+
+def _restricted(account_id: str, instrument_id: str, add: bool, operator: str, reason: str,
+                effective_at: str | None) -> None:
+    def go(registry, limits):
+        change = limits.restrict if add else limits.unrestrict
+        rules = change(account_id, instrument_id, by=_actor(registry, operator), reason=reason,
+                       effective_at=_when(effective_at))
+        _say(f"Account {account_id} {rules.version}: restricted {','.join(rules.restricted) or 'none'}")
+    _run(go, limits=True)
+
+
+@restricted_app.command("add")
+def restricted_add(account_id: str, instrument_id: str, operator: str = typer.Option(..., "--operator"),
+                   reason: str = typer.Option(..., "--reason"),
+                   effective_at: str | None = typer.Option(None, "--effective-at")) -> None:
+    """Restrict an instrument (a new policy version)."""
+    _restricted(account_id, instrument_id, True, operator, reason, effective_at)
+
+
+@restricted_app.command("remove")
+def restricted_remove(account_id: str, instrument_id: str, operator: str = typer.Option(..., "--operator"),
+                      reason: str = typer.Option(..., "--reason"),
+                      effective_at: str | None = typer.Option(None, "--effective-at")) -> None:
+    """Lift a restriction (a new policy version)."""
+    _restricted(account_id, instrument_id, False, operator, reason, effective_at)

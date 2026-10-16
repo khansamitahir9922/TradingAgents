@@ -1,0 +1,22 @@
+{
+  "header": "Owner decisions D1-D9 and D13 (approved by the owner on 2026-10-16 as recommended). Applied only by an explicit Admin action: limits publish ACCOUNT --file <this file>. Numbers are strings or integers; floats are refused.",
+  "risk": {
+    "max_position_fraction": "0.10",
+    "max_gross_exposure_fraction": "1.00",
+    "long_only": true,
+    "drawdown_halt_fraction": "0.15",
+    "max_order_adv_fraction": "0.01",
+    "adv_sessions": 20,
+    "max_new_buys_per_session": 5,
+    "min_price": "5",
+    "min_quantity": "1"
+  },
+  "policy": {
+    "restricted": [],
+    "session": "REGULAR_ONLY",
+    "order_type": "LIMIT",
+    "time_in_force": "DAY",
+    "limit_band_fraction": "0.01",
+    "view_timeframes": ["D1"]
+  }
+}
