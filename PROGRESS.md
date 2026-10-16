@@ -150,6 +150,28 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-01: PostgreSQL schema and migrations)
+- **`investment_engine/storage/postgres.py`:**
+  - `open_operational_pg` opens connections in autocommit mode, with the session time zone UTC;
+  - `apply_pg_schema` uses the same forward-only numbering as SQLite, one transaction per script together with its version row, and `SchemaVersionError` for a newer database;
+  - `AppendOnlyViolation` is defined here for M3-02;
+  - `advisory_key` gives a SHA-256-derived signed 64-bit key, and `advisory_keys` returns distinct keys in ascending order.
+- **`storage/schema_pg/0001`–`0004`** mirror SQLite version 4 with native `DATE`, `TIMESTAMPTZ` and `BYTEA`. The append-only refusals:
+  - one PL/pgSQL function (`ie_refuse_change`) behind row triggers refusing UPDATE and DELETE, and statement triggers refusing TRUNCATE;
+  - BEFORE INSERT guards (0004) that refuse an existing id before conflict arbitration, which covers both `ON CONFLICT DO UPDATE` and `DO NOTHING`.
+
+  Functions have a fixed `search_path`. Package data now includes `schema_pg/*.sql`.
+- **Tests first:** `tests/engine/test_postgres_schema.py` was written first and failed at collection, because the module didn't exist yet. After the implementation: 26 passed, on the real local PostgreSQL. They cover:
+  - migration to 4, idempotent re-apply, newer-schema refusal, and rollback of a failing script with no partial table or version row;
+  - autocommit and UTC;
+  - a column, nullability and key comparison with SQLite version 4, and the native types;
+  - every replacement route refused with the original unchanged, for both tables (UPDATE, DELETE, TRUNCATE, both `ON CONFLICT` forms, a plain duplicate);
+  - instrument checks rejecting the same seven bad rows as SQLite;
+  - the advisory-key properties.
+- **Checks (Git Bash):** the full suite below ran before a one-line lint fix in the new test file (a dict comprehension); after the fix, ruff passed and the file's 26 tests passed again. Whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2466 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 127.36s (0:02:07) (only failure: the baseline cache-location test)
+- **Clean install** (package data changed): a fresh `py -3.11` venv with `pip install ".[engine]"`; from outside the repository, the four `schema_pg` scripts ship and load from site-packages.
+
 ### 2026-10-16: Claude Code (M3-00: PostgreSQL development and test setup)
 - **Driver:** `psycopg[binary]>=3.3.6` added to the `dev` and `engine` extras (wheel evidence in the step-0 entry). Markers: `postgres` is registered in `pyproject.toml`.
 - **Guard (`tests/conftest.py`, rule 4):** `_no_network` now also wraps `psycopg.connect`, `Connection.connect` and `AsyncConnection.connect`.
