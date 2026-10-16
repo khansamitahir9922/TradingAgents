@@ -25,6 +25,7 @@ from investment_engine.market.instruments import AssetClass, Instrument, Instrum
 from investment_engine.market.store.reader import MarketDataReader
 from investment_engine.market.store.writer import CandleObservation, MarketDataWriter
 from investment_engine.market.symbols import SymbolMapping
+from investment_engine.storage.database import SqliteDatabase
 from investment_engine.storage.sqlite import (
     SqliteInstrumentRepository,
     SqliteSymbolResolver,
@@ -63,7 +64,8 @@ def bar(d, timeframe=D1, k=0, *, source="yfinance", close="100", received_at=Non
 def env(tmp_path):
     conn = open_operational_db(tmp_path / "op.sqlite3")
     apply_schema(conn)
-    instruments, resolver = SqliteInstrumentRepository(conn), SqliteSymbolResolver(conn)
+    db = SqliteDatabase(conn)
+    instruments, resolver = SqliteInstrumentRepository(db), SqliteSymbolResolver(db)
     instruments.add(Instrument(NVDA, AssetClass.EQUITY, "USD", "XNAS", "America/New_York",
                                InstrumentStatus.ACTIVE, date(1999, 1, 22), None))
     resolver.add(SymbolMapping(NVDA, "yfinance", "NVDA", date(1999, 1, 22), None))

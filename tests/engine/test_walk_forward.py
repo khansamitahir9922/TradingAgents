@@ -32,6 +32,7 @@ from investment_engine.market.symbols import SymbolMapping
 from investment_engine.quant.adjusted import VerificationEvidence
 from investment_engine.quant.strategies.pullback import PullbackStrategy
 from investment_engine.quant.strategies.trend import TrendStrategy
+from investment_engine.storage.database import SqliteDatabase
 from investment_engine.storage.sqlite import (
     SqliteInstrumentRepository,
     SqliteSymbolResolver,
@@ -109,14 +110,15 @@ def history(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("wf")
     conn = open_operational_db(tmp / "op.sqlite3")
     apply_schema(conn)
-    instruments, resolver = SqliteInstrumentRepository(conn), SqliteSymbolResolver(conn)
+    db = SqliteDatabase(conn)
+    instruments, resolver = SqliteInstrumentRepository(db), SqliteSymbolResolver(db)
     instruments.add(Instrument(NVDA, AssetClass.EQUITY, "USD", "XNAS", "America/New_York",
                                InstrumentStatus.ACTIVE, date(1999, 1, 22), None))
     resolver.add(SymbolMapping(NVDA, "yfinance", "NVDA", date(1999, 1, 22), None))
     writer, reader = MarketDataWriter(tmp / "market"), MarketDataReader(tmp / "market")
     writer.write_candles([bar(d, price(i)) for i, d in enumerate(SESSIONS)], import_id="bars")
     start, end = CAL.session(SESSIONS[0]).open - timedelta(days=1), CAL.session(SESSIONS[-1]).close + timedelta(days=5)
-    lineage = LineageStore(conn)
+    lineage = LineageStore(db)
     feed = ReplayFeed(reader, ReplayClock(start), sources=["yfinance"], instrument_ids=[NVDA],
                       timeframes=[Timeframe.D1], start=start, end=end)
     views = list(run_views(feed, instrument_id=NVDA, source="yfinance", strategies=(TrendStrategy(), PullbackStrategy()),

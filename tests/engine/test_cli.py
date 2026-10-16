@@ -23,6 +23,7 @@ from investment_engine.market.store.writer import (
 )
 from investment_engine.market.symbols import SymbolMapping
 from investment_engine.money import Money
+from investment_engine.storage.database import SqliteDatabase
 from investment_engine.storage.sqlite import SqliteSymbolResolver, open_operational_db
 
 CAL = load_us_equities_calendar()
@@ -65,7 +66,7 @@ def history(app, source="yfinance", missing=()):
     if source != "yfinance":
         conn = open_operational_db(root / "operational.sqlite3")
         try:
-            SqliteSymbolResolver(conn).add(SymbolMapping(NVDA, source, "NVDA.TEST", date(1999, 1, 22), None))
+            SqliteSymbolResolver(SqliteDatabase(conn)).add(SymbolMapping(NVDA, source, "NVDA.TEST", date(1999, 1, 22), None))
         finally:
             conn.close()
     return writer

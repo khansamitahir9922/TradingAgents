@@ -8,7 +8,8 @@ references; plus the code and calendar versions, the coverage evidence and
 the backfill assumption it rests on. Its id hashes that canonical content, so
 every reported number can be traced to exactly what produced it.
 
-Stored in the Operational Database's evaluation domain, append-only (schema
+Stored in the Operational Database's evaluation domain through the database
+port (PostgreSQL from M3, or a legacy SQLite file; M3-02), append-only (schema
 0003): an identical append is a no-op, a different record under the same id
 raises, there's no update or delete path, and SQL triggers refuse UPDATE and
 DELETE. The canonical JSON is stored zlib-compressed.
@@ -17,7 +18,6 @@ DELETE. The canonical JSON is stored zlib-compressed.
 import dataclasses
 import hashlib
 import json
-import sqlite3
 import zlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -34,6 +34,7 @@ from investment_engine.evaluation.walk_forward import (
 from investment_engine.lineage.records import canonical_json, decode, register
 from investment_engine.market.availability import check_utc
 from investment_engine.market.calendar.base import CalendarRangeError
+from investment_engine.storage.sqlite import port
 
 
 @dataclass(frozen=True)
@@ -140,8 +141,8 @@ class EvaluationRunStore:
     declares when it is appended and when it is read back.
     """
 
-    def __init__(self, conn: sqlite3.Connection, *, calendars: Mapping[str, object]) -> None:
-        self._conn = conn
+    def __init__(self, db, *, calendars: Mapping[str, object]) -> None:
+        self._db = port(db)
         self._calendars = dict(calendars)
 
     def append(self, record: EvaluationRecord) -> None:
@@ -149,28 +150,30 @@ class EvaluationRunStore:
             raise TypeError(f"expected an EvaluationRecord, not {type(record).__name__}")
         check_fold_periods(record, self._calendars)
         content = record.content()
-        existing = self._conn.execute("SELECT content FROM evaluation_records WHERE record_id = ?",
-                                      (record.record_id,)).fetchone()
-        if existing is not None:
-            if zlib.decompress(existing[0]).decode() != content:
-                raise EvaluationRunConflict(f"{record.record_id} is already recorded with different content")
-            return
-        self._conn.execute(
-            "INSERT INTO evaluation_records (record_id, instrument_id, as_of, content) VALUES (?, ?, ?, ?)",
-            (record.record_id, record.instrument_id, record.as_of.isoformat(), zlib.compress(content.encode(), 6)))
+        with self._db.transaction():
+            existing = self._db.fetchone("SELECT content FROM evaluation_records WHERE record_id = :id",
+                                         {"id": record.record_id})
+            if existing is not None:
+                if zlib.decompress(bytes(existing[0])).decode() != content:
+                    raise EvaluationRunConflict(f"{record.record_id} is already recorded with different content")
+                return
+            self._db.execute(
+                "INSERT INTO evaluation_records (record_id, instrument_id, as_of, content) "
+                "VALUES (:id, :instrument_id, :as_of, :content)",
+                {"id": record.record_id, "instrument_id": record.instrument_id, "as_of": record.as_of,
+                 "content": zlib.compress(content.encode(), 6)})
 
     def get(self, record_id: str) -> EvaluationRecord:
-        row = self._conn.execute("SELECT content FROM evaluation_records WHERE record_id = ?",
-                                 (record_id,)).fetchone()
+        row = self._db.fetchone("SELECT content FROM evaluation_records WHERE record_id = :id", {"id": record_id})
         if row is None:
             raise KeyError(record_id)
-        record = EvaluationRecord.from_content(zlib.decompress(row[0]).decode())
+        record = EvaluationRecord.from_content(zlib.decompress(bytes(row[0])).decode())
         if record.record_id != record_id:
             raise ValueError(f"stored content for {record_id} hashes to {record.record_id}")
         check_fold_periods(record, self._calendars)
         return record
 
     def ids(self, instrument_id: str) -> list[str]:
-        return [r[0] for r in self._conn.execute(
-            "SELECT record_id FROM evaluation_records WHERE instrument_id = ? ORDER BY as_of, record_id",
-            (instrument_id,))]
+        return [r[0] for r in self._db.fetchall(
+            "SELECT record_id FROM evaluation_records WHERE instrument_id = :id ORDER BY as_of, record_id",
+            {"id": instrument_id})]

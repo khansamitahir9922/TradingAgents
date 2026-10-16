@@ -22,6 +22,7 @@ from investment_engine.market.data_health import SourceKey, evaluate_health
 from investment_engine.market.instruments import Instrument
 from investment_engine.market.replay import ReplayFeed
 from investment_engine.market.symbols import SymbolMapping
+from investment_engine.storage.database import SqliteDatabase
 from investment_engine.storage.sqlite import (
     SqliteInstrumentRepository,
     SqliteSymbolResolver,
@@ -75,7 +76,7 @@ def _read_db():
     path = operational_db_path().resolve()
     if not path.is_file():
         raise FileNotFoundError("Reference database unavailable; run 'python -m investment_engine init' first")
-    return sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
+    return sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, isolation_level=None)
 
 
 def _timestamp(text: str) -> datetime:
@@ -110,7 +111,8 @@ def initialize() -> None:
         mapping = SymbolMapping(**{**mapping_fields, "valid_from": date.fromisoformat(mapping_fields["valid_from"])})
         conn = open_operational_db(operational_db_path())
         version = apply_schema(conn)
-        instruments, resolver = SqliteInstrumentRepository(conn), SqliteSymbolResolver(conn)
+        db = SqliteDatabase(conn)  # transitional until M3-03 moves the CLI to PostgreSQL
+        instruments, resolver = SqliteInstrumentRepository(db), SqliteSymbolResolver(db)
         try:
             existing = instruments.get(instrument.instrument_id)
         except KeyError:
@@ -197,7 +199,8 @@ def report(instrument: str = "EQ_US_NVDA", provider: str = "yfinance", timeframe
             raise ValueError("provider must not be empty")
         reader_type, _ = _load_store()
         conn = _read_db()
-        instruments, resolver = SqliteInstrumentRepository(conn), SqliteSymbolResolver(conn)
+        db = SqliteDatabase(conn)  # transitional until M3-03 moves the CLI to PostgreSQL
+        instruments, resolver = SqliteInstrumentRepository(db), SqliteSymbolResolver(db)
         identity = instruments.get(instrument)
         timezone = ZoneInfo(identity.timezone)
         reader = reader_type(market_store_dir())
@@ -258,7 +261,8 @@ def import_yfinance(instrument: str = "EQ_US_NVDA", daily_from: str = "2019-01-0
         reader_type, writer_type = _load_store()
         conn = _read_db()
         # Importers read reference data only; market writes go through their writer.
-        instruments, resolver = SqliteInstrumentRepository(conn), SqliteSymbolResolver(conn)
+        db = SqliteDatabase(conn)  # transitional until M3-03 moves the CLI to PostgreSQL
+        instruments, resolver = SqliteInstrumentRepository(db), SqliteSymbolResolver(db)
         instruments.get(instrument)
         calendar = load_us_equities_calendar()
         calendar.sessions_between(start, end - timedelta(days=1))

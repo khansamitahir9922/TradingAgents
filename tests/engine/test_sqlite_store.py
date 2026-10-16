@@ -1,7 +1,8 @@
-"""The operational SQLite store for instruments and symbol mappings (ADR-008; docs/tasks/M1-05.md).
+"""The reference-data stores for instruments and symbol mappings (ADR-008; docs/tasks/M1-05.md, M3-02.md).
 
-The SQLite resolver is held to exactly the cases the in-memory one passes:
-it runs M1-04's SymbolResolverContract.
+The store tests run on both backends through the database port; the schema
+and migration tests are SQLite's own. The stored resolver is held to exactly
+the cases the in-memory one passes: it runs M1-04's SymbolResolverContract.
 """
 
 import re
@@ -13,6 +14,7 @@ import pytest
 
 from investment_engine.market.instruments import AssetClass, Instrument, InstrumentStatus
 from investment_engine.market.symbols import PROVIDER_YFINANCE, SymbolMapping, UnknownSymbol
+from investment_engine.storage.database import IntegrityViolation, SqliteDatabase
 from investment_engine.storage.sqlite import (
     SchemaVersionError,
     SqliteInstrumentRepository,
@@ -51,8 +53,8 @@ def db(tmp_path):
     conn.close()
 
 
-def count(conn: sqlite3.Connection, table: str) -> int:
-    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+def count(database, table: str) -> int:
+    return database.fetchone(f"SELECT COUNT(*) FROM {table}")[0]
 
 
 # ---------------------------------------------------------------- schema
@@ -116,8 +118,8 @@ def test_schema_scripts_use_portable_sql(script):
 
 
 @pytest.mark.unit
-def test_an_instrument_round_trips(db):
-    repo = SqliteInstrumentRepository(db)
+def test_an_instrument_round_trips(database):
+    repo = SqliteInstrumentRepository(database)
     original = instrument(status=InstrumentStatus.DELISTED, active_to=date(2024, 1, 1))
     repo.add(original)
     assert repo.get("EQ_US_NVDA") == original
@@ -125,44 +127,38 @@ def test_an_instrument_round_trips(db):
 
 
 @pytest.mark.unit
-def test_instruments_persist_across_connections(tmp_path):
-    path = tmp_path / "operational.sqlite3"
-    conn = open_operational_db(path)
-    apply_schema(conn)
-    SqliteInstrumentRepository(conn).add(instrument())
-    conn.close()
-    conn = open_operational_db(path)
-    assert SqliteInstrumentRepository(conn).get("EQ_US_NVDA") == instrument()
-    conn.close()
+def test_instruments_persist_across_connections(backend):
+    SqliteInstrumentRepository(backend.first).add(instrument())
+    assert SqliteInstrumentRepository(backend.make()).get("EQ_US_NVDA") == instrument()
 
 
 @pytest.mark.unit
-def test_list_returns_every_instrument_sorted_by_id(db):
-    repo = SqliteInstrumentRepository(db)
+def test_list_returns_every_instrument_sorted_by_id(database):
+    repo = SqliteInstrumentRepository(database)
     for instrument_id in ["EQ_US_NVDA", "ETF_US_SPY", "EQ_US_AMD"]:
         repo.add(instrument(instrument_id))
     assert [i.instrument_id for i in repo.list()] == ["EQ_US_AMD", "EQ_US_NVDA", "ETF_US_SPY"]
 
 
 @pytest.mark.unit
-def test_a_duplicate_instrument_id_is_refused(db):
-    repo = SqliteInstrumentRepository(db)
+def test_a_duplicate_instrument_id_is_refused(database):
+    repo = SqliteInstrumentRepository(database)
     repo.add(instrument())
     with pytest.raises(ValueError):
         repo.add(instrument(exchange="XNYS"))
     assert repo.get("EQ_US_NVDA").exchange == "XNAS"
-    assert count(db, "instruments") == 1
+    assert count(database, "instruments") == 1
 
 
 @pytest.mark.unit
-def test_an_unknown_instrument_raises_key_error(db):
+def test_an_unknown_instrument_raises_key_error(database):
     with pytest.raises(KeyError):
-        SqliteInstrumentRepository(db).get("EQ_US_AMD")
+        SqliteInstrumentRepository(database).get("EQ_US_AMD")
 
 
 @pytest.mark.unit
-def test_update_lifecycle_changes_only_status_and_end_date(db):
-    repo = SqliteInstrumentRepository(db)
+def test_update_lifecycle_changes_only_status_and_end_date(database):
+    repo = SqliteInstrumentRepository(database)
     repo.add(instrument())
     repo.update_lifecycle("EQ_US_NVDA", InstrumentStatus.DELISTED, date(2025, 1, 1))
     updated = repo.get("EQ_US_NVDA")
@@ -171,8 +167,8 @@ def test_update_lifecycle_changes_only_status_and_end_date(db):
 
 
 @pytest.mark.unit
-def test_update_lifecycle_enforces_the_lifecycle_rules(db):
-    repo = SqliteInstrumentRepository(db)
+def test_update_lifecycle_enforces_the_lifecycle_rules(database):
+    repo = SqliteInstrumentRepository(database)
     repo.add(instrument())
     with pytest.raises(ValueError):
         repo.update_lifecycle("EQ_US_NVDA", InstrumentStatus.DELISTED, None)
@@ -184,19 +180,19 @@ def test_update_lifecycle_enforces_the_lifecycle_rules(db):
 
 
 @pytest.mark.unit
-def test_the_schema_itself_refuses_an_invalid_lifecycle(db):
+def test_the_schema_itself_refuses_an_invalid_lifecycle(database):
     # Defence in depth: the CHECK constraints mirror M1-03 for writes that
     # bypass the repository.
-    with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
+    with pytest.raises(IntegrityViolation):
+        database.execute(
             "INSERT INTO instruments VALUES ('EQ_US_AMD', 'EQUITY', 'USD', 'XNAS', 'America/New_York',"
             " 'ACTIVE', '2019-01-01', '2020-01-01')"
         )
 
 
 @pytest.mark.unit
-def test_there_is_no_way_to_delete_an_instrument(db):
-    repo = SqliteInstrumentRepository(db)
+def test_there_is_no_way_to_delete_an_instrument(database):
+    repo = SqliteInstrumentRepository(database)
     for name in ("remove", "delete", "pop", "discard", "clear", "__delitem__"):
         assert not hasattr(repo, name), name
 
@@ -205,61 +201,54 @@ def test_there_is_no_way_to_delete_an_instrument(db):
 
 
 class TestSqliteSymbolResolver(SymbolResolverContract):
-    """M1-04's resolver cases, run against SQLite."""
+    """M1-04's resolver cases, run against both backends."""
 
     @pytest.fixture(autouse=True)
-    def _database(self, tmp_path):
-        self.conn = open_operational_db(tmp_path / "operational.sqlite3")
-        apply_schema(self.conn)
-        repo = SqliteInstrumentRepository(self.conn)
+    def _database(self, backend):
+        self.db = backend.first
+        repo = SqliteInstrumentRepository(self.db)
         for instrument_id in self.INSTRUMENT_IDS:
             repo.add(instrument(instrument_id))
-        yield
-        self.conn.close()
 
     def make_resolver(self):
-        return SqliteSymbolResolver(self.conn)
+        return SqliteSymbolResolver(self.db)
 
 
 @pytest.mark.unit
-def test_a_refused_mapping_leaves_no_partial_rows(db):
-    SqliteInstrumentRepository(db).add(instrument())
-    SqliteInstrumentRepository(db).add(instrument("EQ_US_AMD"))
-    resolver = SqliteSymbolResolver(db)
+def test_a_refused_mapping_leaves_no_partial_rows(database):
+    SqliteInstrumentRepository(database).add(instrument())
+    SqliteInstrumentRepository(database).add(instrument("EQ_US_AMD"))
+    resolver = SqliteSymbolResolver(database)
     resolver.add(SymbolMapping("EQ_US_NVDA", PROVIDER_YFINANCE, "NVDA", date(2019, 1, 1), None))
     with pytest.raises(ValueError):
         resolver.add(SymbolMapping("EQ_US_AMD", PROVIDER_YFINANCE, "NVDA", date(2020, 1, 1), None))
-    assert count(db, "symbol_mappings") == 1
-    assert not db.in_transaction
+    assert count(database, "symbol_mappings") == 1
+    assert not database.in_transaction
 
 
 @pytest.mark.unit
-def test_a_mapping_needs_a_known_instrument(db):
-    resolver = SqliteSymbolResolver(db)
+def test_a_mapping_needs_a_known_instrument(database):
+    resolver = SqliteSymbolResolver(database)
     with pytest.raises(ValueError):
         resolver.add(SymbolMapping("EQ_US_NVDA", PROVIDER_YFINANCE, "NVDA", date(2019, 1, 1), None))
-    assert count(db, "symbol_mappings") == 0
-    assert not db.in_transaction
+    assert count(database, "symbol_mappings") == 0
+    assert not database.in_transaction
 
 
 @pytest.mark.unit
-def test_mappings_persist_across_connections(tmp_path):
-    path = tmp_path / "operational.sqlite3"
-    conn = open_operational_db(path)
-    apply_schema(conn)
-    SqliteInstrumentRepository(conn).add(instrument())
-    SqliteSymbolResolver(conn).add(SymbolMapping("EQ_US_NVDA", PROVIDER_YFINANCE, "NVDA", date(2019, 1, 1), None))
-    conn.close()
-    conn = open_operational_db(path)
-    assert SqliteSymbolResolver(conn).resolve(PROVIDER_YFINANCE, "NVDA", date(2024, 1, 1)) == "EQ_US_NVDA"
+def test_mappings_persist_across_connections(backend):
+    SqliteInstrumentRepository(backend.first).add(instrument())
+    SqliteSymbolResolver(backend.first).add(
+        SymbolMapping("EQ_US_NVDA", PROVIDER_YFINANCE, "NVDA", date(2019, 1, 1), None))
+    other = backend.make()
+    assert SqliteSymbolResolver(other).resolve(PROVIDER_YFINANCE, "NVDA", date(2024, 1, 1)) == "EQ_US_NVDA"
     with pytest.raises(UnknownSymbol):
-        SqliteSymbolResolver(conn).resolve(PROVIDER_YFINANCE, "NVDA", date(2018, 1, 1))
-    conn.close()
+        SqliteSymbolResolver(other).resolve(PROVIDER_YFINANCE, "NVDA", date(2018, 1, 1))
 
 
 @pytest.mark.unit
-def test_there_is_no_way_to_delete_a_mapping(db):
-    resolver = SqliteSymbolResolver(db)
+def test_there_is_no_way_to_delete_a_mapping(database):
+    resolver = SqliteSymbolResolver(database)
     for name in ("remove", "delete", "pop", "discard", "clear", "__delitem__"):
         assert not hasattr(resolver, name), name
 
@@ -271,11 +260,11 @@ def test_later_migrations_upgrade_an_existing_m1_database_without_touching_its_t
     conn = open_operational_db(path)
     first_script = SCHEMA_SCRIPTS[0].read_text(encoding="utf-8")
     conn.executescript(f"BEGIN;\n{first_script}\nINSERT INTO schema_version (version) VALUES (1);\nCOMMIT;")
-    SqliteInstrumentRepository(conn).add(instrument())
+    SqliteInstrumentRepository(SqliteDatabase(conn)).add(instrument())
     before = conn.execute("SELECT sql FROM sqlite_master WHERE name IN ('instruments', 'symbol_mappings')"
                           " ORDER BY name").fetchall()
     assert apply_schema(conn) == len(SCHEMA_SCRIPTS) >= 2
-    assert SqliteInstrumentRepository(conn).get("EQ_US_NVDA") == instrument()
+    assert SqliteInstrumentRepository(SqliteDatabase(conn)).get("EQ_US_NVDA") == instrument()
     assert conn.execute("SELECT sql FROM sqlite_master WHERE name IN ('instruments', 'symbol_mappings')"
                         " ORDER BY name").fetchall() == before
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
@@ -290,9 +279,9 @@ def test_a_database_at_schema_2_upgrades_to_the_evaluation_records(tmp_path):
     for number, script in enumerate(SCHEMA_SCRIPTS[:2], start=1):
         sql = script.read_text(encoding="utf-8")
         conn.executescript(f"BEGIN;\n{sql}\nINSERT INTO schema_version (version) VALUES ({number});\nCOMMIT;")
-    SqliteInstrumentRepository(conn).add(instrument())
+    SqliteInstrumentRepository(SqliteDatabase(conn)).add(instrument())
     assert apply_schema(conn) == len(SCHEMA_SCRIPTS) >= 3
-    assert SqliteInstrumentRepository(conn).get("EQ_US_NVDA") == instrument()
+    assert SqliteInstrumentRepository(SqliteDatabase(conn)).get("EQ_US_NVDA") == instrument()
     assert conn.execute("SELECT COUNT(*) FROM evaluation_records").fetchone()[0] == 0
     conn.close()
 

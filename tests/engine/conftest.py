@@ -13,8 +13,9 @@ printed: it may hold a password.
 
 import os
 import secrets
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 import pytest
 
@@ -70,6 +71,51 @@ def _drop(dsn: str, name: str, attempts: int = 20) -> None:
             except errors.ObjectInUse:
                 time.sleep(0.25)
         admin.execute(statement + sql.SQL(" WITH (FORCE)"))
+
+
+@dataclass
+class Backend:
+    """One test database at schema 4 on one backend; `make()` opens another connection to it."""
+
+    kind: str
+    make: Callable[[], object]
+    first: object
+
+
+@pytest.fixture(params=["sqlite", pytest.param("postgresql", marks=pytest.mark.postgres)])
+def backend(request, tmp_path) -> Iterator[Backend]:
+    """The M1-M2 stores run on both backends (docs/tasks/M3-02.md); new M3 stores use PostgreSQL only."""
+    from investment_engine.storage.database import PostgresDatabase, SqliteDatabase
+    from investment_engine.storage.postgres import apply_pg_schema, open_operational_pg
+    from investment_engine.storage.sqlite import apply_schema, open_operational_db
+
+    opened = []
+    if request.param == "sqlite":
+        path = tmp_path / "operational.sqlite3"
+
+        def make():
+            opened.append(open_operational_db(path))
+            return SqliteDatabase(opened[-1])
+
+        first = make()
+        apply_schema(first.connection)
+    else:
+        dsn = request.getfixturevalue("pg_database")
+
+        def make():
+            opened.append(open_operational_pg(dsn))
+            return PostgresDatabase(opened[-1])
+
+        first = make()
+        apply_pg_schema(first.connection)
+    yield Backend(request.param, make, first)
+    for conn in opened:
+        conn.close()
+
+
+@pytest.fixture
+def database(backend):
+    return backend.first
 
 
 @pytest.fixture

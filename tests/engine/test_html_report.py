@@ -18,6 +18,7 @@ from investment_engine.market.store.reader import MarketDataReader
 from investment_engine.market.store.writer import MarketDataWriter
 from investment_engine.quant.adjusted import AdjustedBar, AdjustedBasis, BarRef
 from investment_engine.reporting.html import render_research_report
+from investment_engine.storage.database import SqliteDatabase
 from investment_engine.storage.sqlite import apply_schema, open_operational_db
 from tests.engine.test_evaluation_run_store import record as evaluation_record
 from tests.engine.test_lineage import record as lineage_record
@@ -64,7 +65,7 @@ def computed_record(tmp_path, bps):
 def inputs(tmp_path):
     conn = open_operational_db(tmp_path / "op.sqlite3")
     apply_schema(conn)
-    store = LineageStore(conn)
+    store = LineageStore(SqliteDatabase(conn))
     lin = lineage_record()
     store.append(lin)
     view = replace(lin.decision, evidence_refs=(lin.lineage_id,))

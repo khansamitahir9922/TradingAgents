@@ -12,7 +12,8 @@ Decimal strings, sorted mappings and explicit type tags, so a record can be
 rebuilt exactly and any change gives a different id. The id and the returned
 view's evidence references are excluded, so there's no hash recursion.
 
-The store is append-only over the Operational Database (SQLite through M2):
+The store is append-only over the Operational Database through the database
+port (PostgreSQL from M3, or a legacy SQLite file; docs/tasks/M3-02.md):
 an identical append is a no-op, a different record under the same id raises,
 there is no update or delete path, and schema triggers refuse UPDATE and
 DELETE. The canonical JSON is stored zlib-compressed.
@@ -21,7 +22,6 @@ DELETE. The canonical JSON is stored zlib-compressed.
 import dataclasses
 import hashlib
 import json
-import sqlite3
 import zlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -45,6 +45,7 @@ from investment_engine.market.data_health import (
 from investment_engine.quant.adjusted import ActionCoverage, ActionRef, AdjustedBasis, BarRef
 from investment_engine.quant.snapshot import FeatureSnapshot
 from investment_engine.quant.strategies.base import Direction, StrategySignal
+from investment_engine.storage.sqlite import port
 
 # ---------------------------------------------------------------- canonical codec
 
@@ -200,35 +201,37 @@ class LineageConflict(ValueError):
 class LineageStore:
     """Append-only lineage over the Operational Database (schema 0002)."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
-        self._conn = conn
+    def __init__(self, db) -> None:
+        self._db = port(db)
 
     def append(self, record: LineageRecord) -> None:
         if not isinstance(record, LineageRecord):
             raise TypeError(f"expected a LineageRecord, not {type(record).__name__}")
         content = record.content()
         blob = zlib.compress(content.encode(), 6)
-        existing = self._conn.execute("SELECT content FROM lineage_records WHERE lineage_id = ?",
-                                      (record.lineage_id,)).fetchone()
-        if existing is not None:
-            if zlib.decompress(existing[0]).decode() != content:
-                raise LineageConflict(f"{record.lineage_id} is already recorded with different content")
-            return
-        self._conn.execute(
-            "INSERT INTO lineage_records (lineage_id, instrument_id, generated_at, content) VALUES (?, ?, ?, ?)",
-            (record.lineage_id, record.instrument_id, record.generated_at.isoformat(), blob))
+        with self._db.transaction():
+            existing = self._db.fetchone("SELECT content FROM lineage_records WHERE lineage_id = :id",
+                                         {"id": record.lineage_id})
+            if existing is not None:
+                if zlib.decompress(bytes(existing[0])).decode() != content:
+                    raise LineageConflict(f"{record.lineage_id} is already recorded with different content")
+                return
+            self._db.execute(
+                "INSERT INTO lineage_records (lineage_id, instrument_id, generated_at, content) "
+                "VALUES (:id, :instrument_id, :generated_at, :content)",
+                {"id": record.lineage_id, "instrument_id": record.instrument_id,
+                 "generated_at": record.generated_at, "content": blob})
 
     def get(self, lineage_id: str) -> LineageRecord:
-        row = self._conn.execute("SELECT content FROM lineage_records WHERE lineage_id = ?",
-                                 (lineage_id,)).fetchone()
+        row = self._db.fetchone("SELECT content FROM lineage_records WHERE lineage_id = :id", {"id": lineage_id})
         if row is None:
             raise KeyError(lineage_id)
-        record = LineageRecord.from_content(zlib.decompress(row[0]).decode())
+        record = LineageRecord.from_content(zlib.decompress(bytes(row[0])).decode())
         if record.lineage_id != lineage_id:
             raise ValueError(f"stored content for {lineage_id} hashes to {record.lineage_id}")
         return record
 
     def ids(self, instrument_id: str) -> list[str]:
-        return [r[0] for r in self._conn.execute(
-            "SELECT lineage_id FROM lineage_records WHERE instrument_id = ? ORDER BY generated_at, lineage_id",
-            (instrument_id,))]
+        return [r[0] for r in self._db.fetchall(
+            "SELECT lineage_id FROM lineage_records WHERE instrument_id = :id ORDER BY generated_at, lineage_id",
+            {"id": instrument_id})]

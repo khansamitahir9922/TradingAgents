@@ -30,6 +30,7 @@ from investment_engine.evaluation.walk_forward import (
     WalkForwardResult,
 )
 from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+from investment_engine.storage.database import AppendOnlyViolation, SqliteDatabase
 from investment_engine.storage.sqlite import apply_schema, open_operational_db
 from tests.engine.test_sqlite_store import SCHEMA_SCRIPTS
 
@@ -73,6 +74,7 @@ def record(**changes):
 
 @pytest.fixture
 def db(tmp_path):
+    """A raw SQLite connection, for the SQLite-only replacement routes (M2 B1)."""
     conn = open_operational_db(tmp_path / "op.sqlite3")
     apply_schema(conn)
     yield conn
@@ -80,8 +82,8 @@ def db(tmp_path):
 
 
 @pytest.mark.unit
-def test_a_record_reconstructs_its_config_and_references_exactly(db):
-    store = EvaluationRunStore(db, calendars=CALENDARS)
+def test_a_record_reconstructs_its_config_and_references_exactly(database):
+    store = EvaluationRunStore(database, calendars=CALENDARS)
     r = record()
     store.append(r)
     back = store.get(r.record_id)
@@ -92,25 +94,25 @@ def test_a_record_reconstructs_its_config_and_references_exactly(db):
 
 
 @pytest.mark.unit
-def test_append_is_idempotent_and_a_conflicting_id_raises(db):
-    store = EvaluationRunStore(db, calendars=CALENDARS)
+def test_append_is_idempotent_and_a_conflicting_id_raises(database):
+    store = EvaluationRunStore(database, calendars=CALENDARS)
     store.append(record())
     store.append(record())
-    assert db.execute("SELECT COUNT(*) FROM evaluation_records").fetchone()[0] == 1
+    assert database.fetchone("SELECT COUNT(*) FROM evaluation_records")[0] == 1
     r = record(code_version="other")
-    db.execute("INSERT INTO evaluation_records VALUES (?, ?, ?, ?)",
-               (r.record_id, NVDA, AT.isoformat(), zlib.compress(b"{}")))
+    database.execute("INSERT INTO evaluation_records VALUES (:id, :inst, :at, :content)",
+                     {"id": r.record_id, "inst": NVDA, "at": AT, "content": zlib.compress(b"{}")})
     with pytest.raises(EvaluationRunConflict):
         store.append(r)
 
 
 @pytest.mark.unit
-def test_direct_sql_update_and_delete_are_refused(db):
-    EvaluationRunStore(db, calendars=CALENDARS).append(record())
-    with pytest.raises(sqlite3.DatabaseError, match="append-only"):
-        db.execute("UPDATE evaluation_records SET instrument_id = 'EQ_US_MSFT'")
-    with pytest.raises(sqlite3.DatabaseError, match="append-only"):
-        db.execute("DELETE FROM evaluation_records")
+def test_direct_sql_update_and_delete_are_refused(database):
+    EvaluationRunStore(database, calendars=CALENDARS).append(record())
+    with pytest.raises(AppendOnlyViolation, match="append-only"):
+        database.execute("UPDATE evaluation_records SET instrument_id = 'EQ_US_MSFT'")
+    with pytest.raises(AppendOnlyViolation, match="append-only"):
+        database.execute("DELETE FROM evaluation_records")
 
 
 @pytest.mark.unit
@@ -129,8 +131,8 @@ def test_a_record_requires_versions_and_a_utc_time():
 
 
 @pytest.mark.unit
-def test_the_store_has_no_update_or_delete_path_and_lists_ids(db):
-    store = EvaluationRunStore(db, calendars=CALENDARS)
+def test_the_store_has_no_update_or_delete_path_and_lists_ids(database):
+    store = EvaluationRunStore(database, calendars=CALENDARS)
     assert not [n for n in dir(store) if n.startswith(("update", "delete", "remove", "replace"))]
     store.append(record())
     assert store.ids(NVDA) == [record().record_id]
@@ -150,7 +152,7 @@ def test_the_migration_ships_with_the_package():
     "INSERT OR IGNORE INTO evaluation_records VALUES (?, ?, ?, ?)",
 ])
 def test_replacing_an_existing_evaluation_id_through_sql_is_refused_and_the_original_survives(db, statement):
-    store = EvaluationRunStore(db, calendars=CALENDARS)
+    store = EvaluationRunStore(SqliteDatabase(db), calendars=CALENDARS)
     r = record()
     store.append(r)
     original = db.execute("SELECT content FROM evaluation_records WHERE record_id = ?", (r.record_id,)).fetchone()[0]
@@ -195,8 +197,8 @@ def test_a_record_contradicting_its_fold_results_is_refused(change):
 
 
 @pytest.mark.unit
-def test_a_consistent_record_still_serializes_and_appends_idempotently(db):
-    store = EvaluationRunStore(db, calendars=CALENDARS)
+def test_a_consistent_record_still_serializes_and_appends_idempotently(database):
+    store = EvaluationRunStore(database, calendars=CALENDARS)
     store.append(record())
     store.append(record())
     assert store.get(record().record_id) == record()
@@ -231,7 +233,7 @@ def test_a_genuine_57d4316_record_reads_back_with_its_original_id_after_the_upgr
     conn.execute("INSERT INTO evaluation_records VALUES (?, ?, ?, ?)",
                  (fixture["record_id"], fixture["instrument_id"], fixture["as_of"], blob))
     assert apply_schema(conn) == len(SCHEMA_SCRIPTS) >= 4
-    store = EvaluationRunStore(conn, calendars=CALENDARS)
+    store = EvaluationRunStore(SqliteDatabase(conn), calendars=CALENDARS)
     back = store.get(fixture["record_id"])
     assert back.record_id == fixture["record_id"]
     assert back.content() == zlib.decompress(blob).decode()  # the same canonical payload, not a rewrite
@@ -255,13 +257,13 @@ def test_corrupt_content_is_detected_in_both_formats(tmp_path):
         conn.execute("INSERT INTO evaluation_records VALUES (?, ?, ?, ?)",
                      (record_id, NVDA, AT.isoformat(), zlib.compress(text.encode())))
         with pytest.raises(ValueError, match="hashes to"):
-            EvaluationRunStore(conn, calendars=CALENDARS).get(record_id)
+            EvaluationRunStore(SqliteDatabase(conn), calendars=CALENDARS).get(record_id)
     conn.close()
 
 
 @pytest.mark.unit
-def test_a_current_record_keeps_its_audit_sample_and_round_trips(db):
-    store = EvaluationRunStore(db, calendars=CALENDARS)
+def test_a_current_record_keeps_its_audit_sample_and_round_trips(database):
+    store = EvaluationRunStore(database, calendars=CALENDARS)
     new = with_audit(record())
     assert new.record_id != record().record_id  # recorded audit details are part of the identity
     store.append(new)
@@ -297,18 +299,18 @@ def with_run_dates(first, last, complete=True):
     (date(2020, 12, 31), date(2021, 7, 1)),   # starts before the fold
     (date(2021, 1, 4), date(2021, 7, 2)),     # ends after the half-open fold
 ])
-def test_a_run_not_covering_its_fold_is_refused(db, first, last):
+def test_a_run_not_covering_its_fold_is_refused(database, first, last):
     r = with_run_dates(first, last)
     with pytest.raises(ValueError, match="fold 1"):
-        EvaluationRunStore(db, calendars=CALENDARS).append(r)
+        EvaluationRunStore(database, calendars=CALENDARS).append(r)
     with pytest.raises(ValueError, match="fold 1"):
         check_fold_periods(r, CALENDARS)
-    assert db.execute("SELECT COUNT(*) FROM evaluation_records").fetchone()[0] == 0
+    assert database.fetchone("SELECT COUNT(*) FROM evaluation_records")[0] == 0
 
 
 @pytest.mark.unit
-def test_complete_and_unfinished_folds_with_matching_sessions_are_accepted(db):
-    store = EvaluationRunStore(db, calendars=CALENDARS)
+def test_complete_and_unfinished_folds_with_matching_sessions_are_accepted(database):
+    store = EvaluationRunStore(database, calendars=CALENDARS)
     store.append(record())  # 2021-01-04 .. 2021-07-01: the sessions of [Jan 4 open, Jul 2 open)
     unfinished = with_run_dates(date(2021, 1, 4), date(2021, 7, 1), complete=False)  # B3: incomplete, same period
     store.append(unfinished)
@@ -316,9 +318,9 @@ def test_complete_and_unfinished_folds_with_matching_sessions_are_accepted(db):
 
 
 @pytest.mark.unit
-def test_the_declared_calendar_version_must_be_supplied(db):
+def test_the_declared_calendar_version_must_be_supplied(database):
     with pytest.raises(ValueError, match="calendar"):
-        EvaluationRunStore(db, calendars={"other-cal": CAL}).append(record())
+        EvaluationRunStore(database, calendars={"other-cal": CAL}).append(record())
 
 
 @pytest.mark.unit
@@ -328,5 +330,18 @@ def test_a_genuine_historical_record_passes_the_period_check(tmp_path):
     conn.execute("INSERT INTO evaluation_records VALUES (?, ?, ?, ?)",
                  (fixture["record_id"], fixture["instrument_id"], fixture["as_of"], blob))
     apply_schema(conn)
-    check_fold_periods(EvaluationRunStore(conn, calendars=CALENDARS).get(fixture["record_id"]), CALENDARS)
+    check_fold_periods(EvaluationRunStore(SqliteDatabase(conn), calendars=CALENDARS).get(fixture["record_id"]), CALENDARS)
     conn.close()
+
+
+@pytest.mark.unit
+def test_a_genuine_57d4316_record_reads_back_under_its_original_id_on_either_backend(database):
+    fixture, blob = old_format()  # M3-02 rule 4: R1 stays true on PostgreSQL
+    database.execute("INSERT INTO evaluation_records VALUES (:id, :inst, :at, :content)",
+                     {"id": fixture["record_id"], "inst": fixture["instrument_id"],
+                      "at": datetime.fromisoformat(fixture["as_of"]), "content": blob})
+    store = EvaluationRunStore(database, calendars=CALENDARS)
+    back = store.get(fixture["record_id"])
+    assert back.record_id == fixture["record_id"] and back.content() == zlib.decompress(blob).decode()
+    store.append(back)
+    assert bytes(database.fetchone("SELECT content FROM evaluation_records")[0]) == blob

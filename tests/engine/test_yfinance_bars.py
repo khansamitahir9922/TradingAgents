@@ -38,6 +38,7 @@ from investment_engine.market.instruments import AssetClass, Instrument, Instrum
 from investment_engine.market.store.reader import MarketDataReader
 from investment_engine.market.store.writer import ActionObservation, MarketDataWriter
 from investment_engine.market.symbols import SymbolMapping, SymbolResolver
+from investment_engine.storage.database import SqliteDatabase
 from investment_engine.storage.sqlite import (
     SqliteInstrumentRepository,
     SqliteSymbolResolver,
@@ -79,10 +80,10 @@ def action_series(name):
 def market(tmp_path):
     conn = open_operational_db(tmp_path / "operational.sqlite3")
     apply_schema(conn)
-    instruments = SqliteInstrumentRepository(conn)
+    instruments = SqliteInstrumentRepository(SqliteDatabase(conn))
     instruments.add(Instrument("EQ_US_NVDA", AssetClass.EQUITY, "USD", "XNAS", "America/New_York",
                                InstrumentStatus.ACTIVE, date(1999, 1, 22), None))
-    resolver = SqliteSymbolResolver(conn)
+    resolver = SqliteSymbolResolver(SqliteDatabase(conn))
     resolver.add(SymbolMapping("EQ_US_NVDA", "yfinance", "NVDA", date(1999, 1, 22), None))
     root = tmp_path / "market[x]"
     args = {"clock": ReplayClock(NOW), "resolver": resolver, "instruments": instruments,

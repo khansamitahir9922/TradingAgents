@@ -150,6 +150,27 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-02: existing stores on PostgreSQL through the database port)
+- **`investment_engine/storage/database.py` (new): the port.**
+  - **Adapters:** `SqliteDatabase` and `PostgresDatabase`. Both require autocommit connections, so a read never opens a hidden transaction.
+  - **Statements:** constant SQL with named `:name` parameters. `translate_named` turns them into psycopg `%(name)s`, skipping `::` casts and quoted text and doubling literal `%`. A missing parameter raises `KeyError` on both backends.
+  - **Transactions:** the port owns them. The outermost `transaction()` begins and commits or rolls back; nested scopes join it without a savepoint. A failure in a nested scope rolls back the outermost transaction even when the caller caught it (`TransactionAborted`). `in_transaction` reports the managed scope only.
+  - **Errors:** driver errors become `AppendOnlyViolation` (M3-01's class) or `IntegrityViolation` (kind `unique`, `check`, `foreign_key` or `not_null`).
+  - **Locks:** `lock(*names)` takes advisory locks in ascending key order on PostgreSQL; it's a no-op inside SQLite's `BEGIN IMMEDIATE`.
+  - **Values:** SQLite gets ISO text exactly as M1–M2 stored it; `as_date` and `as_datetime` read both forms back.
+- **Stores switched to the port, names kept:** `SqliteInstrumentRepository`, `SqliteSymbolResolver`, `LineageStore`, `EvaluationRunStore`.
+  - **No compatibility shim:** a raw `sqlite3.Connection` raises `TypeError`, pointing to `SqliteDatabase`.
+  - **Mapping inserts (B4):** they lock both conflict dimensions in key order, then check and insert.
+  - **Lineage and evaluation appends:** the check and insert now run in one managed transaction.
+- **Callers (rule 7; inventory re-run, matching Codex's 12 files):** `cli.py` wraps its SQLite connection (transitional until M3-03; the read-only connection is now opened in autocommit mode). Seven caller test files changed set-up only: `test_cli`, `test_data_health`, `test_feature_snapshot`, `test_view_pipeline`, `test_yfinance_actions`, `test_yfinance_bars` and `test_walk_forward`, plus `test_html_report`. The store tests now run on both backends through the new `backend`/`database` fixtures. SQLite-only tests (schema scripts, migrations, PRAGMA, SQLite's own replace routes) stay on raw SQLite. A scan finds no raw connection passed to a store constructor. The external M2 report script, outside the repository, will be wrapped the same way the next time it runs.
+- **Tests first:**
+  - `test_database_port.py` and `test_mapping_races.py` were written before the port and failed at collection.
+  - **B4 regression evidence:** with the advisory locks disabled through a probe plugin, both race tests failed, with `assert 2 == 1`: both conflicting mappings committed. With the locks, both pass (50 repetitions each), and non-overlapping reuse and another provider still commit.
+  - A new test reads the genuine `57d4316` record back under its original id on both backends.
+- **Counts:** 47 store and port tests run on each backend (`[sqlite]` and `[postgresql]`); 123 `postgres` tests in the engine suite.
+- **Checks (Git Bash):** see the result line below; ruff passed; whitespace clean. No `postgres` test skipped; the 3 extra skips are the SQLite variants of the PostgreSQL-only race tests.
+  - full suite: 1 failed, 2533 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 161.00s (0:02:40) (only failure: the baseline cache-location test)
+
 ### 2026-10-16: Claude Code (M3-01 follow-up: postgres.py importable without the driver)
 - **Why:** M3-02's database port must raise M3-01's `AppendOnlyViolation` on the SQLite path too. Importing `storage.postgres` at module level imported `psycopg`, which a base install lacks (M3-03 rule 8), and `storage.sqlite`, which would form an import cycle with the port.
 - **Change, within M3-01's allowed file:** `postgres.py` now imports `psycopg` only inside `open_operational_pg` (type hints via `TYPE_CHECKING`), and `SchemaVersionError` only inside `apply_pg_schema`. Behaviour is unchanged, and the class stays where the M3-01 contract puts it. A probe that blocks every `psycopg` import still imports the module and uses `AppendOnlyViolation` and `advisory_key`.

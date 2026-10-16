@@ -18,6 +18,7 @@ from investment_engine.market.symbols import SymbolMapping
 from investment_engine.quant.adjusted import AdjustedBasis, VerificationEvidence, establish_coverage
 from investment_engine.quant.indicators import DEFINITIONS, RSI14, SMA50, SMA200, evaluate
 from investment_engine.quant.snapshot import FeatureSnapshot, build_snapshot
+from investment_engine.storage.database import SqliteDatabase
 from investment_engine.storage.sqlite import (
     SqliteInstrumentRepository,
     SqliteSymbolResolver,
@@ -63,7 +64,8 @@ def coverage(at, first=date(2019, 1, 1)):
 def env(tmp_path):
     conn = open_operational_db(tmp_path / "op.sqlite3")
     apply_schema(conn)
-    instruments, resolver = SqliteInstrumentRepository(conn), SqliteSymbolResolver(conn)
+    db = SqliteDatabase(conn)
+    instruments, resolver = SqliteInstrumentRepository(db), SqliteSymbolResolver(db)
     instruments.add(Instrument(NVDA, AssetClass.EQUITY, "USD", "XNAS", "America/New_York",
                                InstrumentStatus.ACTIVE, date(1999, 1, 22), None))
     resolver.add(SymbolMapping(NVDA, "yfinance", "NVDA", date(1999, 1, 22), None))

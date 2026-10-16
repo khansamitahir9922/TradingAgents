@@ -25,6 +25,7 @@ from investment_engine.market.symbols import SymbolMapping
 from investment_engine.quant.adjusted import VerificationEvidence
 from investment_engine.quant.strategies.pullback import PullbackStrategy
 from investment_engine.quant.strategies.trend import TrendStrategy
+from investment_engine.storage.database import SqliteDatabase
 from investment_engine.storage.sqlite import (
     SqliteInstrumentRepository,
     SqliteSymbolResolver,
@@ -64,7 +65,8 @@ def bar(d, close, received_at=None):
 def env(tmp_path):
     conn = open_operational_db(tmp_path / "op.sqlite3")
     apply_schema(conn)
-    instruments, resolver = SqliteInstrumentRepository(conn), SqliteSymbolResolver(conn)
+    db = SqliteDatabase(conn)
+    instruments, resolver = SqliteInstrumentRepository(db), SqliteSymbolResolver(db)
     instruments.add(Instrument(NVDA, AssetClass.EQUITY, "USD", "XNAS", "America/New_York",
                                InstrumentStatus.ACTIVE, date(1999, 1, 22), None))
     resolver.add(SymbolMapping(NVDA, "yfinance", "NVDA", date(1999, 1, 22), None))
@@ -78,7 +80,7 @@ def env(tmp_path):
         new_symbol=None, source_version="1.7.0", received_at=t, processed_at=t,
         backfill_available_from=ex_date_start(EX, "America/New_York"))], import_id="actions")
     yield {"conn": conn, "writer": writer, "reader": MarketDataReader(root), "instruments": instruments,
-           "resolver": resolver, "lineage": LineageStore(conn)}
+           "resolver": resolver, "lineage": LineageStore(db)}
     conn.close()
 
 

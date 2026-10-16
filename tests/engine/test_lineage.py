@@ -37,6 +37,7 @@ from investment_engine.quant.adjusted import (
 from investment_engine.quant.indicators import DEFINITIONS
 from investment_engine.quant.snapshot import FeatureSnapshot
 from investment_engine.quant.strategies.base import Direction, StrategySignal
+from investment_engine.storage.database import AppendOnlyViolation, SqliteDatabase
 from investment_engine.storage.sqlite import apply_schema, open_operational_db
 
 NVDA = "EQ_US_NVDA"
@@ -72,6 +73,7 @@ def record(**changes):
 
 @pytest.fixture
 def db(tmp_path):
+    """A raw SQLite connection, for the SQLite-only replacement routes (M2 B1)."""
     conn = open_operational_db(tmp_path / "op.sqlite3")
     apply_schema(conn)
     yield conn
@@ -79,8 +81,8 @@ def db(tmp_path):
 
 
 @pytest.mark.unit
-def test_a_record_round_trips_exactly_through_the_store(db):
-    store = LineageStore(db)
+def test_a_record_round_trips_exactly_through_the_store(database):
+    store = LineageStore(database)
     r = record()
     store.append(r)
     back = store.get(r.lineage_id)
@@ -90,30 +92,30 @@ def test_a_record_round_trips_exactly_through_the_store(db):
 
 
 @pytest.mark.unit
-def test_an_identical_append_is_a_no_op(db):
-    store = LineageStore(db)
+def test_an_identical_append_is_a_no_op(database):
+    store = LineageStore(database)
     store.append(record())
     store.append(record())
-    assert db.execute("SELECT COUNT(*) FROM lineage_records").fetchone()[0] == 1
+    assert database.fetchone("SELECT COUNT(*) FROM lineage_records")[0] == 1
 
 
 @pytest.mark.unit
-def test_a_different_record_under_an_existing_id_raises(db):
+def test_a_different_record_under_an_existing_id_raises(database):
     r = record()
-    db.execute("INSERT INTO lineage_records VALUES (?, ?, ?, ?)",
-               (r.lineage_id, NVDA, AT.isoformat(), zlib.compress(b"{}")))
+    database.execute("INSERT INTO lineage_records VALUES (:id, :inst, :at, :content)",
+                     {"id": r.lineage_id, "inst": NVDA, "at": AT, "content": zlib.compress(b"{}")})
     with pytest.raises(LineageConflict):
-        LineageStore(db).append(r)
+        LineageStore(database).append(r)
 
 
 @pytest.mark.unit
-def test_direct_sql_update_and_delete_are_refused(db):
-    LineageStore(db).append(record())
-    with pytest.raises(sqlite3.DatabaseError, match="append-only"):
-        db.execute("UPDATE lineage_records SET instrument_id = 'EQ_US_MSFT'")
-    with pytest.raises(sqlite3.DatabaseError, match="append-only"):
-        db.execute("DELETE FROM lineage_records")
-    assert db.execute("SELECT COUNT(*) FROM lineage_records").fetchone()[0] == 1
+def test_direct_sql_update_and_delete_are_refused(database):
+    LineageStore(database).append(record())
+    with pytest.raises(AppendOnlyViolation, match="append-only"):
+        database.execute("UPDATE lineage_records SET instrument_id = 'EQ_US_MSFT'")
+    with pytest.raises(AppendOnlyViolation, match="append-only"):
+        database.execute("DELETE FROM lineage_records")
+    assert database.fetchone("SELECT COUNT(*) FROM lineage_records")[0] == 1
 
 
 @pytest.mark.unit
@@ -182,7 +184,7 @@ def test_canonical_json_is_independent_of_mapping_order_and_refuses_unknown_type
     "INSERT OR IGNORE INTO lineage_records VALUES (?, ?, ?, ?)",
 ])
 def test_replacing_an_existing_lineage_id_through_sql_is_refused_and_the_original_survives(db, statement):
-    store = LineageStore(db)
+    store = LineageStore(SqliteDatabase(db))  # SQLite's own replace routes; PostgreSQL's are in test_postgres_schema
     r = record()
     store.append(r)
     original = db.execute("SELECT content FROM lineage_records WHERE lineage_id = ?", (r.lineage_id,)).fetchone()[0]
