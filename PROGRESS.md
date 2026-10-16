@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress, 15 of 18 tasks done** (M1-00 – M1-11, M1-14 – M1-16). M1-12, M1-13 and M1-17 have their **daily parts merged** and their hourly parts unfinished (batch 3b, blocked on A4 permissions). **M2 Quant + initial evaluation: done** (daily only; merged 2026-10-16), under the owner's 2026-10-14 scheduling amendment. **M3 Portfolio, policy, risk:** draft spec pack for review. |
 | **`main`** | Local `main` is at **`b7c5d2a`** (`docs: hand the R1 and R2 fixes back for a second re-review with checks and report`): the owner approved the fast-forward from `53c51bd` on 2026-10-16 after Codex's final M2 review passed (`docs/reviews/codex-m2-accepted-b7c5d2a.md`). It contains M1's merged scope and all of M2. **Nothing has been pushed** (`main` is 84 commits ahead of `origin/main`). |
-| **Current work** | **M3 specification pack drafted on `docs/m3-specs`** (worktree `C:/Users/LOQ/TradingAgents-m3-specs`): v0.3 of M3-00 – M3-14 and proposed decisions D1–D18, revised for Codex's reviews of `1ce5250` (B1–B6, S1–S7) and `e7ec7e1` (R1–R3, S1–S4), awaiting Codex's re-review (`docs/reviews/claude-m3-spec-package.md`) and the owner's decisions. **No M3 code.** M2 is done (local `main` `b7c5d2a`, no push). M1's hourly parts remain blocked on A4. |
+| **Current work** | **M3 in progress on `m3/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m3`, from `docs/m3-specs` `6085fd9`): the owner approved D1–D18 as recommended and the whole milestone (15 tasks, 52 h) on 2026-10-16, after Codex accepted the specs. Then one combined Codex review. M2 is done (local `main` `b7c5d2a`, no push). M1's hourly parts remain blocked on A4. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules, `market/calendar/`, `market/availability.py`, `market/candles.py`, `market/corporate_actions.py`, `market/store/`, `market/importers/` (verified Yahoo daily bars and actions; hourly BLOCKED), `market/replay.py`, `market/resample.py`, `market/data_health.py` and the daily NVDA CLI (`python -m investment_engine`). M2 added `quant/`, `decision/`, `lineage/`, `evaluation/` and `reporting/` (merged). |
@@ -149,6 +149,20 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-16: Claude Code (M3 step 0: specs accepted, PostgreSQL checked, milestone started)
+- **Approval (owner, 2026-10-16):** D1–D18 as recommended and the complete M3 milestone (15 tasks, the 52 h estimate and the 4 h task exception), built on `m3/milestone` from `docs/m3-specs`, with local task commits, all checks and one combined Codex review. Not authorized: merge, push, API keys, market-data downloads, M4.
+- **Specs:** Codex accepted the pack at `6085fd9` (`docs/reviews/codex-m3-spec-accepted-6085fd9.md`, imported byte-for-byte, SHA-256 `e5d94318…`). Status rows now say accepted. Codex's three notes are folded in:
+  - `command_at` in the M3-13 signatures;
+  - identity vs provenance equality in M3-05;
+  - the unknown-account diagnostic isn't persisted (M3-12).
+- **PostgreSQL (D16) checked** without printing the DSN:
+  - the PostgreSQL 17.11 service `postgresql-x64-17` is running;
+  - `INVESTMENT_ENGINE_TEST_PG_DSN` is set, and logging in as `ie_dev` works (CREATEDB yes, superuser no);
+  - `pg_hba.conf` allows only `127.0.0.1/32` and `::1/128`.
+- **Open owner item:** `listen_addresses` is still `'*'`, so the server listens on all interfaces; remote logins are refused by `pg_hba.conf`. The owner should set it to `'localhost'` (the setup guide's Step 3). Not blocking: the tests pin loopback.
+- **psycopg wheels verified (M3-00 rule 1):** `psycopg-binary` 3.3.6 has wheels for CPython 3.11, 3.12, 3.13 and 3.14 on `win_amd64` and `manylinux_2_17_x86_64` (downloaded with `pip download --only-binary=:all:` into the scratch folder). `psycopg[binary]==3.3.6` is installed in the project venv (binary implementation, libpq 18.0.4).
+- **Checks:** documents only; `git diff --check` clean.
 
 ### 2026-10-16: Claude Code (M3 specification pack v0.3: Codex's re-review of `e7ec7e1` applied)
 - **Codex accepted the B1–B6 fixes in v0.2; they're kept unchanged.** v0.3 fixes three integration blockers:
