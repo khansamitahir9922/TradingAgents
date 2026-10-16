@@ -8,13 +8,13 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 | | |
 |---|---|
-| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress, 15 of 18 tasks done** (M1-00 – M1-11, M1-14 – M1-16). M1-12, M1-13 and M1-17 have their **daily parts merged** and their hourly parts unfinished (batch 3b, blocked on A4 permissions). **M2 Quant + initial evaluation: in progress** (daily only), under the owner's 2026-10-14 scheduling amendment. |
-| **`main`** | Local `main` is at **`53c51bd`** (`fix: carry comparison cutoff validation into the daily CLI and label its provider`): the owner approved the fast-forward from `0661d46` on 2026-10-14 after Copilot's R-07 review passed. It contains batch 3a, batch 4 and the daily part of M1-17. **Nothing has been pushed** (`main` is 51 commits ahead of `origin/main`). |
-| **Current work** | **M2 fixes for Codex's re-review (R1, R2) complete on `m2/milestone`; awaiting Codex's second re-review** (`docs/reviews/claude-m2-rereview2-package.md`; B1–B6 and S1–S4 accepted at `ee12160`), then a separate owner merge approval. Local `main` is `53c51bd` (no push). M1's hourly parts remain blocked on A4. |
+| **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress, 15 of 18 tasks done** (M1-00 – M1-11, M1-14 – M1-16). M1-12, M1-13 and M1-17 have their **daily parts merged** and their hourly parts unfinished (batch 3b, blocked on A4 permissions). **M2 Quant + initial evaluation: done** (daily only; merged 2026-10-16), under the owner's 2026-10-14 scheduling amendment. **M3 Portfolio, policy, risk:** draft spec pack for review. |
+| **`main`** | Local `main` is at **`b7c5d2a`** (`docs: hand the R1 and R2 fixes back for a second re-review with checks and report`): the owner approved the fast-forward from `53c51bd` on 2026-10-16 after Codex's final M2 review passed (`docs/reviews/codex-m2-accepted-b7c5d2a.md`). It contains M1's merged scope and all of M2. **Nothing has been pushed** (`main` is 84 commits ahead of `origin/main`). |
+| **Current work** | **M3 specification pack drafted on `docs/m3-specs`** (worktree `C:/Users/LOQ/TradingAgents-m3-specs`): M3-00 – M3-14 and decisions D1–D17, awaiting Codex's review (`docs/reviews/claude-m3-spec-package.md`) and the owner's decisions. **No M3 code.** M2 is done (local `main` `b7c5d2a`, no push). M1's hourly parts remain blocked on A4. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
-| **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules, `market/calendar/`, `market/availability.py`, `market/candles.py`, `market/corporate_actions.py`, `market/store/`, `market/importers/` (verified Yahoo daily bars and actions; hourly BLOCKED), `market/replay.py`, `market/resample.py`, `market/data_health.py` and the daily NVDA CLI (`python -m investment_engine`). M2 adds `quant/`, `decision/`, `lineage/`, `evaluation/` and `reporting/` on `m2/milestone`. |
-| **Runtime tests** | Compared against the recorded baseline (`docs/baselines/M1-00-baseline.md`). On `main` (`53c51bd`): Git Bash and PowerShell each **2035 passed, 1 failed** (baseline `test_yfinance_keeps_its_cache_out_of_the_users_home`), 4 skipped, 3 deselected; Claude reran the Git Bash suite on 2026-10-14 with the same result. CI not yet run. |
+| **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules, `market/calendar/`, `market/availability.py`, `market/candles.py`, `market/corporate_actions.py`, `market/store/`, `market/importers/` (verified Yahoo daily bars and actions; hourly BLOCKED), `market/replay.py`, `market/resample.py`, `market/data_health.py` and the daily NVDA CLI (`python -m investment_engine`). M2 added `quant/`, `decision/`, `lineage/`, `evaluation/` and `reporting/` (merged). |
+| **Runtime tests** | Compared against the recorded baseline (`docs/baselines/M1-00-baseline.md`). On `main` (`b7c5d2a`, M2's final head): Git Bash **2390 passed, 1 failed** (baseline `test_yfinance_keeps_its_cache_out_of_the_users_home`); PowerShell **2389 passed, 2 failed** (both baseline: also the cp1252 CLI test), 4 skipped, 3 deselected (Claude, 2026-10-16). Codex's independent runs: 2390 passed in both shells with only the cache-location failure. CI not yet run. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -31,10 +31,10 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ## Next steps
 **Working method (owner instruction, 2026-10-14).** Each milestone is approved once as a package and built in one go: tests first, one automatic local commit per task, the task checks, then the batch checks, a self-review and **one Codex review of the whole milestone**. Non-blocking items for Codex are collected and handed over with that review. Blocking problems (a new test failure, a file outside a spec, an ADR or architecture gap, a blocked checkpoint, a contract that can't be implemented safely) still stop the work. Merges, pushes, key use, downloads and purchases each need the owner's explicit word. Shared rules §4 in AGENTS.md and CLAUDE.md record this.
 
-1. **M2 (in progress on `m2/milestone`):** step 0 integrates the reviewed M2 specs with Codex's five package-review corrections (`docs/reviews/codex-m2-package-review-2026-10-14.md`). Then M2-00 – M2-12 (M2-11 split into 11a and 11b: 14 tasks), the batch checks, self-review and the NVDA HTML research report from the saved, verified daily recordings. Then one combined Codex review. The M2 merge needs its own owner approval.
+1. **M2: done** (merged into local `main` at `b7c5d2a`, 2026-10-16; not pushed). *History:* step 0 integrates the reviewed M2 specs with Codex's five package-review corrections (`docs/reviews/codex-m2-package-review-2026-10-14.md`). Then M2-00 – M2-12 (M2-11 split into 11a and 11b: 14 tasks), the batch checks, self-review and the NVDA HTML research report from the saved, verified daily recordings. Then one combined Codex review. The M2 merge needs its own owner approval.
 2. **M1 hourly (batch 3b):** blocked on A4 (account terms and retention/publication permissions); see `docs/hourly-access-review`. Whether any route avoids a given permission is unverified. Key use, access checks, checkpoint R and downloads each need separate authorization. M1 completes only when 3b and M1-17's hourly part (5b) merge.
 3. **Pending for Codex at the M2 review (non-blocking):** the M1 deferred review items in "Open issues"; the M1-08 contract allowing `received_at < end_time` for a CLOSED bar (M2 enforces its own completed-bar cutoff, see M2-00/M2-03); the M2-11 split.
-4. **Planning while Codex reviews M2:** M3 task specs and the OPEN-07/OPEN-08 decisions, prepared for the owner's approval of the next milestone. No M3 code before M2 merges and M3 is approved.
+4. **M3:** the draft pack (`docs/tasks/M3-README.md`, M3-00 – M3-14) and decisions D1–D17 await Codex's review and the owner's choices. M3 code needs the owner's milestone approval; M3-00 also needs a local PostgreSQL (D16).
 
 **Owner's conditions for batch 2 (2026-10-12):**
 - complete **2019 – 2026** calendar coverage from **cited official exchange sources**, special closures included;
@@ -149,6 +149,19 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-16: Claude Code (M2 complete; M3 specification pack drafted for review)
+- **M2 is done.** Codex's final review passed at `b7c5d2a` (`docs/reviews/codex-m2-accepted-b7c5d2a.md`, in the root checkout). With the owner's approval, local `main` was fast-forwarded from `53c51bd` to `b7c5d2a` in the `TradingAgents-main` worktree. Nothing was pushed; no branch was deleted. The M2 spec status rows now say Done.
+- **M3 pack (draft v0.1, documents only):** `docs/tasks/M3-README.md` and M3-00 – M3-14 on `docs/m3-specs`, about 49 h.
+  - A: PostgreSQL move (setup, schema, existing stores, copying SQLite data, CLI switch).
+  - B: audit, accounts/operators/autonomy, versioned limits and halts.
+  - C: PortfolioSnapshot, OrderIntent and sizer, intent store with G2 and compare-and-set.
+  - D: policy and risk checks.
+  - E: pipeline and intent lineage, Level 1 approval at the CLI, the intents report.
+- **Owner decisions D1–D17** are listed in the pack's README with recommendations (OPEN-07 as D1–D9, OPEN-08 as D10–D12, plus order price, starting cash, promotion rule, local PostgreSQL and CLI approvers). Limits ship only as a proposed file; accounts without published limits reject everything.
+- **Architecture unchanged.** No ADR is proposed. Two placements are flagged for Codex: account kinds and operators in the Policy module, and the dual-backend tests for the M1–M2 stores.
+- **Checks:** documents only; `git diff --check` clean. No runtime test run (no code changed). CI not yet run.
+- **Next:** Codex reviews the pack; the owner answers D1–D17 and decides on M3 approval. Not authorized: M3 code, merge, push, keys, downloads.
 
 ### 2026-10-16: Claude Code (M2 re-review fixes R1 and R2 complete; handed back for a second re-review)
 - R1 and R2 are fixed in `cd20083` with regressions; the red evidence is described honestly in its entry. The table and results are in `docs/reviews/claude-m2-rereview2-package.md`.

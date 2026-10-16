@@ -5,7 +5,7 @@
 | **Document status** | **v0.4, for review.** v0.3: Codex review passed; merged into `main` with the owner's approval (M0, `906ae85`, 2026-10-09). v0.4 adopts the **batch workflow** (§1.1, §4.3), records the owner's one-month window, and updates M0's completed status. Earlier notes:<br>v0.2 applied Codex's first roadmap review: workflow, baseline, Yahoo verification, availability.<br>v0.3 applies the M1 spec review: complete split history, per-field verification, replay timing, provider separation, the resampler cutoff, the frozen DataHealth states, and blocking on failed verification. |
 | **Date** | 2026-10-08 |
 | **Sources** | `architecture/architecture-v1.0.md` Part K (milestones and promotion gates; v1.0 FROZEN), `docs/PRD.md` (milestone table, OPEN-01 – OPEN-17), `architecture/adr/`. Where this roadmap and the architecture disagree, the architecture wins. |
-| **Estimates** | **M1 is detailed**. M2 has a **draft specification pack** (M2-00 – M2-12), awaiting independent review and acceptance. M3 – M10 remain provisional work packages, split into reviewed 1–3 hour tasks before implementation. |
+| **Estimates** | **M1 is detailed**. M2 is **done** (merged into local `main` at `b7c5d2a`, 2026-10-16). M3 has a **draft specification pack** (M3-00 – M3-14), awaiting Codex's review and the owner's decisions D1–D17. M4 – M10 remain provisional work packages, split into reviewed 1–3 hour tasks before implementation. |
 
 This roadmap splits the frozen milestones into **tasks of about 1–3 hours** each. A task is small enough to build, test and review in one sitting, and to hand over between Claude Code and Codex using only the repository's documents.
 
@@ -295,6 +295,8 @@ Everything below is **provisional**. M2's draft tasks are linked below; M3 – M
 
 ### M3 — Portfolio, policy, risk *(move to PostgreSQL)*
 **Before it starts:** OPEN-07 (default limits), OPEN-08 (approval and view validity windows).
+
+**Draft pack (2026-10-16):** [M3 pack](tasks/M3-README.md), 15 tasks in groups M3-A – M3-E (≈ 49 h, above the provisional estimate below). OPEN-07 and OPEN-08 are proposed there as decisions D1–D12, with D13–D17 (order price, starting cash, promotion rule, local PostgreSQL, CLI approvers).
 
 | Provisional work package | Est. |
 |---|---|
