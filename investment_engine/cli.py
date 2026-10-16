@@ -373,7 +373,6 @@ def db_copy_from_sqlite(path: str) -> None:
 
 
 # The Admin CLI's command groups (docs/tasks/M3-05 onwards); registration only.
-from investment_engine.admin_cli import accounts_app, operators_app  # noqa: E402
+from investment_engine.admin_cli import register as _register_admin_commands  # noqa: E402
 
-app.add_typer(accounts_app, name="accounts")
-app.add_typer(operators_app, name="operators")
+_register_admin_commands(app)

@@ -150,6 +150,12 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-05 follow-up: the Admin CLI registers its own command groups)
+- **Why:** M3-06, M3-13 and M3-14 add Admin CLI groups, but only M3-05's allowed files include `cli.py`. Editing the registration lines in a later task would leave that task's scope.
+- **Change, within M3-05's allowed files:** `admin_cli.py` keeps a `GROUPS` map and a `register(app)` function; `cli.py` calls it once. Later tasks add their groups to `GROUPS` in `admin_cli.py` only. Commands and behaviour are unchanged.
+- **Checks (Git Bash):** the CLI and admin tests passed (45). The full suite, with the M3-06 work stashed so only this change was in the tree, is below. Ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2573 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 276.83s (0:04:36) (only failure: the baseline cache-location test)
+
 ### 2026-10-16: Claude Code (M3-05: accounts, operators and autonomy levels)
 - **`investment_engine/policy/accounts.py`:** `AccountKind` (RESEARCH, PAPER), `Role`, `Account`, `AutonomySetting` and `Operator`, plus `AccountRegistry`, which is PostgreSQL only and must share the audit store's port.
   - **Levels:** every account starts at Level 0. Levels 3 and 4 raise "disabled in v1"; anything else outside 0–2 is refused.

@@ -6,9 +6,9 @@ RESEARCH account act at an explicit replay time (`--effective-at`); PAPER
 accounts refuse one (Codex re-review R2). Output is plain ASCII and never shows
 connection details. Nothing here submits orders or touches the kill switch.
 
-The command groups are registered on the main app by investment_engine.cli;
-this module imports cli's helpers only inside commands, so there is no import
-cycle.
+investment_engine.cli calls register(app) once; each task adds its groups to
+GROUPS here. This module imports cli's helpers only inside commands, so there
+is no import cycle.
 """
 
 import getpass
@@ -21,6 +21,13 @@ from investment_engine.clock import LiveClock
 
 accounts_app = typer.Typer(no_args_is_help=True, help="Accounts and their autonomy levels (Admin only).")
 operators_app = typer.Typer(no_args_is_help=True, help="Local named operators and their roles (Admin only).")
+GROUPS: dict[str, typer.Typer] = {"accounts": accounts_app, "operators": operators_app}  # later tasks add theirs
+
+
+def register(app: typer.Typer) -> None:
+    """Add every Admin CLI command group to the main app (called once by investment_engine.cli)."""
+    for name, group in GROUPS.items():
+        app.add_typer(group, name=name)
 
 
 def _os_user() -> str | None:
