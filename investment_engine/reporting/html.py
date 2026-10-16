@@ -18,13 +18,13 @@ decides where to save the returned HTML.
 
 import html
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from decimal import Decimal
 
 from investment_engine.decision.market_view import MarketView, ViewDirection
 from investment_engine.evaluation.metrics import MetricValue
-from investment_engine.evaluation.run_store import EvaluationRecord
+from investment_engine.evaluation.run_store import EvaluationRecord, check_fold_periods
 from investment_engine.lineage.records import LineageStore
 from investment_engine.market.availability import check_utc
 from investment_engine.market.data_health import HealthStatus
@@ -131,7 +131,7 @@ def _chart(prices: Sequence[AdjustedBar], marks: Sequence[tuple]) -> str:
 
 def render_research_report(views: Sequence[MarketView], runs: Sequence[EvaluationRecord], *,
                            lineage_store: LineageStore, generated_at: datetime, source: str, instrument_id: str,
-                           adjusted_closes: Sequence[AdjustedBar] = ()) -> str:
+                           calendars: Mapping[str, object], adjusted_closes: Sequence[AdjustedBar] = ()) -> str:
     generated_at = check_utc(generated_at, "generated_at")
     entries = []
     for v in sorted(views, key=lambda v: v.generated_at):
@@ -159,6 +159,7 @@ def render_research_report(views: Sequence[MarketView], runs: Sequence[Evaluatio
         if run.as_of > generated_at:
             raise ValueError(f"evaluation record {run.record_id} reads outcomes at {run.as_of}, after the report's "
                              "generation time")
+        check_fold_periods(run, calendars)  # each fold is reported over exactly its sessions (R2)
 
     out = [f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
            f'<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -266,8 +267,11 @@ def render_research_report(views: Sequence[MarketView], runs: Sequence[Evaluatio
             out.append(f'<p class="muted">{fr.test_views} test views: {d.directional_views} directional, '
                        f"{d.neutral_views} NEUTRAL, {d.abstain_views} ABSTAIN ({fr.warmup_views} warm-up), "
                        f"{d.unavailable_outcomes} unavailable outcomes · training labels {fr.train_labels_eligible} "
-                       f"eligible, {fr.train_labels_purged} purged · run "
-                       f"{'complete' if r.complete else 'INCOMPLETE'}</p>")
+                       f"eligible, {fr.train_labels_purged} purged · run over sessions {_e(r.first)} to "
+                       f"{_e(r.last)}, {'complete' if r.complete else 'INCOMPLETE'} · "
+                       + (f"last-period sample: {len(d.last_period_sample)} paired, {len(d.last_period_excluded)} "
+                          "excluded" if d.last_period_audit_recorded else
+                          "last-period sample not recorded in this record (earlier format)") + "</p>")
             out.append('<div class="scroll"><table><tr><th>Metric</th><th>Value</th></tr>')
             for m in d.metrics:
                 out.append(f'<tr data-metric="{_e(m.key)}"><td>{_e(m.key)}</td><td>{_metric(m)}</td></tr>')

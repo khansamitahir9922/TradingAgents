@@ -19,6 +19,7 @@ import hashlib
 import json
 import sqlite3
 import zlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -32,6 +33,7 @@ from investment_engine.evaluation.walk_forward import (
 )
 from investment_engine.lineage.records import canonical_json, decode, register
 from investment_engine.market.availability import check_utc
+from investment_engine.market.calendar.base import CalendarRangeError
 
 
 @dataclass(frozen=True)
@@ -104,15 +106,48 @@ class EvaluationRunConflict(ValueError):
     """A different evaluation record already exists under this id."""
 
 
-class EvaluationRunStore:
-    """Append-only evaluation records over the Operational Database (schema 0003)."""
+def check_fold_periods(record: EvaluationRecord, calendars: Mapping[str, object]) -> None:
+    """Each fold's run must cover exactly the sessions of its half-open test window (Codex M2 re-review R2).
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    The sessions come from the calendar the record declares (`calendars[record.calendar_version]`): the run's
+    first session opens at the fold's test start, and the session after its last opens at the test end. A
+    shorter, longer or shifted run is refused, never labelled as the fold. An unfinished fold still requests
+    its whole window and is reported incomplete (B3); partial-window evaluations are not supported.
+    """
+    calendar = calendars.get(record.calendar_version)
+    if calendar is None:
+        raise ValueError(f"the record's calendar {record.calendar_version!r} was not supplied")
+    problems = []
+    for i, fr in enumerate(record.result.folds, 1):
+        fold, run = fr.fold, fr.run
+        try:
+            starts = calendar.is_session(run.first) and calendar.session(run.first).open == fold.test_start
+            ends = run.first <= run.last and calendar.next_session(run.last).open == fold.test_end
+        except CalendarRangeError:
+            starts = ends = False
+        if not (starts and ends):
+            problems.append(f"fold {i} run covers sessions {run.first}..{run.last}, not the fold's test window "
+                            f"{fold.test_start.isoformat()}..{fold.test_end.isoformat()} (half-open) on "
+                            f"{record.calendar_version}")
+    if problems:
+        raise ValueError("evaluation periods don't match their folds: " + "; ".join(problems))
+
+
+class EvaluationRunStore:
+    """Append-only evaluation records over the Operational Database (schema 0003).
+
+    `calendars` maps calendar versions to calendars; a record's fold periods are checked against the one it
+    declares when it is appended and when it is read back.
+    """
+
+    def __init__(self, conn: sqlite3.Connection, *, calendars: Mapping[str, object]) -> None:
         self._conn = conn
+        self._calendars = dict(calendars)
 
     def append(self, record: EvaluationRecord) -> None:
         if not isinstance(record, EvaluationRecord):
             raise TypeError(f"expected an EvaluationRecord, not {type(record).__name__}")
+        check_fold_periods(record, self._calendars)
         content = record.content()
         existing = self._conn.execute("SELECT content FROM evaluation_records WHERE record_id = ?",
                                       (record.record_id,)).fetchone()
@@ -132,6 +167,7 @@ class EvaluationRunStore:
         record = EvaluationRecord.from_content(zlib.decompress(row[0]).decode())
         if record.record_id != record_id:
             raise ValueError(f"stored content for {record_id} hashes to {record.record_id}")
+        check_fold_periods(record, self._calendars)
         return record
 
     def ids(self, instrument_id: str) -> list[str]:

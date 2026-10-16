@@ -87,8 +87,12 @@ def encode(value: object) -> object:
         name = type(value).__name__
         if _DATACLASSES.get(name) is not type(value):
             raise TypeError(f"{name} is not registered for lineage")
+        # Fields added to a class after records were stored are omitted while None ("not recorded"), so a
+        # historical record re-encodes to its original canonical payload and id (Codex M2 re-review R1).
+        later = getattr(type(value), "LINEAGE_LATER_FIELDS", ())
         return {"$type": name, "fields": {f.name: encode(getattr(value, f.name))
-                                          for f in dataclasses.fields(value) if f.init}}
+                                          for f in dataclasses.fields(value)
+                                          if f.init and not (f.name in later and getattr(value, f.name) is None)}}
     if isinstance(value, Mapping):
         items = [[encode(k), encode(v)] for k, v in value.items()]
         return {"$map": sorted(items, key=lambda kv: json.dumps(kv[0], sort_keys=True))}

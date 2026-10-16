@@ -45,7 +45,7 @@ def computed_record(tmp_path, bps):
     base = evaluation_record()
     config = replace(base.evaluation_config, version=f"eval-{bps}bps", costs_bps_per_side=Decimal(bps))
     root = tmp_path / f"market-{bps}"
-    days = [s.date for s in CAL.sessions_between(date(2021, 1, 4), date(2021, 1, 15))]
+    days = [s.date for s in CAL.sessions_between(date(2021, 1, 4), date(2021, 7, 1))]  # the whole fold (R2)
     MarketDataWriter(root).write_candles([sim_bar(d, "100", str(100 + i)) for i, d in enumerate(days)],
                                          import_id="b")
     run = simulate_research([sim_view(days[0], "BULLISH")], reader=MarketDataReader(root), calendar=CAL,
@@ -53,7 +53,10 @@ def computed_record(tmp_path, bps):
                             coverage=sim_coverage(base.as_of), config=config)
     fold = base.result.folds[0]
     net = next(m.value for m in run.metrics if m.key == "net_return")
-    result = replace(base.result, folds=(replace(fold, run=run),), stitched=((fold.fold.test_start, net),))
+    # Current-format audit fields: the base direction has no scored view, so the paired sample is truly empty.
+    direction = replace(fold.direction, trailing_refs=(), last_period_sample=(), last_period_excluded=())
+    result = replace(base.result, folds=(replace(fold, run=run, direction=direction),),
+                     stitched=((fold.fold.test_start, net),))
     return evaluation_record(evaluation_config=config, result=result)
 
 
@@ -73,7 +76,8 @@ def inputs(tmp_path):
 
 def render(inputs, **changes):
     kwargs = {"lineage_store": inputs["store"], "generated_at": GENERATED, "source": "yfinance",
-              "instrument_id": NVDA, "adjusted_closes": inputs["prices"]}
+              "instrument_id": NVDA, "adjusted_closes": inputs["prices"],
+              "calendars": {"test-cal": CAL}}
     kwargs.update(changes)
     return render_research_report(changes.pop("views", inputs["views"]), changes.pop("runs", inputs["runs"]),
                                   **{k: v for k, v in kwargs.items() if k not in ("views", "runs")})
@@ -213,3 +217,26 @@ def test_views_runs_and_prices_later_than_the_report_time_are_refused(inputs):
 def test_valid_historical_dates_render(inputs):
     html = render(inputs)  # a 2024 view, 2026-10-12 evaluation records, prices as of the report time
     assert "2024-06-21" in html
+
+
+# ------------------------------------------------------------------ R2 and R1 in the report
+
+
+@pytest.mark.unit
+def test_a_short_run_is_not_reported_as_its_whole_fold(inputs):
+    good = inputs["runs"][1]
+    fold = good.result.folds[0]
+    short = replace(fold.run, last=date(2021, 1, 15))  # ten sessions inside a six-month fold
+    bad = evaluation_record(evaluation_config=good.evaluation_config,
+                            result=replace(good.result, folds=(replace(fold, run=short),)))
+    with pytest.raises(ValueError, match="fold 1"):
+        render(inputs, runs=[bad])
+    assert "sessions 2021-01-04 to 2021-07-01" in render(inputs)  # the run's actual sessions are shown
+
+
+@pytest.mark.unit
+def test_the_report_marks_historical_audit_details_as_not_recorded(inputs):
+    html = render(inputs, runs=[evaluation_record()])  # the 57d4316 shape: no last-period audit fields
+    assert "last-period sample not recorded in this record" in html
+    computed = render(inputs)
+    assert "last-period sample: " in computed and "not recorded in this record" not in computed

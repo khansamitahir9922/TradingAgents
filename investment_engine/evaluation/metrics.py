@@ -60,9 +60,25 @@ class DirectionEvaluation:
     metrics: tuple[MetricValue, ...]
     outcome_refs: tuple[ReturnObservation, ...]
     disclosures: tuple[str, ...]
-    trailing_refs: tuple[ReturnObservation, ...] = ()  # the trailing returns used by the last-period baseline
-    last_period_sample: tuple[date, ...] = ()  # prediction sessions in its paired sample
-    last_period_excluded: tuple[date, ...] = ()  # scored sessions without a usable trailing return
+    # The last-period audit (S3). None means not recorded: records stored before it (57d4316 format) lack it,
+    # and their canonical payload and id are kept unchanged. evaluate_direction always records all three.
+    trailing_refs: tuple[ReturnObservation, ...] | None = None  # trailing returns used by the baseline
+    last_period_sample: tuple[date, ...] | None = None  # prediction sessions in its paired sample
+    last_period_excluded: tuple[date, ...] | None = None  # scored sessions without a usable trailing return
+
+    LINEAGE_LATER_FIELDS = ("trailing_refs", "last_period_sample", "last_period_excluded")
+
+    def __post_init__(self) -> None:
+        recorded = [getattr(self, name) is not None for name in self.LINEAGE_LATER_FIELDS]
+        if any(recorded) and not all(recorded):
+            raise ValueError("the last-period audit fields are recorded together or not at all")
+        for name in self.LINEAGE_LATER_FIELDS:
+            if getattr(self, name) is not None:
+                object.__setattr__(self, name, tuple(getattr(self, name)))
+
+    @property
+    def last_period_audit_recorded(self) -> bool:
+        return self.last_period_sample is not None
 
 
 def _ranks(values: Sequence[float]) -> list[float]:
