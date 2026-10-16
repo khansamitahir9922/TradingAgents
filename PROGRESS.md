@@ -150,6 +150,12 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-00 follow-up: test-database teardown when autovacuum holds it)
+- **Found in a full-suite run during M3-01's follow-up (not a new product failure):** a teardown error in `test_postgres_schema.py::test_instrument_checks_reject_the_same_rows_as_sqlite[row1]`. `DROP DATABASE ... WITH (FORCE)` raised `InsufficientPrivilege: permission denied to terminate process`. Something else, most likely an autovacuum worker, which runs as the superuser, had the fresh database open, and the non-superuser `ie_dev` role may not terminate it.
+- **Fix (`tests/engine/conftest.py`):** `temporary_database` drops through `_drop`. A plain `DROP DATABASE` is retried, up to 20 times every 0.25 s, while it reports `ObjectInUse`; `WITH (FORCE)` is used only as the last resort. The database is still always dropped or the error is raised; nothing is left silently.
+- **Checks (Git Bash), shared with the M3-01 follow-up commit, which was in the same working tree:** see the result line below; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2466 passed, 4 skipped, 3 deselected, 20 warnings, 99 subtests passed in 122.47s (0:02:02) (only failure: the baseline cache-location test)
+
 ### 2026-10-16: Claude Code (M3-01: PostgreSQL schema and migrations)
 - **`investment_engine/storage/postgres.py`:**
   - `open_operational_pg` opens connections in autocommit mode, with the session time zone UTC;

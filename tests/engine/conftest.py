@@ -48,8 +48,28 @@ def temporary_database(dsn: str) -> Iterator[str]:
     try:
         yield make_conninfo(dsn, dbname=name)
     finally:
-        with psycopg.connect(dsn, autocommit=True) as admin:
-            admin.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
+        _drop(dsn, name)
+
+
+def _drop(dsn: str, name: str, attempts: int = 20) -> None:
+    """Drop the test database. A plain drop is retried while something else still has it open, typically
+    an autovacuum worker, which runs as the superuser, so the non-superuser test role can't terminate it
+    (WITH (FORCE) then fails with InsufficientPrivilege). FORCE is the last resort, for the test's own
+    leftover connections."""
+    import time
+
+    import psycopg
+    from psycopg import errors, sql
+
+    statement = sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(name))
+    with psycopg.connect(dsn, autocommit=True) as admin:
+        for _ in range(attempts):
+            try:
+                admin.execute(statement)
+                return
+            except errors.ObjectInUse:
+                time.sleep(0.25)
+        admin.execute(statement + sql.SQL(" WITH (FORCE)"))
 
 
 @pytest.fixture
