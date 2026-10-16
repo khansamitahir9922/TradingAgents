@@ -150,6 +150,28 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-11: risk checks: approve, reject or reduce)
+- **`risk/checks.py`:** `RiskInputs`, `HaltRequest`, `check_risk`, `reduced_version` and `average_daily_value`.
+  - **Checks, in order, all reported:** `fresh_data`; `halt`; `drawdown` (D3; at the threshold a BUY is rejected and a HaltRequest returned unless already halted); `min_price` (D6); `position` (D1, BUY only); `cash` (D2, BUY only, gross exposure included); `liquidity` (D4, BUY and SELL); `daily_buys` (D5).
+  - **Admission (S3):** `daily_buys` fails exactly when the intent isn't `already_admitted` and the count excluding itself is at the cap.
+  - **Outcome:** failures of 1–4 or 8 reject. Failures of only 5–7 reduce to the smallest allowed whole quantity: partial SELLs (D18). Below `min_quantity` it rejects (D9), and a second reduction of a reduced version rejects with "reduction did not converge".
+  - **`reduced_version`:** keeps the id and every material field except the quantity (Law 12).
+  - **`average_daily_value`:** needs every one of the last N expected sessions; a missing one gives the reason, never an older bar (S2).
+  - **Determinism:** Decimal only; nothing is read from a store or clock; exactly at a limit passes. Mismatched limit versions or snapshots raise.
+- **Tests first:** `tests/engine/test_risk_checks.py` was written first and red at collection; 10 passed after the implementation. They cover:
+  - approval and the check order;
+  - exactly at the position cap;
+  - each reducible check alone with hand-calculated quantities (82, 8, 41);
+  - several reducible failures taking the minimum, and below one share rejecting;
+  - the reduction as a new version that re-checks to APPROVE, and a forced second reduction rejecting;
+  - halts rejecting BUYs but passing SELLs, and the drawdown threshold requesting a halt once;
+  - stale, unhealthy or expired views, missing volume and a cheap stock rejecting;
+  - the cap with admitted and unadmitted v2;
+  - S6's $100,000 holding selling down to the volume limit;
+  - determinism and inconsistent inputs.
+- **Checks (Git Bash):** see the result line below; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2741 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 352.82s (0:05:52) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-10: policy checks)
 - **`policy/checks.py`:** `check_policy(intent, *, account, autonomy, rules, instrument, snapshot, view_lineage, calendar, at)` runs every check, in order, each with a fixed-template reason:
   - `autonomy`: Level 0 fails;
