@@ -5,4 +5,6 @@ without the writer's imports. Each later M3 task that adds an auditable type
 adds its module here, and nothing else.
 """
 
-MODULES: tuple[str, ...] = ()
+MODULES: tuple[str, ...] = (
+    "investment_engine.policy.accounts",  # M3-05
+)

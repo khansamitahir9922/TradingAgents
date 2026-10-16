@@ -150,6 +150,32 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-05: accounts, operators and autonomy levels)
+- **`investment_engine/policy/accounts.py`:** `AccountKind` (RESEARCH, PAPER), `Role`, `Account`, `AutonomySetting` and `Operator`, plus `AccountRegistry`, which is PostgreSQL only and must share the audit store's port.
+  - **Levels:** every account starts at Level 0. Levels 3 and 4 raise "disabled in v1"; anything else outside 0–2 is refused.
+  - **Authorization:** every change needs an active ADMIN at the real command time (the injected clock). The role comes from the registry, never the actor's claim.
+  - **Times:** RESEARCH changes require `effective_at` (replay time) and keep `recorded_at` beside it; a RESEARCH timeline can't move back. PAPER changes refuse `effective_at`, so they can't be backdated.
+  - **Identity:** `setting_id` and `Account.identity` hash deterministic content only, leaving out `recorded_at`, `set_by` and the OS user (re-review S2, acceptance note 2).
+  - **Locks and records:** every change takes the `account-control` lock, assigns the next `sequence` under it and writes an append-only row and one audit event in one managed transaction. Creating an account records the account and its default Level 0 setting in a single `account.create` event. `bootstrap_admin` takes the global `operators-bootstrap` lock and checks again inside it.
+- **`schema_pg/0006_accounts.sql`:** `accounts`, `autonomy_settings` and `operators` tables, all append-only (UPDATE, DELETE and TRUNCATE refused). The audit registry now lists `policy.accounts`.
+- **`investment_engine/admin_cli.py` (new; registered in `cli.py`):** `operators bootstrap-admin|add|deactivate|list` and `accounts create|set-autonomy|show|list`, with `--operator`, `--reason` and `--effective-at`. Output is plain ASCII and shows both times, labelling the effective time "(simulated)" for research accounts. Authorization refusals print "Not authorized: ... Nothing was changed."
+- **Tests first:** both test files were written first and failed at collection. Two test-driven fixes:
+  - account creation first wrote two events, so it now writes one;
+  - my concurrency test gave the audit store a separate port; the registry now refuses that.
+
+  Results: 10 passed in `test_accounts.py` and 4 in `test_admin_cli_accounts.py`. Coverage:
+  - level rules; history with sequence order for equal times, where 1 -> 2 -> 1 gives three ids;
+  - refusals for Trader, Viewer, inactive and unknown operators, a claimed role, and processes, with nothing written;
+  - one audit event per change, which rolls back with it;
+  - bootstrap once, and two concurrent bootstraps giving exactly one admin;
+  - replay times vs no backdating;
+  - authorization at command time: today's admin sets a 2019 setting, and an operator deactivated today is refused at any replay time;
+  - identity without provenance across two fresh databases;
+  - fresh-process decoding of account events;
+  - CLI happy paths and refusals.
+- **Checks (Git Bash):** see the result line below; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2573 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 327.18s (0:05:27) (only failure: the baseline cache-location test)
+
 ### 2026-10-16: Claude Code (M3-04: audit store)
 - **`investment_engine/audit/events.py`:**
   - `Actor`: an OPERATOR with a role, or a PROCESS without one; `os_user` is attribution only.
