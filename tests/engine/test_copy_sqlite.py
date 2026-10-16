@@ -18,7 +18,11 @@ from investment_engine.market.calendar.us_equities import load_us_equities_calen
 from investment_engine.market.symbols import SymbolMapping
 from investment_engine.storage.copy_sqlite import CopyConflict, copy_sqlite_to_postgres
 from investment_engine.storage.database import PostgresDatabase, SqliteDatabase
-from investment_engine.storage.postgres import apply_pg_schema, open_operational_pg
+from investment_engine.storage.postgres import (
+    _pg_schema_scripts,
+    apply_pg_schema,
+    open_operational_pg,
+)
 from investment_engine.storage.sqlite import (
     SqliteInstrumentRepository,
     SqliteSymbolResolver,
@@ -37,6 +41,7 @@ pytestmark = pytest.mark.postgres
 CAL = load_us_equities_calendar()
 CALENDARS = {"test-cal": CAL}
 RUNNER = CliRunner()
+LATEST_PG = _pg_schema_scripts()[-1][0]  # later M3 scripts add PostgreSQL-only tables
 
 
 def source_at(path, schema: int):
@@ -87,7 +92,7 @@ def test_a_full_m2_database_copies_exactly_and_a_rerun_finds_everything_present(
     ids = source_at(path, 4)
     before = digest(path)
     report = copy_sqlite_to_postgres(path, target, calendars=CALENDARS)
-    assert (report.source_schema, report.target_schema) == (4, 4)
+    assert (report.source_schema, report.target_schema) == (4, LATEST_PG)
     assert dict(report.copied) == {"instruments": 1, "symbol_mappings": 1, "lineage_records": 1,
                                    "evaluation_records": 2}
     assert report.verified_ids == 3
@@ -199,7 +204,7 @@ def test_init_status_and_copy_work_on_postgresql_and_never_print_the_dsn(cli_env
     init = RUNNER.invoke(cli.app, ["init"])
     assert init.exit_code == 0, init.output
     status = RUNNER.invoke(cli.app, ["db", "status"])
-    assert status.exit_code == 0 and "schema=4" in status.output and "instruments=1" in status.output
+    assert status.exit_code == 0 and f"schema={LATEST_PG}" in status.output and "instruments=1" in status.output
     path = tmp_path / "old.sqlite3"
     conn = open_operational_db(path)
     apply_schema(conn)

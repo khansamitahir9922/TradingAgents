@@ -150,6 +150,10 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M3-03 follow-up: copy and status tests follow the latest PostgreSQL script)
+- **Change (`tests/engine/test_copy_sqlite.py` only):** the copy report's target schema and `db status` output are compared with `LATEST_PG`, the highest packaged script, instead of a written-in 4. This is for the same reason as the M3-01 follow-up above, and the checks are shared with it.
+  - full suite: 1 failed, 2544 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 235.35s (0:03:55) (only failure: the baseline cache-location test)
+
 ### 2026-10-16: Claude Code (M3-01 follow-up: schema tests follow the latest PostgreSQL script)
 - **Why:** M3-04 onwards add PostgreSQL-only scripts (0005 and up), which M3-01 rule 1 allows. Several M3-01 tests had version 4 written into them. Without this change they would fail, and fixing them inside a later task would leave that task's allowed files.
 - **Change (`tests/engine/test_postgres_schema.py` only):**
