@@ -11,4 +11,8 @@ MODULES: tuple[str, ...] = (
     "investment_engine.risk.limits",  # M3-06
     "investment_engine.portfolio.reference",  # M3-07
     "investment_engine.portfolio.snapshot",  # M3-07
+    "investment_engine.oms.intents",  # M3-08 types, audited from M3-09
+    "investment_engine.policy.decisions",  # M3-08
+    "investment_engine.risk.decisions",  # M3-08
+    "investment_engine.oms.intent_store",  # M3-09
 )

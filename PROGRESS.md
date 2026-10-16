@@ -150,6 +150,31 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-09: intent store and the G2 state machine)
+- **`oms/intent_states.py`:**
+  - `ALLOWED` is exactly the frozen G2 table, and `FINAL` the six terminal states.
+  - `check` raises `IllegalTransition` for a non-edge. For APPROVED -> CONVERTED it raises the separate `OrdersNotBuilt`: a legal G2 edge that M3 refuses until M4.
+- **`oms/intent_store.py`:** `IntentStore` is PostgreSQL only and shares one port with audit and accounts.
+  - **Compare-and-set:** one `aggregate_version` per intent id covers all versions. Each write moves it by exactly one in a single `UPDATE ... RETURNING`; a stale expected version gives `StaleWrite` and writes nothing.
+  - **Writes:** `create` (v1, idempotent; different content under the id raises). `transition` checks G2 legality first, acts on the latest version only, and refuses SUPERSEDED, which only `supersede` writes. `supersede` marks the old version and creates v+1 in one compare-and-set step, changing only the quantity. `set_fields` records decisions or lineage without a state change.
+  - **Logs and audit:** every move is logged append-only, with one audit event in the same transaction: command time from the clock, and `business_at` for RESEARCH accounts.
+  - **Queries:** `due_for_expiry(account, at)` is per account (R3). `admitted_buys(..., excluding=)` counts distinct BUY intent ids that ever entered AWAITING_APPROVAL or APPROVED (D5), and `was_admitted` answers for one intent (S3).
+- **`schema_pg/0009_intents.sql`:** `intents`, `intent_versions` and `intent_transitions`. Triggers refuse any update of material or reference columns or content (Law 12), refuse anything but a one-step forward move of the aggregate, refuse deletes and truncates, and keep the log append-only. The audit registry now also lists `oms.intents`, `policy.decisions`, `risk.decisions` and `oms.intent_store`.
+- **Tests first:** `test_intent_store.py` was written first and red at collection. Fixes found by the tests:
+  - **Code:** `supersede` had moved the aggregate twice (the trigger refused it), so the new latest version now goes in the same single step. `transition` now checks legality before its SUPERSEDED guard, so moves out of a final state always report `IllegalTransition`.
+  - **Tests:** the race helper had kept every connection open and exhausted the server's slots, so each racer now closes its own; one expected aggregate version was off by one; events at the same command time order by id.
+
+  101 passed. They cover:
+  - the frozen table, and all 81 state pairs as allowed, guarded or illegal;
+  - every allowed edge through the store, including the CONVERTED refusal;
+  - final states, stale writes, and atomic supersede limited to the quantity;
+  - SQL refusals of material updates, aggregate rewrites and log changes;
+  - create idempotency, audit times, admission counting and per-account expiry;
+  - fresh-process decoding;
+  - four races, each from a state where both moves are legal (approve vs expire, approve vs decline, expire vs supersede, reject vs supersede), each run 50 times: exactly one winner, no lost update.
+- **Checks (Git Bash):** see the result line below; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2724 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 272.38s (0:04:32) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-08: OrderIntent contract and position sizer)
 - **`oms/intents.py`:**
   - `Side`; `IntentState`, with all nine G2 states (CONVERTED exists for M4's contract).
