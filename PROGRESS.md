@@ -150,6 +150,15 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-16: Claude Code (M2 re-review: S4 documents and accepted final interfaces)
+- **Final interfaces:** Codex accepted the contract extensions in principle. The specs now record them in "Final interfaces" sections: M2-02 (RSI14 seed), M2-03 (`warmup`, `decision_close`), M2-07 (`run_views` signature, compressed lineage, 0004 guards), M2-09 (`PredictionView`, `calendar`, `trailing`, audit fields), M2-10 (`Benchmark`, extra `EvaluationRun` fields, B3/B4 rules), M2-11a (`walk_forward`, `FoldResult`, `WalkForwardResult`, `RevisionCache`, S2/B3 rules), M2-11b (`EvaluationRecord` and its store, B5) and M2-12 (`adjusted_closes`, B6 checks). M2-11a and M2-11b no longer claim the old contract applies "exactly".
+- **S4:**
+  - the M2 README's 2026-10-13 introduction is labelled as superseded history;
+  - shared rules §4 in AGENTS.md and CLAUDE.md (blocks still identical) and `docs/tasks/README.md` record the owner-approved exception that a milestone may be built on the previous milestone's branch while that one is in review, merging only after it;
+  - the M2-06 lint follow-up entry, inserted three times by failed commit attempts before my helper was hardened, now appears once. The correction itself is kept.
+- **Process deviations stay recorded as they were:** unobserved red runs for M2-00 to M2-08, M2-07 code before tests, the `2a8c3ac` lint slip and the `7028523` message. None is presented as tests-first evidence.
+- **Checks:** documents only. `git diff --check` clean; shared-rules blocks identical. No runtime change, so no test run for this commit.
+
 ### 2026-10-16: Claude Code (M2-09 and M2-11a follow-up, S2 and S3: fold guard and auditable last-period sample)
 - **S2 (Codex suggestion):** `walk_forward` now validates the supplied fold collection. Test windows must be in order and may not repeat or overlap; otherwise it raises. `make_folds` already produced valid folds, so the report is unaffected. Regressions (run first, 3 failed): duplicate, overlapping and out-of-order folds.
 - **S3 (Codex suggestion):** `DirectionEvaluation` now keeps `trailing_refs` (the trailing ReturnObservations actually used), `last_period_sample` (the paired prediction sessions) and `last_period_excluded` (scored sessions without a usable trailing return). They default to empty, so existing constructions stay valid, and they are stored with the record. Regression (run first, failed): the sample, exclusions and references for the hand-built table.
@@ -384,16 +393,6 @@ Report directional accuracy against the base rate, and the information coefficie
 - **Checks (Git Bash):**
   - full suite: **2290 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected;
   - `ruff check .` passed; whitespace clean, new files included.
-
-### 2026-10-14: Claude Code (M2-06 follow-up: unused test imports; check script hardened)
-- **Process deviation, recorded:** `2a8c3ac` was committed with two unused imports in `tests/engine/test_market_view.py` (ruff F401). My task-check script printed ruff's failure but still exited 0, so the commit step continued.
-- **Fix:** removed the imports (`ruff check --fix`). The check script now exits nonzero on any test failure other than the baseline, a missing result line, a ruff error or a whitespace error, and the commit only runs after it succeeds. Every earlier task commit's ruff run printed "All checks passed".
-- **Checks (Git Bash):** full suite **2232 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected; `ruff check .` passed; `git diff --check` clean.
-
-### 2026-10-14: Claude Code (M2-06 follow-up: unused test imports; check script hardened)
-- **Process deviation, recorded:** `2a8c3ac` was committed with two unused imports in `tests/engine/test_market_view.py` (ruff F401). My task-check script printed ruff's failure but still exited 0, so the commit step continued.
-- **Fix:** removed the imports (`ruff check --fix`). The check script now exits nonzero on any test failure other than the baseline, a missing result line, a ruff error or a whitespace error, and the commit only runs after it succeeds. Every earlier task commit's ruff run printed "All checks passed".
-- **Checks (Git Bash):** full suite **2232 passed, 1 failed** (baseline cache-location test), 4 skipped, 3 deselected; `ruff check .` passed; `git diff --check` clean.
 
 ### 2026-10-14: Claude Code (M2-06 follow-up: unused test imports; check script hardened)
 - **Process deviation, recorded:** `2a8c3ac` was committed with two unused imports in `tests/engine/test_market_view.py` (ruff F401). My task-check script printed ruff's failure but still exited 0, so the commit step continued.

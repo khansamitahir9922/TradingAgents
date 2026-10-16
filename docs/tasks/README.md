@@ -32,7 +32,7 @@ owner approves the batch → per task: spec → tests → implementation → tas
 - **Batches:** listed in `docs/roadmap.md` §4.3. **One branch per batch:** `m1/batch-<N>`, from `main`. The `Branch` line in each M1 spec is **superseded** by its batch branch; M1-00 and M1-01 used their own branches.
 - **Approvals:** the owner's approval at the start of a batch covers implementing and locally committing its tasks. The merge needs a separate approval.
 - **One commit per task**, with its own tests and `PROGRESS.md` entry. Review fixes go in follow-up commits.
-- **Dependencies:** a task may build on an earlier task in the same batch branch once that task is committed and its task checks have passed. Dependencies outside the batch must be merged into `main`.
+- **Dependencies:** a task may build on an earlier task in the same batch branch once that task is committed and its task checks have passed. Dependencies outside the batch must be merged into `main`, except an approved milestone built on the previous milestone's branch while that one is in review (shared rules §4).
 - **Review:** Claude Code self-reviews the batch, including adversarial edge-case probes. Codex reviews **every commit** before the merge.
 - **Done** means the batch is merged. Before that, a task is "in progress", "committed (checked)", "in review" or "approved, awaiting merge". A task split across two batches (M1-12 and M1-13: batches 3a and 3b; M1-17: 5a and 5b) is done only when its **last** batch merges.
 - **Stop rules:** stop and report on a new test failure, a needed file change outside the spec's allowed files, a spec gap needing an architecture or ADR change, or a blocked verification checkpoint (M1-12 is a firm checkpoint).

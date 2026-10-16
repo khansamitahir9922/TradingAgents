@@ -1,6 +1,6 @@
-# M2 specification pack: draft for independent review
+# M2 specification pack
 
-Prepared 2026-10-13 on `docs/m2-specs`. Claude drafted M2-00 through M2-07; Codex revised those contracts and drafted M2-08 through M2-12 while Claude was unavailable. **No M2 code has been written or authorized.**
+*History (2026-10-13, superseded):* prepared on `docs/m2-specs`. Claude drafted M2-00 through M2-07; Codex revised those contracts and drafted M2-08 through M2-12 while Claude was unavailable. At that time no M2 code had been written or authorized.
 
 **Implemented on `m2/milestone` (all 14 tasks committed and checked, 2026-10-14) and handed to Codex for the milestone review; see `docs/reviews/claude-m2-milestone-package.md`.** Accepted for implementation (owner, 2026-10-14) as one milestone package: the owner approved the whole M2 build on `m2/milestone`, with automatic local task commits and one combined Codex review at the end. Codex's package review (`docs/reviews/codex-m2-package-review-2026-10-14.md`) is applied: the prerequisite amendment below, branch-based integration, the mechanical M2-11 split, stop rules for blocking gaps, and the completed-bar cutoff in M2-00/M2-03.
 
