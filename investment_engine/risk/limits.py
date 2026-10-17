@@ -85,7 +85,16 @@ class Halt:
     by: str
     reason: str
     limits_version: str
-    baseline_equity: Decimal | None  # set when cleared, if known: the new drawdown baseline (D3, S6)
+    baseline_equity: Decimal | None  # a clear's equity at the clear: the new drawdown baseline (D3, S6)
+
+    def __post_init__(self) -> None:
+        if self.halted:
+            if self.baseline_equity is not None:
+                raise ValueError("a halt records no baseline; the clear that ends it does")
+        elif not isinstance(self.baseline_equity, Decimal) or not self.baseline_equity.is_finite() \
+                or self.baseline_equity < 0:
+            raise ValueError("a cleared halt records the account's equity at the clear, a finite non-negative "
+                             "Decimal: the high-water mark restarts from it (D3)")
 
 
 for _cls in (RiskLimits, Halt):
@@ -261,9 +270,10 @@ class LimitStore:
                                           f"risk.halt:{account_id}:{at.isoformat()}"))
         return halt
 
-    def clear_halt(self, account_id: str, *, by: Actor, reason: str, equity_now: Decimal | None = None,
+    def clear_halt(self, account_id: str, *, by: Actor, reason: str, equity_now: Decimal,
                    effective_at: datetime | None = None) -> Halt:
-        """Clear a halt (Admin). `equity_now`, when known, becomes the new drawdown baseline."""
+        """Clear a halt (Admin). `equity_now`, the account's equity at the clear, is required: the high-water mark
+        restarts from it (D3; Codex M3 review B4). A caller that can't establish it can't clear."""
         now = check_utc(self._clock.now(), "now")
         with self._db.transaction():
             self._db.lock(f"account-control|{account_id}")
@@ -272,14 +282,23 @@ class LimitStore:
             previous = self.halt_at(account_id, at)
             if previous is None or not previous.halted:
                 raise ValueError(f"{account_id} is not halted at {at.isoformat()}")
-            if equity_now is not None and (not isinstance(equity_now, Decimal) or not equity_now.is_finite()):
-                raise TypeError("equity_now must be a finite Decimal")
+            if not isinstance(equity_now, Decimal) or not equity_now.is_finite():
+                raise TypeError("equity_now must be the equity at the clear, a finite Decimal")
             cleared = Halt(account_id, False, at, by.actor_id, reason, previous.limits_version, equity_now)
             self._insert_halt(cleared, now)
             self._audit.append(AuditEvent(by, "risk.clear_halt", "account", account_id, previous, cleared, now,
                                           business, reason, f"risk.clear_halt:{account_id}:{now.isoformat()}",
                                           f"risk.clear_halt:{account_id}:{at.isoformat()}"))
         return cleared
+
+    def last_clear_at(self, account_id: str, at: datetime) -> Halt | None:
+        """The latest clear at or before `at`, whatever happened since: the drawdown epoch starts there, and a later
+        halt doesn't end it (D3; Codex M3 review B4)."""
+        row = self._db.fetchone(
+            "SELECT account_id, halted, at, actor_id, reason, limits_version, baseline_equity FROM halts "
+            "WHERE account_id = :id AND at <= :at AND NOT halted ORDER BY at DESC, sequence DESC LIMIT 1",
+            {"id": account_id, "at": check_utc(at, "at")})
+        return None if row is None else Halt(*row)
 
     def halt_at(self, account_id: str, at: datetime) -> Halt | None:
         row = self._db.fetchone(

@@ -508,3 +508,42 @@ def test_the_pipeline_imports_no_broker_kill_switch_or_outbox_code():
             elif isinstance(node, ast.Import):
                 names |= {a.name for a in node.names}
     assert names and not [n for n in names if any(w in n for w in ("broker", "kill", "outbox", "execution"))]
+
+
+# ---------------------------------------------------------------- the drawdown epoch is the latest clear (B4)
+
+
+@pytest.mark.unit
+def test_the_drawdown_epoch_is_the_latest_clear_even_after_a_later_halt(pg_database, tmp_path):
+    """Codex B4: 100,000; 85,000 (halt); cleared at 85,000; 60,000 (29.4% below the clear: halted again); then
+    80,000. Every snapshot after the clear measures from 85,000, never from the old 100,000 peak."""
+    a, b, c, d = SESSIONS[60:64]
+    closes = dict.fromkeys(SESSIONS[:64], "100.0000")
+    closes.update({b: "85.0000", c: "60.0000", d: "80.0000"})
+    root = tmp_path / "fall"
+    MarketDataWriter(root).write_candles([replace(observation(day, close=close), volume=Decimal("100000000"))
+                                          for day, close in closes.items()], import_id="fall")
+    env = Env(pg_database, tmp_path / "market", reader=MarketDataReader(root))
+    try:
+        env.account("H1", start=False)
+        env.stores.snapshots.declare_start("H1", by=OWNER, reason="D14", cash=Decimal("0"),
+                                           positions=((NVDA, Decimal("1000")),), effective_at=START)
+
+        def snapshot_after(day):  # a SELL view: proposals run (and store a snapshot) whatever the halt state
+            record = env.propose("H1", view_for(env.stores, env.reader, day, "BEARISH", tag=str(day)),
+                                 coverage=covered())
+            assert record.intent_id is not None, record
+            s = env.stores.snapshots.latest("H1", t_of(day))
+            return s.equity, s.peak_equity, s.baseline_at
+
+        assert snapshot_after(a) == (Decimal("100000"), Decimal("100000"), START)
+        assert snapshot_after(b)[:2] == (Decimal("85000"), Decimal("100000"))  # 15.0%: the risk check halts BUYs
+        env.stores.limits.set_halt("H1", at=t_of(b), limits_version="risk-1", reason="drawdown 15.0%")
+        clear_at = t_of(b) + timedelta(minutes=30)
+        env.stores.limits.clear_halt("H1", by=OWNER, reason="reviewed", equity_now=Decimal("85000"),
+                                     effective_at=clear_at)
+        assert snapshot_after(c) == (Decimal("60000"), Decimal("85000"), clear_at)  # 29.4% below the clear
+        env.stores.limits.set_halt("H1", at=t_of(c), limits_version="risk-1", reason="drawdown 29.4%")
+        assert snapshot_after(d) == (Decimal("80000"), Decimal("85000"), clear_at)  # still the clear's epoch
+    finally:
+        env.close()

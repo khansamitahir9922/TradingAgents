@@ -52,9 +52,9 @@ def market(tmp_path):
     return writer, StoreKnowledge(MarketDataReader(tmp_path / "market"), CAL), closes
 
 
-def snapshot(knowledge, *, at, starting=None, history=(), halt=None, cover=None):
+def snapshot(knowledge, *, at, starting=None, history=(), last_clear=None, cover=None):
     return build_snapshot("R1", at=at, starting=starting or state(), knowledge=knowledge, calendar=CAL,
-                          coverage=cover or coverage(), halt=halt, history=history, source="yfinance")
+                          coverage=cover or coverage(), last_clear=last_clear, history=history, source="yfinance")
 
 
 def at_close(d):
@@ -132,15 +132,41 @@ def test_peak_equity_and_the_drawdown_baseline(tmp_path):
     later = snapshot(knowledge, at=at_close(DAYS[6]), starting=starting, history=history)
     assert later.peak_equity == Decimal("12400") and later.equity == Decimal("12200")  # hand-calculated drawdown
     assert (later.peak_equity - later.equity) / later.peak_equity == Decimal("200") / Decimal("12400")
-    cleared = Halt("R1", False, at_close(DAYS[5]), "owner", "reviewed", "risk-1", None)
-    reset = snapshot(knowledge, at=at_close(DAYS[6]), starting=starting, history=history, halt=cleared)
-    assert reset.baseline_at == cleared.at and reset.peak_equity == reset.equity  # measured afresh after the clear
+    # Cleared on DAYS[5] at its equity, 12,300: the high-water mark restarts there, with that value as a floor
+    # even though no snapshot was taken at the clear (D3; Codex M3 review B4).
+    cleared = Halt("R1", False, at_close(DAYS[5]), "owner", "reviewed", "risk-1", Decimal("12300"))
+    reset = snapshot(knowledge, at=at_close(DAYS[6]), starting=starting, history=history, last_clear=cleared)
+    assert reset.baseline_at == cleared.at and reset.peak_equity == Decimal("12300")  # not 12,400, not 12,200
     floor = replace(cleared, baseline_equity=Decimal("13000"))
     assert snapshot(knowledge, at=at_close(DAYS[6]), starting=starting, history=history,
-                    halt=floor).peak_equity == Decimal("13000")
-    still_halted = replace(cleared, halted=True)  # the latest event is a halt: the baseline stays at the start
-    assert snapshot(knowledge, at=at_close(DAYS[6]), starting=starting, history=history,
-                    halt=still_halted).peak_equity == Decimal("12400")
+                    last_clear=floor).peak_equity == Decimal("13000")
+    with pytest.raises(ValueError, match="this account's clear, not a halt"):
+        snapshot(knowledge, at=at_close(DAYS[6]), starting=starting, history=history,
+                 last_clear=Halt("R1", True, at_close(DAYS[5]), "core-engine", "drawdown", "risk-1", None))
+
+
+@pytest.mark.unit
+def test_a_clear_always_records_its_equity():
+    with pytest.raises(ValueError, match="equity at the clear"):
+        Halt("R1", False, at_close(DAYS[5]), "owner", "reviewed", "risk-1", None)
+    with pytest.raises(ValueError, match="equity at the clear"):
+        Halt("R1", False, at_close(DAYS[5]), "owner", "reviewed", "risk-1", Decimal("NaN"))
+    with pytest.raises(ValueError, match="no baseline"):
+        Halt("R1", True, at_close(DAYS[5]), "core-engine", "drawdown", "risk-1", Decimal("1"))
+
+
+@pytest.mark.unit
+def test_a_loss_after_a_clear_without_a_snapshot_is_measured_from_the_clearing_equity(tmp_path):
+    """Codex's counterexample: 100,000, cleared at 85,000, then 60,000 at the first snapshot after the clear."""
+    root = tmp_path / "drawdown"
+    MarketDataWriter(root).write_candles([observation(d, close=f"{c}.0000")
+                                          for d, c in zip(DAYS[:3], ("100", "85", "60"), strict=True)],
+                                         import_id="fall")
+    knowledge = StoreKnowledge(MarketDataReader(root), CAL)
+    start = state(cash="0", positions=((NVDA, Decimal("1000")),))
+    cleared = Halt("R1", False, at_close(DAYS[1]), "owner", "clear", "risk-1", Decimal("85000"))
+    after = snapshot(knowledge, at=at_close(DAYS[2]), starting=start, last_clear=cleared)
+    assert (after.equity, after.peak_equity) == (Decimal("60000"), Decimal("85000"))  # a 29.4% drawdown, not 0
 
 
 @pytest.mark.unit

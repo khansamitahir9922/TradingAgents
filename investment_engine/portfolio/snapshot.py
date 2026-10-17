@@ -155,8 +155,10 @@ def _covers(coverage, source: str, instrument_id: str, first: date, last: date) 
 
 
 def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, knowledge: Knowledge, calendar,
-                   coverage, halt: Halt | None, history: Sequence[PortfolioSnapshot],
+                   coverage, last_clear: Halt | None, history: Sequence[PortfolioSnapshot],
                    source: str) -> PortfolioSnapshot | Unavailable:
+    """The declared snapshot at `at`. Its peak is the highest equity since the drawdown epoch: the latest clear
+    (`last_clear`, with its recorded equity as a floor) or else the declared start (D3)."""
     at = check_utc(at, "at")
     if starting.account_id != account_id:
         raise ValueError("the starting state is another account's")
@@ -190,8 +192,11 @@ def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, kn
     for p in positions:
         equity = ctx.add(equity, p.value)
     baseline_at, floor = starting.effective_at, None
-    if halt is not None and not halt.halted and halt.at >= starting.effective_at:
-        baseline_at, floor = halt.at, halt.baseline_equity
+    if last_clear is not None:
+        if last_clear.halted or last_clear.account_id != account_id:
+            raise ValueError("last_clear must be this account's clear, not a halt")
+        if last_clear.at >= starting.effective_at:
+            baseline_at, floor = last_clear.at, last_clear.baseline_equity
     candidates = [equity] + [h.equity for h in history
                              if h.account_id == account_id and baseline_at <= h.as_of <= at]
     if floor is not None:

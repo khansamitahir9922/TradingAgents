@@ -14,6 +14,7 @@ is no import cycle.
 import getpass
 from collections.abc import Callable
 from datetime import datetime
+from decimal import Decimal
 
 import typer
 
@@ -48,8 +49,9 @@ def _when(text: str | None) -> datetime | None:
     return None if text is None else _timestamp(text)
 
 
-def _run(command: Callable[..., None], *, limits: bool = False) -> None:
-    """Open the Operational Database, run `command(registry[, limit_store])`, print refusals plainly, close."""
+def _run(command: Callable[..., None], *, limits: bool = False, database: bool = False) -> None:
+    """Open the Operational Database, run `command(registry[, limit_store][, db, clock])`, print refusals plainly,
+    close."""
     from investment_engine.audit.events import AuditStore
     from investment_engine.cli import _fail, _open_db
     from investment_engine.policy.accounts import AccountRegistry, NotAuthorized
@@ -60,7 +62,9 @@ def _run(command: Callable[..., None], *, limits: bool = False) -> None:
         conn, db = _open_db(read_only=False)
         clock, audit = LiveClock(), AuditStore(db)
         registry = AccountRegistry(db, audit, clock)
-        if limits:
+        if limits and database:
+            command(registry, LimitStore(db, audit, registry, clock), db, clock)
+        elif limits:
             command(registry, LimitStore(db, audit, registry, clock))
         else:
             command(registry)
@@ -249,14 +253,46 @@ def show_limits(account_id: str, at: str | None = typer.Option(None, "--at")) ->
 def clear_halt(account_id: str, operator: str = typer.Option(..., "--operator"),
                reason: str = typer.Option(..., "--reason"),
                effective_at: str | None = typer.Option(None, "--effective-at")) -> None:
-    """Clear a latched drawdown halt (Admin). The drawdown is then measured from the next snapshot."""
-    def go(registry, limits):
-        cleared = limits.clear_halt(account_id, by=_actor(registry, operator), reason=reason,
+    """Clear a latched drawdown halt (Admin). The account is valued at the clear time, from local data; that
+    equity is recorded and the high-water mark restarts from it (D3). If it can't be valued, nothing is cleared."""
+    def go(registry, limits, db, clock):
+        from investment_engine.policy.accounts import AccountKind
+
+        kind = registry.account(account_id).kind
+        at = _when(effective_at) if kind is AccountKind.RESEARCH else clock.now()
+        if at is None:
+            raise ValueError("a RESEARCH account needs --effective-at: the replay time of the clear")
+        equity = _equity_at(db, registry, clock, account_id, at)
+        cleared = limits.clear_halt(account_id, by=_actor(registry, operator), reason=reason, equity_now=equity,
                                     effective_at=_when(effective_at))
-        _say(f"Account {account_id}: halt cleared at {cleared.at.isoformat()}. The drawdown baseline restarts "
-             "from the value at the next snapshot; if the limit is unchanged and the value keeps falling, the "
-             "halt triggers again.")
-    _run(go, limits=True)
+        _say(f"Account {account_id}: halt cleared at {cleared.at.isoformat()} with equity {equity} USD (declared "
+             "starting state, valued at the clear). The drawdown is measured from that value; if the value falls "
+             "by the limit again, the halt triggers again.")
+    _run(go, limits=True, database=True)
+
+
+def _equity_at(db, registry, clock, account_id: str, at) -> Decimal:
+    """The account's equity at `at`, from its declared start valued with local market data (no download)."""
+    from investment_engine.audit.events import AuditStore
+    from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+    from investment_engine.portfolio.reference import StoreKnowledge, Unavailable
+    from investment_engine.portfolio.snapshot import PortfolioSnapshotStore, build_snapshot
+
+    starting = PortfolioSnapshotStore(db, AuditStore(db), registry, clock).starting_state(account_id)
+    calendar = load_us_equities_calendar()
+    knowledge = None
+    if starting.positions:  # a cash-only start needs no market data
+        from investment_engine.cli import _load_store
+        from investment_engine.config import market_store_dir
+
+        reader_type, _ = _load_store()
+        knowledge = StoreKnowledge(reader_type(market_store_dir()), calendar)
+    built = build_snapshot(account_id, at=at, starting=starting, knowledge=knowledge, calendar=calendar,
+                           coverage=None, last_clear=None, history=(), source="yfinance")
+    if isinstance(built, Unavailable):
+        raise ValueError(f"the halt can't be cleared: the equity at {at.isoformat()} can't be established "
+                         f"({built.reason})")
+    return built.equity
 
 
 def _restricted(account_id: str, instrument_id: str, add: bool, operator: str, reason: str,

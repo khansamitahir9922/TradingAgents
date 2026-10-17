@@ -150,6 +150,22 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-06, M3-07 and M3-12 follow-up, Codex M3 review B4: a clear records its equity, and the drawdown epoch is the latest clear)
+- **Finding:** D3 restarts the high-water mark from the equity **at the clear**. `clear_halt` made that value optional, and the CLI never supplied it. The baseline also came from the latest halt event, so a re-halt after a clear fell back to the original start. In Codex's example (100,000, cleared at 85,000, then 60,000), the post-clear loss showed as no drawdown.
+- **Change:**
+  - **`risk/limits.py` (M3-06):** `clear_halt(..., equity_now)` is required: a finite Decimal, otherwise `TypeError` and nothing cleared. A cleared `Halt` can't be built without it, and a halt can't carry a baseline. New `last_clear_at(account, at)`: the latest clear, whatever happened since.
+  - **`admin_cli.py` `limits clear-halt` (M3-06):** values the account at the clear time from its declared start (local data only; cash-only needs none) and records that equity. If the equity can't be established (no declared start, or holdings without established coverage), it refuses with the reason and clears nothing. RESEARCH needs `--effective-at`.
+  - **`portfolio/snapshot.py` (M3-07):** `build_snapshot(..., last_clear=...)` replaces `halt=`. The epoch is the latest clear, with its equity as a floor, or else the declared start.
+  - **`oms/pipeline.py` (M3-12):** the peak query and the snapshot use `last_clear_at`.
+- **Tests:**
+  - **Corrected:** the restored `test_peak_equity_and_the_drawdown_baseline` (M3-07) had encoded the old behaviour (a no-equity clear, and a return to the old peak after a halt). It now asserts the clearing equity as the floor and refuses a halt passed as a clear.
+  - **New, M3-07:** `test_a_clear_always_records_its_equity`; `test_a_loss_after_a_clear_without_a_snapshot_is_measured_from_the_clearing_equity` (Codex's 100,000 / 85,000 / 60,000 case).
+  - **New, M3-06:** `test_clearing_requires_the_equity_at_the_clear_and_its_epoch_survives_a_later_halt`; `test_the_cli_clears_a_halt_at_the_equity_valued_at_the_clear`.
+  - **New, M3-12:** `test_the_drawdown_epoch_is_the_latest_clear_even_after_a_later_halt`. It runs through the pipeline: 100,000; 85,000 (halt); cleared at 85,000; 60,000 (29.4% below the clear, halt); 80,000. Every snapshot after the clear measures from 85,000. The halts are applied as the risk check requests them; the BUY-side halt rule itself is M3-11's tested behaviour, and a BUY can't reach a 15% drawdown under the 10% position cap.
+  - Observed failing before the fix (3 of the new tests), passing after.
+- **Checks (Git Bash):** the four affected files passed (70). Ruff then flagged a missing `Decimal` import for an annotation and a dict comprehension; both fixed, and the B4 tests passed again. Whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2826 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 635.33s (0:10:35) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-06 follow-up, Codex M3 review B1: restricted-list changes are serialized)
 - **Finding:** `restrict`/`unrestrict` read the current rules before `publish_policy` took the account-control lock. Two concurrent changes could both build on the same stale list, so one change was silently lost, possibly a restriction an Admin had just added.
 - **Change (`risk/limits.py`):** the read, the change and the publication run in one managed transaction under the account-control lock. The nested publish joins it, and the lock is re-entrant within the transaction.

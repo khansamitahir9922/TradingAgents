@@ -264,6 +264,28 @@ def test_concurrent_restriction_changes_both_survive(pg_database, env, start, ch
         assert len(set(before) ^ set(after)) == 1, (before, after)
 
 
+# ---------------------------------------------------------------- clearing a halt records its equity (Codex B4)
+
+
+@pytest.mark.unit
+def test_clearing_requires_the_equity_at_the_clear_and_its_epoch_survives_a_later_halt(env):
+    store, _, clock, _ = env
+    publish_proposed(store)
+    store.set_halt("P1", at=NOW, limits_version="risk-1", reason="drawdown 15.0%")
+    with pytest.raises(TypeError):
+        store.clear_halt("P1", by=OWNER, reason="no equity given")  # required, not optional (D3)
+    for missing in (None, Decimal("NaN"), 85000):
+        with pytest.raises(TypeError, match="equity at the clear"):
+            store.clear_halt("P1", by=OWNER, reason="unknown equity", equity_now=missing)
+    assert store.halt_at("P1", NOW).halted and store.last_clear_at("P1", NOW) is None  # nothing was cleared
+    cleared = store.clear_halt("P1", by=OWNER, reason="reviewed", equity_now=Decimal("85000"))
+    assert cleared.baseline_equity == Decimal("85000") and store.last_clear_at("P1", NOW) == cleared
+    clock.advance_by(timedelta(hours=1))
+    store.set_halt("P1", at=clock.now(), limits_version="risk-1", reason="drawdown again")
+    assert store.halt_at("P1", clock.now()).halted
+    assert store.last_clear_at("P1", clock.now()) == cleared  # the re-halt doesn't end the clear's epoch
+
+
 # ---------------------------------------------------------------- fresh-process decoding and the Admin CLI
 
 
@@ -345,3 +367,30 @@ def test_the_cli_restricts_and_refuses_bad_files(cli, tmp_path):
     refused = cli("limits", "publish", "R1", "--file", str(bad), "--operator", "owner", "--reason", "bad",
                   "--effective-at", "2019-03-01T21:00:00Z")
     assert refused.exit_code != 0 and "floats are refused" in refused.output
+
+
+@pytest.mark.unit
+def test_the_cli_clears_a_halt_at_the_equity_valued_at_the_clear(cli, pg_database):
+    cli("limits", "publish", "R1", "--operator", "owner", "--reason", "p", "--effective-at", "2019-01-02T21:00:00Z")
+    conn = open_operational_pg(pg_database)
+    try:
+        db = PostgresDatabase(conn)
+        audit = AuditStore(db)
+        store = LimitStore(db, audit, AccountRegistry(db, audit, ReplayClock(NOW)), ReplayClock(NOW))
+        store.set_halt("R1", at=datetime(2019, 2, 1, 21, tzinfo=UTC), limits_version="risk-1", reason="drawdown")
+        at = "2019-03-01T21:00:00Z"
+        clear = ("limits", "clear-halt", "R1", "--operator", "owner", "--reason", "reviewed", "--effective-at", at)
+        refused = cli(*clear)  # no declared start: the equity at the clear can't be established
+        assert refused.exit_code != 0 and "starting state" in refused.output
+        when = datetime(2019, 3, 1, 21, tzinfo=UTC)
+        assert store.halt_at("R1", when).halted and store.last_clear_at("R1", when) is None
+        no_time = cli("limits", "clear-halt", "R1", "--operator", "owner", "--reason", "reviewed")
+        assert no_time.exit_code != 0 and "--effective-at" in no_time.output
+        assert cli("accounts", "declare-start", "R1", "--operator", "owner", "--reason", "D14",
+                   "--effective-at", "2019-01-02T21:00:00Z").exit_code == 0
+        cleared = cli(*clear)
+        assert cleared.exit_code == 0, cleared.output
+        assert "equity 100000" in cleared.output and "valued at the clear" in cleared.output
+        assert store.last_clear_at("R1", when).baseline_equity == Decimal("100000")
+    finally:
+        conn.close()

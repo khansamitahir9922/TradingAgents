@@ -282,13 +282,13 @@ def _propose(account_id, view, at, stores: ControlStores, knowledge, calendar, c
     except KeyError as exc:
         missing.append(("starting state", str(exc)))
     if starting is not None and view_lineage is not None:
-        halt = stores.limits.halt_at(account_id, at)
-        baseline = halt.at if halt is not None and not halt.halted and halt.at >= starting.effective_at \
-            else starting.effective_at
+        clear = stores.limits.last_clear_at(account_id, at)  # the drawdown epoch, whatever happened since (D3)
+        baseline = clear.at if clear is not None and clear.at >= starting.effective_at else starting.effective_at
         peak = stores.snapshots.peak(account_id, since=baseline, at=at) if at >= baseline else None
         history = [] if peak is None else [peak]  # the highest stored equity since the baseline is all it needs
         built = build_snapshot(account_id, at=at, starting=starting, knowledge=knowledge, calendar=calendar,
-                               coverage=coverage, halt=halt, history=history, source=view_lineage.snapshot.source)
+                               coverage=coverage, last_clear=clear, history=history,
+                               source=view_lineage.snapshot.source)
         if isinstance(built, Unavailable):
             missing.append(("snapshot", built.reason))
         else:
