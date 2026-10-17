@@ -150,6 +150,16 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-12 follow-up, Codex M3 review B7: a revision mismatch is a recorded prerequisite failure)
+- **Finding:** M3-08 rule 4 says a holding valued from another bar revision than the view's decision bar is a prerequisite failure. The sizer correctly refused it, but the pipeline let that refusal escape as a `ValueError`. A valid offline replay with a late correction (view on revision 1, correction delivered before the proposal, holdings with coverage) stopped the whole run.
+- **Change (`oms/pipeline.py`):** before sizing, if the snapshot holds the view's instrument valued from a different bar than the pinned reference, the pipeline records PREREQUISITE_MISSING ("reference") naming both revisions. It's a stored record like any other prerequisite, with no intent, checks or intent lineage; the snapshot is stored because it was built. Every other sizing error still raises, so programming errors aren't hidden as missing data.
+- **Regression:**
+  - `test_a_correction_between_view_and_proposal_is_a_missing_reference_not_an_error` (`test_intent_pipeline.py`): Codex's sequence, a store correction at view+1 min and a proposal at view+2 min.
+  - `test_a_correction_delivered_before_the_proposal_is_recorded_and_the_replay_continues` (`test_intent_replay.py`): three replayed views; the first records the missing reference and the next two are AWAITING_APPROVAL. The replay test helper now passes coverage through.
+  - Both observed failing without the fix (ValueError), passing with it.
+- **Checks (Git Bash):** both files passed (31). Ruff passed. The whitespace check found blank lines my script left at the ends of the two test files; they were removed before the full run. No `postgres` test skipped.
+  - full suite: 1 failed, 2839 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 641.94s (0:10:41) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-12 follow-up, Codex M3 review B2: a view must be the decision stored in its lineage)
 - **Finding:** the pipeline loaded the view's `LineageRecord` but sized and checked the separately supplied `MarketView` without comparing the two. A stored NEUTRAL decision re-presented as BULLISH under the same lineage id became a BUY in AWAITING_APPROVAL, which can't be reconstructed from the record (Law 18).
 - **Change (`oms/pipeline.py`):** before any mutation, the supplied view must equal the stored decision with exactly its lineage id as evidence, the form M2's `run_views` hands out. Nothing is replaced or repaired. A mismatch returns a PREREQUISITE_MISSING ("view lineage") diagnostic naming the differing fields, like an unknown account: nothing is stored, nothing expires, and the genuine view can still be proposed. A named but unstored lineage id keeps its ordinary stored record.

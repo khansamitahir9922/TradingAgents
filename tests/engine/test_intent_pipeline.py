@@ -580,3 +580,22 @@ def test_the_drawdown_epoch_is_the_latest_clear_even_after_a_later_halt(pg_datab
         assert snapshot_after(d) == (Decimal("80000"), Decimal("85000"), clear_at)  # still the clear's epoch
     finally:
         env.close()
+
+
+@pytest.mark.unit
+def test_a_correction_between_view_and_proposal_is_a_missing_reference_not_an_error(env):
+    """Codex B7: a holding valued from a later revision than the view's bar raised instead of being recorded."""
+    env.account("H1", start=False)
+    env.stores.snapshots.declare_start("H1", by=OWNER, reason="D14", cash=Decimal("98800"),
+                                       positions=((NVDA, Decimal("10")),), effective_at=START)
+    view = view_for(env.stores, env.reader, DAY)
+    MarketDataWriter(env.root).write_candles([observation(DAY, close="121.0000",
+                                                          received=view.generated_at + timedelta(minutes=1))],
+                                             import_id="correction")
+    knowledge = StoreKnowledge(MarketDataReader(env.root), CAL)
+    record = env.propose("H1", view, at=view.generated_at + timedelta(minutes=2), knowledge=knowledge,
+                         coverage=covered())
+    assert record.outcome is ProposalOutcome.PREREQUISITE_MISSING and record.missing == ("reference",)
+    assert "revision 2" in record.reason and "revision 1" in record.reason
+    assert env.count("intents") == 0 and env.count("intent_lineage_records") == 0
+    assert env.stores.proposals.for_view("H1", record.view_lineage_id) == record  # stored, like any prerequisite

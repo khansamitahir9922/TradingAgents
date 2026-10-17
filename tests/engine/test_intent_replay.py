@@ -21,8 +21,11 @@ from tests.engine.test_intent_pipeline import (
     DAY,
     NOW,
     NVDA,
+    OWNER,
     SESSIONS,
+    START,
     Env,
+    covered,
     t_of,
     view_for,
     write_bars,
@@ -66,9 +69,9 @@ def bar_events(reader, *, delivered=None, rank=None):
     return [event(c, k + 1, received=when) for k, (when, _, _, _, c) in enumerate(items)]
 
 
-def run(env, views, events, account_id="R1", **kwargs):
+def run(env, views, events, account_id="R1", coverage=None, **kwargs):
     return propose_over_replay(account_id, views, events=events, stores=env.stores,
-                               knowledge_reader=ReplayKnowledgeReader(), calendar=CAL, coverage=None,
+                               knowledge_reader=ReplayKnowledgeReader(), calendar=CAL, coverage=coverage,
                                calendar_version="cal-1", code_version="test", **kwargs)
 
 
@@ -167,3 +170,18 @@ def test_replay_refuses_paper_accounts_and_negative_delays(env):
     env.account("R1")
     with pytest.raises(ValueError, match="negative"):
         run(env, [], [], proposal_delay=timedelta(seconds=-1))
+
+
+@pytest.mark.unit
+def test_a_correction_delivered_before_the_proposal_is_recorded_and_the_replay_continues(env):
+    """Codex B7 in replay: the correction arrives between the first view and its proposal; that proposal records
+    the missing reference and the later views are still proposed."""
+    env.account("H1", start=False)
+    env.stores.snapshots.declare_start("H1", by=OWNER, reason="D14", cash=Decimal("98800"),
+                                       positions=((NVDA, Decimal("10")),), effective_at=START)
+    correct(env, DAY, received=T + timedelta(minutes=1))
+    views = [view_for(env.stores, env.reader, d, tag=str(d)) for d in SESSIONS[60:63]]
+    first, *rest = run(env, views, bar_events(env.reader), account_id="H1", coverage=covered(),
+                       proposal_delay=timedelta(minutes=3))
+    assert first.outcome is ProposalOutcome.PREREQUISITE_MISSING and first.missing == ("reference",)
+    assert len(rest) == 2 and all(r.outcome is ProposalOutcome.AWAITING_APPROVAL for r in rest)

@@ -316,6 +316,16 @@ def _propose(account_id, view, at, stores: ControlStores, knowledge, calendar, c
         else:
             snapshot = built
             stores.snapshots.append(snapshot)
+    if reference is not None and snapshot is not None:
+        held = next((h for h in snapshot.positions if h.instrument_id == reference.instrument_id), None)
+        if held is not None and held.price_ref != reference.bar:
+            # A correction arrived after the view: the holding is valued from the newer revision while the view
+            # decided on the older one. Sizing from both would mix revisions, so this is a missing prerequisite,
+            # recorded like any other (M3-08 rule 4; Codex M3 review B7). Other sizing errors still raise.
+            missing.append(("reference", f"the snapshot values {reference.instrument_id} from revision "
+                                         f"{held.price_ref.revision} of {held.price_ref.start_time.date()}, but the "
+                                         f"view decided on revision {reference.bar.revision} of "
+                                         f"{reference.bar.start_time.date()}; size from one revision only"))
     if missing:
         return _missing(account_id, view_lineage_id, at, missing)
 
