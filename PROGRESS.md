@@ -150,6 +150,18 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-01: outbox, event log and idempotent consumers)
+- **Built:**
+  - `events/outbox.py`: `add` only inside the caller's transaction. `publish_pending` selects rows `FOR UPDATE SKIP LOCKED`, inserts them into `event_log` with `ON CONFLICT (event_id) DO NOTHING`, marks them published and sends `NOTIFY`, all in one transaction.
+  - `events/consumer.py`: each event in its own transaction, with `processed_events` written in the same transaction; contiguous per-aggregate versions; gaps and failures hold only their aggregate; failures recorded separately; unknown types marked "unhandled". Handlers do database work only.
+  - Schema `0012_outbox.sql`: outbox rows are immutable apart from a one-time published mark; the event log, processed events and failures are append-only.
+- **Tests (new):**
+  - `test_outbox.py`: an outbox row needs the change's transaction; publishing once with the original ids; a publisher crash before commit (the insert rolls back with the mark, then the next run publishes once); an event already in the log plus two concurrent publishers give one copy each; immutability; the real `OrderStore` writing through the real `Outbox`.
+  - `test_consumers.py`: once per event; a crash after the handler, before commit, redelivers and applies once; a failing handler holds only its aggregate; order and gaps; unknown types; stable envelope ids.
+  - Red: the modules didn't exist; 12 passed after.
+- **Checks (Git Bash):** ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3032 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 964.75s (0:16:04) (only failure: the baseline cache-location test). M4-02's new files were in the tree, uncollected and not imported.
+
 ### 2026-10-18: Claude Code (M4-00: Order contracts, the order store and the shared state machine)
 - **Built:**
   - `oms/order_states.py`: G3 exactly, plus each edge's owner, `check(from, to, role)`, and the final, open and fill-only state sets.
