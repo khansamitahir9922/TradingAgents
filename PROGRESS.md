@@ -150,6 +150,15 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-07, M3-09 and M3-12 follow-up, Codex M3 review S2: tighter acceptance evidence, tests only)
+- **M3-12 (`test_intent_pipeline.py`):** the failure-injection helper also intercepts writes sent through `fetchone`/`fetchall`, so the intent store's compare-and-set `UPDATE ... RETURNING` writes are injected too. The each-write test asserts that at least one of them was.
+- **M3-09 (`test_intent_store.py`):**
+  - The race helper's racers read the current aggregate version *before* the barrier, so both hold the same expected version and exactly one stale write is deterministic.
+  - New `test_the_store_refuses_every_illegal_edge_and_writes_nothing`: from every reachable state, SUPERSEDED included, every illegal target goes through the store and raises IllegalTransition (OrdersNotBuilt for APPROVED -> CONVERTED). Versions, history and the audit count are unchanged.
+- **M3-07:** `test_a_split_since_the_start_makes_a_held_snapshot_unavailable` (the held-action test had used a dividend). `test_the_reference_guard_itself_refuses_a_forming_decision_bar`: a knowledge port answering a FORMING bar, since the store never holds one.
+- **Checks (Git Bash):** the four files passed (155, plus the 4 gated race tests). Ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2850 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 941.74s (0:15:41) (only failure: the baseline cache-location test). The S3 document changes were in the tree for this run; they change no code.
+
 ### 2026-10-17: Claude Code (M3-14 follow-up, Codex M3 review B5: `intents propose --at T` proposes at T)
 - **Finding:** `--at T` picked the latest view at or before T but proposed it at the view's own time, with the feed stopping there. Deadlines, controls, expiry and knowledge were evaluated at the wrong time. One minute after a deadline, the command still created a fresh AWAITING_APPROVAL proposal dated the day before.
 - **Change (`intents_cli.py`):** a single-time research proposal replays with `proposal_delay = T - view time` and a feed through T, so it acts at T and knows everything delivered by T. The `--from/--to` range is unchanged: each view at its own time.

@@ -424,18 +424,22 @@ def test_the_first_buy_of_the_cash_only_account_uses_the_raw_reference(env):
 
 
 def failing_writes(monkeypatch):
-    """Make the n-th INSERT, UPDATE or DELETE fail; returns the control dict."""
-    control = {"n": 0, "fail_at": 0}
-    real = PostgresDatabase.execute
+    """Make the n-th INSERT, UPDATE or DELETE fail, whether sent through execute or, like the intent store's
+    compare-and-set UPDATE ... RETURNING, through fetchone or fetchall; returns the control dict."""
+    control = {"n": 0, "fail_at": 0, "returning": 0}
 
-    def execute(self, sql, params=None):
-        if sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
-            control["n"] += 1
-            if control["n"] == control["fail_at"]:
-                raise RuntimeError(f"injected failure at write {control['n']}")
-        return real(self, sql, params)
+    def failing(real):
+        def run(self, sql, params=None):
+            if sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+                control["n"] += 1
+                control["returning"] += real.__name__ != "execute"
+                if control["n"] == control["fail_at"]:
+                    raise RuntimeError(f"injected failure at write {control['n']}")
+            return real(self, sql, params)
+        return run
 
-    monkeypatch.setattr(PostgresDatabase, "execute", execute)
+    for name in ("execute", "fetchone", "fetchall"):
+        monkeypatch.setattr(PostgresDatabase, name, failing(getattr(PostgresDatabase, name)))
     return control
 
 
@@ -459,6 +463,7 @@ def test_a_failure_at_each_write_in_turn_leaves_nothing_behind(env, monkeypatch)
         break
     assert record.outcome is ProposalOutcome.AWAITING_APPROVAL
     assert failures == control["n"] >= 8  # every write of the successful run was tried as the failing one
+    assert control["returning"] >= 1  # compare-and-set writes (UPDATE ... RETURNING) were among them
 
 
 @pytest.mark.unit

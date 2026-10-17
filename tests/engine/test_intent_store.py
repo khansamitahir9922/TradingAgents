@@ -194,16 +194,15 @@ def race(connect, intent_id, moves):
 
     def run(to, fields):
         db, store, _ = connect()
+        current = store.get(intent_id)  # both racers read the same expected version, then race (Codex S2)
         barrier.wait()
         try:
             if to is S.SUPERSEDED:
-                current = store.get(intent_id)
                 store.supersede(intent_id, current.intent.version,
                                 replace(current.intent, version=current.intent.version + 1,
                                         supersedes=current.intent.version, quantity=Decimal("1")),
                                 expected_aggregate_version=current.aggregate_version, at=NOW, by=CORE, reason="race")
             else:
-                current = store.get(intent_id)
                 store.transition(intent_id, current.intent.version, to,
                                  expected_aggregate_version=current.aggregate_version, at=NOW, by=CORE, reason="race",
                                  **fields)
@@ -336,3 +335,43 @@ def test_approval_evidence_and_history_change_only_through_audited_transitions(e
         store.transition("int-history", 1, S.AWAITING_APPROVAL, expected_aggregate_version=v2.aggregate_version,
                          at=NOW, by=CORE, reason="old version")
     assert store.versions("int-history")[0].state is S.SUPERSEDED and events() == after
+
+
+STATE_PATHS = {  # how to reach each state through the store (CONVERTED is unreachable in M3)
+    S.PROPOSED: [], S.AWAITING_APPROVAL: [S.AWAITING_APPROVAL], S.APPROVED: [S.APPROVED],
+    S.POLICY_REJECTED: [S.POLICY_REJECTED], S.RISK_REJECTED: [S.RISK_REJECTED],
+    S.DECLINED: [S.AWAITING_APPROVAL, S.DECLINED], S.EXPIRED: [S.APPROVED, S.EXPIRED],
+}
+
+
+@pytest.mark.postgres
+@pytest.mark.unit
+@pytest.mark.parametrize("state", [*STATE_PATHS, S.SUPERSEDED])
+def test_the_store_refuses_every_illegal_edge_and_writes_nothing(env, state):
+    """Codex S2: the pure G2 check is exhaustive; this drives every illegal (state, target) pair through the store."""
+    db, store, _ = env
+    if state is S.SUPERSEDED:
+        stored = store.create(intent(), by=CORE, correlation_id="c")
+        store.supersede(stored.intent.intent_id, 1, replace(stored.intent, version=2, supersedes=1,
+                                                            quantity=Decimal("1")),
+                        expected_aggregate_version=1, at=NOW, by=CORE, reason="reduce")
+        stored = store.get(stored.intent.intent_id, 1)
+    else:
+        stored = walk(store, STATE_PATHS[state])
+    assert stored.state is state
+    intent_id, version = stored.intent.intent_id, stored.intent.version
+    aggregate = store.get(intent_id).aggregate_version
+
+    def events():
+        return db.fetchone("SELECT COUNT(*) FROM audit_events")[0]
+
+    before = (store.versions(intent_id), store.history(intent_id), events())
+    for to in S:
+        if (state, to) in G2 and state is not S.SUPERSEDED:
+            continue
+        expected = intent_states.OrdersNotBuilt if (state, to) == (S.APPROVED, S.CONVERTED) else \
+            intent_states.IllegalTransition
+        with pytest.raises(expected):
+            store.transition(intent_id, version, to, expected_aggregate_version=aggregate, at=NOW, by=CORE,
+                             reason="illegal")
+    assert (store.versions(intent_id), store.history(intent_id), events()) == before

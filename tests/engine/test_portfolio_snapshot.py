@@ -307,3 +307,21 @@ def test_the_peak_query_returns_the_highest_equity_snapshot_in_range(stores, tmp
     assert store.peak("R1", since=START, at=at_close(DAYS[4])) == taken[1]  # 12,400 on the second day
     assert store.peak("R1", since=at_close(DAYS[2]), at=at_close(DAYS[4])) == taken[3]  # after it: 12,300
     assert store.peak("R1", since=at_close(DAYS[4]) + timedelta(days=1), at=at_close(DAYS[4])) is None
+
+
+@pytest.mark.unit
+def test_a_split_since_the_start_makes_a_held_snapshot_unavailable(market):
+    """Codex S2: the held-action test exercised a dividend; a split is the other covered action."""
+    from investment_engine.market.store.writer import ActionObservation
+
+    writer, knowledge, _ = market
+    held = state(positions=((NVDA, Decimal("1")),))
+    assert not isinstance(snapshot(knowledge, at=at_close(DAYS[3]), starting=held), Unavailable)
+    arrived = at_close(DAYS[2])
+    writer.write_corporate_actions([ActionObservation(
+        source="yfinance", instrument_id=NVDA, currency="USD", exchange_timezone="America/New_York",
+        action_type=ActionType.SPLIT, ex_date=DAYS[2], ratio=Decimal("10"), amount=None, amount_basis=None,
+        new_symbol=None, source_version="1.7.0", received_at=arrived, processed_at=arrived,
+        backfill_available_from=None)], import_id="split")
+    after = snapshot(knowledge, at=at_close(DAYS[3]), starting=held)
+    assert isinstance(after, Unavailable) and "SPLIT" in after.reason and "ledger needed (M5)" in after.reason

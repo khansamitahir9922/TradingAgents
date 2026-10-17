@@ -222,3 +222,18 @@ def test_a_caller_that_fed_every_event_can_query_after_the_last_one(store):
                               at=later).close == Decimal("120.5000")
     with pytest.raises(ValueError):  # beyond what the caller vouched for: refused again
         vouched.latest_closed("yfinance", NVDA, DAY, at=later + timedelta(seconds=1))
+
+
+@pytest.mark.unit
+def test_the_reference_guard_itself_refuses_a_forming_decision_bar(store):
+    """Codex S2: the store never holds a FORMING bar, so the guard is exercised directly with a knowledge port that
+    answers one."""
+    _, reader = store
+    (candle,) = stored(reader)
+
+    class FormingKnowledge:
+        def candle_revision(self, ref, *, at):
+            return replace(candle, state=BarState.FORMING)
+
+    found = decision_reference(lineage(ref_of(candle)), knowledge=FormingKnowledge(), instruments=Instruments(), at=T)
+    assert isinstance(found, Unavailable) and "FORMING, not CLOSED" in found.reason
