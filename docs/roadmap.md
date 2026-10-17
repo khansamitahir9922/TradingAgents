@@ -5,7 +5,7 @@
 | **Document status** | **v0.4, for review.** v0.3: Codex review passed; merged into `main` with the owner's approval (M0, `906ae85`, 2026-10-09). v0.4 adopts the **batch workflow** (§1.1, §4.3), records the owner's one-month window, and updates M0's completed status. Earlier notes:<br>v0.2 applied Codex's first roadmap review: workflow, baseline, Yahoo verification, availability.<br>v0.3 applies the M1 spec review: complete split history, per-field verification, replay timing, provider separation, the resampler cutoff, the frozen DataHealth states, and blocking on failed verification. |
 | **Date** | 2026-10-08 |
 | **Sources** | `architecture/architecture-v1.0.md` Part K (milestones and promotion gates; v1.0 FROZEN), `docs/PRD.md` (milestone table, OPEN-01 – OPEN-17), `architecture/adr/`. Where this roadmap and the architecture disagree, the architecture wins. |
-| **Estimates** | **M1 is detailed**. M2 is **done** (merged into local `main` at `b7c5d2a`, 2026-10-16). M3 is **done** (merged into local `main` at `84494f2`, 2026-10-17). M4 has a **draft specification pack** (M4-00 – M4-13, ≈ 73 h; v0.3), awaiting Codex's review and the owner's decisions D19–D34. M5 – M10 remain provisional work packages, split into reviewed 1–3 hour tasks before implementation. |
+| **Estimates** | **M1 is detailed**. M2 is **done** (merged into local `main` at `b7c5d2a`, 2026-10-16). M3 is **done** (merged into local `main` at `84494f2`, 2026-10-17). M4 has a **draft specification pack** (M4-00 – M4-13, ≈ 74 h; v0.4), awaiting Codex's review and the owner's decisions D19–D34. M5 – M10 remain provisional work packages, split into reviewed 1–3 hour tasks before implementation. |
 
 This roadmap splits the frozen milestones into **tasks of about 1–3 hours** each. A task is small enough to build, test and review in one sitting, and to hand over between Claude Code and Codex using only the repository's documents.
 
@@ -314,7 +314,7 @@ Everything below is **provisional**. M2's draft tasks are linked below; M3 – M
 ### M4 — OMS + Execution Worker (simulated)
 **Before it starts:** OPEN-16 is settled: each proposal is either adopted through a reviewed, accepted ADR plus an architecture update, or explicitly left out. OPEN-09 thresholds are set, and walk-forward evaluation is in place.
 
-**Draft pack (2026-10-18, v0.3):** [M4 pack](tasks/M4-README.md), 14 tasks in groups M4-A – M4-E, ≈ 73 h (above the provisional range below). OPEN-16 is proposed there as D19–D20 (both left out; G3 unchanged) and OPEN-09 as D21–D22. D23 reads the completion criterion "only walk-forward-passed strategies run" as applying to PAPER accounts; the visible run uses a RESEARCH account through the simulated broker. That is a clarification for review, not yet accepted.
+**Draft pack (2026-10-18, v0.4):** [M4 pack](tasks/M4-README.md), 14 tasks in groups M4-A – M4-E, ≈ 74 h (above the provisional range below). OPEN-16 is proposed there as D19–D20 (both left out; G3 unchanged) and OPEN-09 as D21–D22. D23 reads the completion criterion "only walk-forward-passed strategies run" as applying to PAPER accounts; the visible run uses a RESEARCH account through the simulated broker. That is a clarification for review, not yet accepted.
 
 | Provisional work package | Est. |
 |---|---|

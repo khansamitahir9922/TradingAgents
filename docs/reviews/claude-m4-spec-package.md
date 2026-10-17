@@ -1,6 +1,26 @@
-# M4 specification package, v0.3 (Claude, 2026-10-18)
+# M4 specification package, v0.4 (Claude, 2026-10-18)
 
-This package is for Codex's review and the owner's decisions. **v0.3** answers Codex's re-review of v0.2 (`docs/reviews/codex-m4-draft-rereview-v02-2026-10-18.md`; R1–R4 plus three small corrections). The owner's instruction was:
+This package is for Codex's review and the owner's decisions.
+
+**State.** v0.3 was committed as `43bd95d` on `docs/m4-specs`, with the owner's approval. Codex reviewed that commit (`docs/reviews/codex-m4-spec-review-43bd95d.md`, in the root checkout): changes requested, V1–V3. R2, R4 and the small corrections were accepted. **v0.4** is the follow-up commit on top of `43bd95d`. The owner's instruction, relayed from Codex:
+> "Claude should address V1–V3 together, preserve the accepted fixes, and return the follow-up commit for review."
+
+## v0.4 corrections
+
+| Finding | Where | What changed |
+|---|---|---|
+| **V1** availability against delivery | M4-06 contracts, rules 2, 3, 6 and tests; `portfolio/reference.py` added to its allowed files; M4-13 rule 2; D25 | The decision moment `D` is the first time a CLOSED revision is actually **known**: `max(available_from, received or delivered)`, with replay latency and equal-time sequence. It comes from the new `Knowledge.first_known_closed(..., not_after=cutoff)`, on both StoreKnowledge and ReplayKnowledge, and the bar used is the revision known at `D`. A revision available before the cutoff but delivered after it counts as missing. Tests cover zero and nonzero latency, a late correction, and early versus late polling. No message precedes its knowledge. |
+| **V2** late cancels rewriting the past | M4-06 rules 5 and 7 (new) and tests | Before **any** call at time `t`, the broker materializes every outcome with `D ≤ t`. Only cancels received in `[open, D)` can affect an outcome; `c == D` is too late. A later cancel gets a conclusive TOO_LATE (or CANCELLED if already cancelled), never PENDING, and earlier messages never change. A cancel after the missing-data cutoff meets EXPIRED. Tests cover just before, at and after `D`, and after the cutoff, under frequent and delayed polling. |
+| **V3** the split boundary and the valuation basis | M4-09 rules 3, 8 and 9 and tests; D34 | An order crosses when `created_at < e ≤ at`, in any non-final state including NEW, judged by the actions known at `at`, not by what the gate knew. A split at its own session's open counts. Valuation is **Unavailable** from the action until a post-action raw close is known, so an old price is never multiplied by new shares. No snapshot is stored, and so no peak, in that interval, and a dividend ex-date day waits for its own close. Entitlement (the previous close) is kept apart from receivable recognition (the ex-date open). The 110-share, dividend, delayed-fill, revision-cutoff and legacy-id cases are kept. |
+| Note 1 | M4-04 rule 4.1 and tests | A higher flag sequence after an emergency halt leaves an older unresolved intent UNRESOLVED, never NOT_APPLIED. |
+| Note 2 | M4-10 rule 1.3 and tests | Lineage evidence must match the provider (`snapshot.source`) as well as the instrument; mixed providers are refused. |
+| Note 3 | this package, PROGRESS | The committed `43bd95d` state is recorded; `43bd95d` itself is unchanged, with v0.4 on top. |
+
+**Estimate:** ≈ 74 h (M4-06 10 h). **D19–D34 remain proposals.** Accepted fixes are preserved.
+
+## v0.3 (earlier) record
+
+**v0.3** answered Codex's re-review of v0.2 (`docs/reviews/codex-m4-draft-rereview-v02-2026-10-18.md`; R1–R4 plus three small corrections). The owner's instruction was:
 > "Address R1–R4 and the three small corrections in that review together, in one uninterrupted documentation pass. Preserve the resolved fixes. Return one revised package, still uncommitted, with no M4 code, merge or push."
 
 ## v0.3 corrections
