@@ -9,8 +9,11 @@ empty database created from template0 through the maintenance DSN in
 INVESTMENT_ENGINE_TEST_PG_DSN, and dropped afterwards even when the test
 fails. Without the variable they skip with a visible reason. The DSN is never
 printed: it may hold a password. It is handed out as a SecretDsn, a str whose
-repr is redacted, and assertion explanations involving one are withheld, so a
-failing test's report can't show it either (Codex M3 review B8).
+repr is redacted, and assertion explanations involving one are withheld (Codex
+M3 review B8). Code beyond the fixture (the root connection guard, the driver)
+rebuilds plain connection text, so every report is also scrubbed at the report
+boundary: each DSN and password the fixtures read is replaced in tracebacks,
+locals and captured output, wherever it came from (Codex M3 re-review R1).
 """
 
 import os
@@ -55,9 +58,50 @@ def pytest_assertrepr_compare(config, op, left, right):
     return None
 
 
+_SECRETS: set[str] = set()  # every DSN and password the fixtures have read, as they may appear in a report
+
+
+def _remember(dsn: str) -> None:
+    from psycopg.conninfo import conninfo_to_dict
+
+    found = {str(dsn)}
+    try:
+        password = conninfo_to_dict(str(dsn)).get("password")
+    except Exception:  # an unparsable DSN is refused later; its whole text is still remembered
+        password = None
+    if password:
+        # As written, as libpq quoting escapes it, and as a repr shows it.
+        found |= {password, password.replace("\\", "\\\\").replace("'", "\\'"), repr(password)[1:-1]}
+    _SECRETS.update(v for v in found if len(v) >= 4)
+
+
+def _scrub(text: str) -> str:
+    for secret in sorted(_SECRETS, key=len, reverse=True):
+        text = text.replace(secret, "<redacted>")
+    return text
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """The report boundary: whatever a setup, call or teardown failure shows (arguments, locals, normalized
+    connection text, captured output, logs), no remembered DSN or password survives into it."""
+    outcome = yield
+    report = outcome.get_result()
+    if not _SECRETS:
+        return
+    if report.longrepr is not None:
+        text = str(report.longrepr)
+        if _scrub(text) != text:
+            report.longrepr = _scrub(text)
+    report.sections = [(title, _scrub(content)) for title, content in report.sections]
+
+
 def maintenance_dsn() -> str | None:
     value = os.environ.get(ENV_TEST_PG_DSN)
-    return SecretDsn(value) if value else None
+    if not value:
+        return None
+    _remember(value)
+    return SecretDsn(value)
 
 
 @contextmanager
@@ -71,7 +115,9 @@ def temporary_database(dsn: str) -> Iterator[str]:
     with psycopg.connect(dsn, autocommit=True) as admin:
         admin.execute(sql.SQL("CREATE DATABASE {} TEMPLATE template0 ENCODING 'UTF8'").format(sql.Identifier(name)))
     try:
-        yield SecretDsn(make_conninfo(dsn, dbname=name))
+        database = SecretDsn(make_conninfo(dsn, dbname=name))
+        _remember(database)
+        yield database
     finally:
         _drop(dsn, name)
 

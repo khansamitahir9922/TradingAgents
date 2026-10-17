@@ -236,3 +236,64 @@ def test_failing_postgres_tests_never_print_the_dsn(tmp_path, options):
     assert "4 failed, 1 passed, 2 errors" in text, text[-2000:]  # every route was really exercised
     assert CANARY not in text and "password=" not in text
     assert "<test PostgreSQL DSN, redacted>" in text
+
+
+NESTED_DRIVER_CONFTEST = '''
+import pytest
+
+import tests.conftest as root
+from tests.engine import conftest as actual
+
+pytest_plugins = ("tests.conftest", "tests.engine.conftest")
+
+
+@pytest.fixture(autouse=True)
+def fake_driver(monkeypatch):
+    """The real root guard and the real pg_database fixture; only the final driver call is replaced, and it fails
+    after the guard has normalized the DSN into plain connection text."""
+    monkeypatch.setenv(actual.ENV_TEST_PG_DSN,
+                       "host=localhost user=fake password=IE_DRIVER_PASSWORD_CANARY dbname=postgres")
+
+    def failure(conninfo, **kwargs):
+        raise RuntimeError("synthetic driver connection failure")
+
+    monkeypatch.setitem(root.PG_REAL, "sync", failure)
+'''
+NESTED_DRIVER_TESTS = '''
+import pytest
+
+
+@pytest.mark.postgres
+def test_connection_setup(pg_database):
+    pass
+
+
+@pytest.mark.postgres
+def test_logged_and_printed(pg_database):
+    pass
+'''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("options", [[], ["-l", "--tb=long", "-rA"], ["--tb=native", "-rA"]],
+                         ids=["default", "locals", "native"])
+def test_a_failing_connection_setup_never_prints_the_password(tmp_path, options):
+    """Codex re-review R1: the guard rebuilds the DSN as plain text for the driver; a driver failure's traceback
+    (its arguments and, with -l, its locals) must still not show the password. Diagnostics stay."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    (tmp_path / "conftest.py").write_text(NESTED_DRIVER_CONFTEST, encoding="utf-8")
+    (tmp_path / "test_nested.py").write_text(NESTED_DRIVER_TESTS, encoding="utf-8")
+    (tmp_path / "pytest.ini").write_text("[pytest]\nmarkers =\n    postgres\n", encoding="utf-8")
+    root = Path(__file__).parents[2]
+    out = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--rootdir", str(tmp_path),
+                          "--confcutdir", str(tmp_path), *options, str(tmp_path / "test_nested.py")],
+                         capture_output=True, text=True, timeout=120, cwd=root,
+                         env={**os.environ, "PYTHONPATH": str(root)})
+    text = out.stdout + out.stderr
+    assert "2 error" in text and text.count("synthetic driver connection failure") >= 2, text[-3000:]
+    assert "IE_DRIVER_PASSWORD_CANARY" not in text
+    if "--tb=native" not in options:  # native tracebacks show no arguments; the others show the connection text
+        assert "<redacted>" in text  # still shown, minus the password

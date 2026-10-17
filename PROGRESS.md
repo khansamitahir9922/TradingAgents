@@ -150,6 +150,13 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-00 follow-up, Codex M3 re-review R1: no password in a failing connection setup's report)
+- **Finding:** with a failing driver connection, pytest's default and long traceback styles showed the root guard's and psycopg's own arguments (the rebuilt conninfo text), which held the password. `SecretDsn` covers only the fixture's own values.
+- **Fix (`tests/engine/conftest.py`):** the fixtures remember every DSN they read (maintenance and per-test), plus its password as written, as libpq quoting escapes it and as a repr shows it. A `pytest_runtest_makereport` hookwrapper replaces each one with `<redacted>` in the report's longrepr and captured sections, for setup, call and teardown alike. `SecretDsn` and the assertion hook stay.
+- **Regression (`test_postgres_harness.py`):** `test_a_failing_connection_setup_never_prints_the_password` runs a nested pytest that loads the real `tests.conftest` and `tests.engine.conftest`, sets a fake canary DSN and makes the root `PG_REAL["sync"]` raise. Under the default, `-l --tb=long -rA` and `--tb=native -rA` styles it asserts 2 errors, the diagnostic shown, and no canary. Without the fix the default and long variants fail. The native variant passes either way, since native tracebacks print no arguments. Codex's probe `test_connection_setup_failure_does_not_expose_fake_password` passes, run from a temporary copy that was then deleted.
+- **Checks (Git Bash):** harness file 55 passed; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2853 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 828.03s (0:13:48) (only failure: the baseline cache-location test).
+
 ### 2026-10-17: Claude Code (M3 re-review package: Codex's B1–B8 fixed)
 - **Codex's review at `4102817`** (`docs/reviews/codex-m3-milestone-review-4102817.md`) requested changes B1–B8 and suggested S1–S4. The owner forwarded it on 2026-10-17 with "fix B1–B8 in one uninterrupted follow-up package, with regression tests, task commits and required checks; return one combined re-review package; do not merge, push or start M4."
 - **Fix commits:** `67a333a` B8, `c366387` B1, `46fd8b0` B4, `0059303` B6, `b66c075` B3, `d528c90` B2, `c81cb08` B7, `0558667` B5, `23f9d0a` S2 (tests), `2d38b3b` S3 (docs). Each has a regression test observed failing without its fix and passing with it, plus its own full run.
