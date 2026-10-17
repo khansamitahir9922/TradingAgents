@@ -150,6 +150,13 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-06 follow-up, Codex M3 review B1: restricted-list changes are serialized)
+- **Finding:** `restrict`/`unrestrict` read the current rules before `publish_policy` took the account-control lock. Two concurrent changes could both build on the same stale list, so one change was silently lost, possibly a restriction an Admin had just added.
+- **Change (`risk/limits.py`):** the read, the change and the publication run in one managed transaction under the account-control lock. The nested publish joins it, and the lock is re-entrant within the transaction.
+- **Regression (`test_limits.py`):** `test_concurrent_restriction_changes_both_survive`, add/add and add/remove, 20 repetitions each. The racers wait at a barrier just before taking the lock. The test checks the final rules and that every published version differs from its predecessor by exactly one instrument (the audit chain, ordered by version). Observed failing without the fix (add/add kept only AMD; add/remove brought NVDA back), passing with it.
+- **Checks (Git Bash):** `test_limits.py` passed (23). Ruff first flagged the new test's thread closure (unbound loop variables) and a `zip` without `strict`. I fixed both after the full run below; the file passed again and ruff passed. Whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2821 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 690.51s (0:11:30) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-00 follow-up, Codex M3 review B8: the test DSN never reaches failure output)
 - **Finding:** pytest prints a failing test's fixture values, so `pg_database`'s plain DSN string, password included, appeared in any failing PostgreSQL test's report. `bd18615` had covered subprocess argv only.
 - **Change (`tests/engine/conftest.py`):**

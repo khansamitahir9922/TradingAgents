@@ -198,6 +198,72 @@ def test_concurrent_publishes_get_consecutive_versions(pg_database, env):
         c.close()
 
 
+# ---------------------------------------------------------------- concurrent restricted-list changes (Codex B1)
+
+
+def _gated_store(pg_database, barrier, opened):
+    """A LimitStore on its own connection whose first account-control lock waits at `barrier`: both racers have
+    done everything they do before the lock, then race for it."""
+    conn = open_operational_pg(pg_database)
+    opened.append(conn)
+    db = PostgresDatabase(conn)
+    real, first = db.lock, [True]
+
+    def lock(*names):
+        if first[0] and any(n.startswith("account-control|") for n in names):
+            first[0] = False
+            barrier.wait(30)
+        real(*names)
+
+    db.lock = lock
+    audit = AuditStore(db)
+    return LimitStore(db, audit, AccountRegistry(db, audit, ReplayClock(NOW)), ReplayClock(NOW))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("start, changes, final", [
+    ((), (("EQ_US_NVDA", True), ("EQ_US_AMD", True)), ("EQ_US_AMD", "EQ_US_NVDA")),
+    (("EQ_US_NVDA",), (("EQ_US_AMD", True), ("EQ_US_NVDA", False)), ("EQ_US_AMD",)),
+], ids=["add-add", "add-remove"])
+def test_concurrent_restriction_changes_both_survive(pg_database, env, start, changes, final):
+    store, db, _, audit = env
+    publish_proposed(store)
+    for instrument in start:
+        store.restrict("P1", instrument, by=OWNER, reason="start")
+    for rep in range(20):
+        if rep:  # back to the starting list, as an ordinary change
+            current = set(store.policy_at("P1", NOW).restricted)
+            for instrument in sorted(current - set(start)):
+                store.unrestrict("P1", instrument, by=OWNER, reason="reset")
+            for instrument in sorted(set(start) - current):
+                store.restrict("P1", instrument, by=OWNER, reason="reset")
+        barrier, opened, errors = threading.Barrier(2), [], []
+        racers = [_gated_store(pg_database, barrier, opened) for _ in changes]
+
+        def run(s, instrument, add, rep=rep, errors=errors):
+            try:
+                (s.restrict if add else s.unrestrict)("P1", instrument, by=OWNER, reason=f"race {rep}")
+            except Exception as exc:  # surfaced below
+                errors.append(exc)
+
+        threads = [threading.Thread(target=run, args=(s, *change)) for s, change in zip(racers, changes,
+                                                                                         strict=True)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(60)
+        for c in opened:
+            c.close()
+        assert not errors, (rep, errors)
+        assert store.policy_at("P1", NOW).restricted == final, rep  # neither change was lost
+    # Every published version is exactly its predecessor plus or minus one instrument: no version was built on a
+    # stale read.
+    events = [e.after for e in audit.for_target("account", "P1") if e.action == "policy.publish"]
+    published = [r.restricted for r in sorted(events, key=lambda r: int(r.version.split("-")[1]))]
+    for before, after in zip(published, published[1:], strict=False):
+        assert len(set(before) ^ set(after)) == 1, (before, after)
+
+
 # ---------------------------------------------------------------- fresh-process decoding and the Admin CLI
 
 

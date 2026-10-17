@@ -216,13 +216,17 @@ class LimitStore:
 
     def _restricted(self, account_id: str, instrument_id: str, add: bool, *, by: Actor, reason: str,
                     effective_at: datetime | None) -> PolicyRules:
-        when = effective_at or check_utc(self._clock.now(), "now")
-        current = self.policy_at(account_id, when)
-        listed = set(current.restricted)
-        listed = listed | {instrument_id} if add else listed - {instrument_id}
-        values = {name: getattr(current, name) for name in _POLICY_FIELDS}
-        return self.publish_policy(account_id, {**values, "restricted": tuple(listed)}, by=by, reason=reason,
-                                   effective_at=effective_at)
+        """Read the current list, change it and publish, all under the account-control lock (Codex M3 review B1):
+        a concurrent change commits entirely before this one, which then builds on it, or entirely after."""
+        with self._db.transaction():
+            self._db.lock(f"account-control|{account_id}")
+            when = effective_at or check_utc(self._clock.now(), "now")
+            current = self.policy_at(account_id, when)
+            listed = set(current.restricted)
+            listed = listed | {instrument_id} if add else listed - {instrument_id}
+            values = {name: getattr(current, name) for name in _POLICY_FIELDS}
+            return self.publish_policy(account_id, {**values, "restricted": tuple(listed)}, by=by, reason=reason,
+                                       effective_at=effective_at)
 
     def restrict(self, account_id: str, instrument_id: str, *, by: Actor, reason: str,
                  effective_at: datetime | None = None) -> PolicyRules:
