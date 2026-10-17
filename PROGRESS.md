@@ -150,6 +150,13 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-12 follow-up: a view without lineage is never stored)
+- **Found in self-review:** proposal records are keyed by (account, view lineage id). A view naming no lineage record was stored under the empty id, so a second such view for the same account would have returned the first one's record.
+- **Change:** such a view now gets a returned PREREQUISITE_MISSING diagnostic ("view lineage"), like an unknown account. Nothing is stored and nothing expires. A view naming a lineage id that isn't stored still gets an ordinary stored record.
+- **Test:** `test_views_without_lineage_get_a_returned_diagnostic_and_never_share_a_record`. Observed failing without the fix (records stored), passing with it.
+- **Checks (Git Bash):** one full run covered this and the DSN follow-up together. Ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2816 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 625.84s (0:10:25) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-14: the CLI report of proposed intents with reasons)
 - **Built:**
   - `investment_engine/intents_cli.py`: `views replay`, and `intents propose|list|show` on the Admin CLI's intents group.

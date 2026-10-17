@@ -171,6 +171,22 @@ def test_an_unknown_account_gets_a_returned_diagnostic_and_nothing_changes(env):
 
 
 @pytest.mark.unit
+def test_views_without_lineage_get_a_returned_diagnostic_and_never_share_a_record(env):
+    env.account("R1")
+    waiting = env.propose("R1", view_for(env.stores, env.reader, DAY))
+    before = env.counts()
+    late = t_of(SESSIONS[80])  # long after R1's deadline: nothing may expire either
+    bare = [replace(view_for(env.stores, env.reader, d, tag="b"), evidence_refs=()) for d in SESSIONS[70:72]]
+    records = [env.propose("R1", v, at=late) for v in bare]
+    assert [r.missing for r in records] == [("view lineage",), ("view lineage",)]
+    assert env.counts() == before and env.stores.proposals.for_view("R1", "") is None
+    assert env.stores.intents.get(waiting.intent_id).state is IntentState.AWAITING_APPROVAL
+    unstored = replace(view_for(env.stores, env.reader, SESSIONS[72], tag="u"), evidence_refs=("lin-unknown",))
+    named = env.propose("R1", unstored)  # a named but unknown lineage is an ordinary stored record
+    assert named.missing == ("view lineage",) and env.stores.proposals.for_view("R1", "lin-unknown") == named
+
+
+@pytest.mark.unit
 def test_missing_prerequisites_are_named_and_nothing_is_invented(env):
     env.account("NL", limits=False)
     env.account("NS", start=False)

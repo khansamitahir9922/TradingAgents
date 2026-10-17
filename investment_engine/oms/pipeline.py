@@ -225,6 +225,11 @@ def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: C
         return ProposalRecord(account_id, view_lineage_id, when, ProposalOutcome.PREREQUISITE_MISSING,
                               f"unknown account {account_id}", ("account",), None, ())
     at = _business_time(account.kind, at, stores.clock)
+    if not view_lineage_id:
+        # Records are keyed by (account, view lineage id); a view naming no lineage can't be keyed, so, like an
+        # unknown account, it gets a returned diagnostic and nothing is stored or expired.
+        return ProposalRecord(account_id, view_lineage_id, at, ProposalOutcome.PREREQUISITE_MISSING,
+                              "view lineage: the view names no lineage record", ("view lineage",), None, ())
     with stores.db.transaction():
         stores.db.lock(f"account-control|{account_id}")
         existing = stores.proposals.for_view(account_id, view_lineage_id)
