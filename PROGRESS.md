@@ -150,6 +150,28 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-12: the intent pipeline, intent lineage and replay proposals)
+- **Built:**
+  - `oms/pipeline.py`: `propose`, `expire_due`, `expire_paper_due`, `propose_over_replay`, `ProposalRecord`/`ProposalStore` and `ControlStores`. It covers the outcome matrix (B3), BUY admission under the `buy-admission|account|session` lock (B5), legal-edge routing including EXPIRED_ON_ARRIVAL (S5), one managed transaction per (account, view), idempotent re-runs, and replay reads through the Knowledge port (S2).
+  - `lineage/intent_lineage.py`: one append-only record per intent version.
+  - `schema_pg/0010_intent_lineage.sql`; the registry lines.
+- **Tests first:** the four spec test files were written before the modules and failed at import (observed). The draft was extended to cover every acceptance test:
+  - a failure injected at each write in turn (every write of a successful run was tried);
+  - the admission side cases (reduction, approval, rerun, decline, expiry, rollback, SELL);
+  - replay delivery after availability, equal-time sequence order, a missing session, settings effective too late;
+  - determinism across fresh databases and setup days;
+  - the two research timelines, and PAPER live-time only.
+- **Found and fixed while testing:**
+  1. **PAPER time check:** the draft compared a supplied `at` with a second read of the live clock, which a real LiveClock never matches. PAPER calls now supply no time (`at=None`), and a supplied one is refused (spec rule 1: "a supplied replay time raises"). RESEARCH requires one. `expire_paper_due` takes the live clock, as the contract shows.
+  2. **Lineage ids differed between setup days:** the id hashed the `AutonomySetting`, including its provenance (`recorded_at`, `set_by`). It now hashes the setting's deterministic `setting_id`; the full setting is still stored (S2).
+  3. **Stale lineage values:** a version's lineage closure read whatever admission count and volume references were current when it was called, so a reduced v2 could inherit v1's. Both are now bound per version; a policy rejection records none, and a SELL records no admission count.
+  4. **Idempotency inside the lock:** the existing-record check now runs under the account-control lock.
+- **Test-data notes:** an account holding shares needs established action coverage to be snapshotted (Law 9), so those tests pass coverage. A volume gap is RISK_REJECTED (ADV unavailable, no older bar); a missing decision bar or valuation bar is PREREQUISITE_MISSING.
+- **Lineage `final_state`** is the state the pipeline routed the version to. A later expiry or approval is in the intent's transition history.
+- **Checks (Git Bash):** the four files passed (39, including the 50-repetition race, about 165 s). Ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2782 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 598.08s (0:09:58) (only failure: the baseline cache-location test)
+  - **The suite is now about 10 minutes**, mainly from the race test. Each proposal reads 20 Parquet files for its average daily value; flagged as a later optimisation.
+
 ### 2026-10-17: Claude Code (M3-07 follow-up: complete replay knowledge, and the drawdown peak query)
 - **Why:** M3-12 proposes over a replay at the view's time, which comes after the last delivered bar. M2's `ReplayKnowledgeReader` refuses any time later than its last delivered event, because more events might still arrive. Separately, building each snapshot reloaded the account's whole snapshot history to find its drawdown peak, so a run of proposals slowed down quadratically.
 - **Change, within M3-07's allowed files:**
