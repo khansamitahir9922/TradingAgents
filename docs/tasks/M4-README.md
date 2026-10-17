@@ -1,10 +1,10 @@
-# M4 specification pack: OMS and Execution Worker, simulated (draft v0.4, for review)
+# M4 specification pack: OMS and Execution Worker, simulated (accepted; in implementation on `m4/milestone`)
 
-**Draft v0.4, 2026-10-18.** Prepared by Claude on `docs/m4-specs` (worktree `C:/Users/LOQ/TradingAgents-m4-specs`, from `main` `4c56ac1`). Documents only: no M4 code has been written or authorized.
+**Accepted for implementation (owner, 2026-10-18):** Codex accepted the specs at `c59a863` (`docs/reviews/codex-m4-spec-accepted-c59a863.md`, imported unchanged). The owner approved D19–D34 as recommended, including D23's roadmap reading, and the whole milestone (14 tasks, about 74 h, with the over-3 h exception) on `m4/milestone` from `c59a863`. The owner wrote: "approved", in answer to that exact proposal. History: **Draft v0.4, 2026-10-18.** Prepared by Claude on `docs/m4-specs` (worktree `C:/Users/LOQ/TradingAgents-m4-specs`, from `main` `4c56ac1`). Documents only: no M4 code has been written or authorized.
 
 v0.4 applies Codex's review of the fixed commit `43bd95d` (`docs/reviews/codex-m4-spec-review-43bd95d.md`): V1–V3 and the three notes. v0.3 applied Codex's re-review of v0.2 (`docs/reviews/codex-m4-draft-rereview-v02-2026-10-18.md`): R1–R4 and three small corrections. v0.2 had applied the preliminary review of v0.1 (`docs/reviews/codex-m4-draft-review-2026-10-18.md`): B1–B9 and the clarifications. Both are in the root checkout, and the correction tables are in `docs/reviews/claude-m4-spec-package.md`.
 
-**D19–D34 remain proposals.** D34 is new in v0.2, and D25, D27 and D28 are refined. The owner answers them and decides on approving the whole milestone after Codex reviews a fixed commit.
+**D19–D34 are accepted as recommended (owner, 2026-10-18).** History: they were proposals in v0.1–v0.4. D34 is new in v0.2, and D25, D27 and D28 are refined. The owner answers them and decides on approving the whole milestone after Codex reviews a fixed commit.
 
 **Milestone (architecture Part K, frozen):**
 - the Order state machine, with transition ownership and compare-and-set;
@@ -30,7 +30,7 @@ v0.4 applies Codex's review of the fixed commit `43bd95d` (`docs/reviews/codex-m
 - OPEN-09: D21 and D22.
 - Walk-forward: in place since M2-11.
 
-## Owner decisions (proposals; Claude's recommendation in bold)
+## Owner decisions (accepted as recommended, owner, 2026-10-18; first proposed in the drafts)
 
 Plain English. Thresholds, fees and timeouts are versioned configuration. Numbering continues from M3's D1–D18.
 

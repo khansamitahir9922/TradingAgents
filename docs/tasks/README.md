@@ -12,7 +12,7 @@ Each task has one spec here (`M1-00.md` … `M1-17.md`). A spec is the contract 
 
 **M3:** [M3 pack](M3-README.md), M3-00 – M3-14. **Done:** merged into local `main` at `84494f2` on 2026-10-17, after Codex's final review (`docs/reviews/codex-m3-accepted-84494f2.md`). History: **accepted for implementation** (owner, 2026-10-16, after Codex accepted the specs at `6085fd9`), with D1–D18 accepted as recommended. All 15 tasks are committed on `m3/milestone`, in review (Codex's milestone review at `4102817`; B1–B8 fixed for re-review). History: draft v0.3 for Codex re-review (2026-10-16; v0.1 reviewed at `1ce5250`, v0.2 at `e7ec7e1`), not then accepted.
 
-**M4:** [M4 pack](M4-README.md), M4-00 – M4-13: **draft v0.4 for Codex review** (2026-10-18; v0.1 and v0.2 preliminarily reviewed, v0.3 reviewed at `43bd95d`; B1–B9, R1–R4 and V1–V3 applied), with owner decisions D19–D34, ≈ 74 h. Not accepted for implementation; no M4 code.
+**M4:** [M4 pack](M4-README.md), M4-00 – M4-13: **accepted for implementation** (owner, 2026-10-18, after Codex accepted the specs at `c59a863`), with D19–D34 accepted as recommended; in implementation on `m4/milestone`. History: **draft v0.4 for Codex review** (2026-10-18; v0.1 and v0.2 preliminarily reviewed, v0.3 reviewed at `43bd95d`; B1–B9, R1–R4 and V1–V3 applied), with owner decisions D19–D34, ≈ 74 h. Not accepted for implementation; no M4 code.
 
 **Roles restored (owner, 2026-10-14):** Claude Code implements; Codex reviews. The temporary Copilot assignment has ended; accepted snapshot reviews are retained as history. See `docs/reviews/claude-return-handoff.md`.
 
