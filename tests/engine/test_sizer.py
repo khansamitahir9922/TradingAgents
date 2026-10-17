@@ -160,3 +160,31 @@ def test_decision_contracts_and_not_run_are_registered_values():
         RiskDecision("int-x", 1, RiskOutcome.REDUCE, (), "risk-1", "psn-x", None, T)
     with pytest.raises(ValueError):
         CheckResult("autonomy", True, "")  # a reason is always set
+
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("prec, rounding", [(6, "ROUND_FLOOR"), (6, "ROUND_CEILING"), (9, "ROUND_HALF_UP"),
+                                            (50, "ROUND_UP")])
+def test_sizing_ignores_the_callers_decimal_context(prec, rounding):
+    """Codex B6: the limit price's quantize and every sizing step use a fresh context."""
+    import decimal
+
+    from investment_engine.lineage.records import canonical_json
+
+    args = [(view(), reference(), snap()), (view("BEARISH"), reference(), snap(held="12345")),
+            (view(), reference(close="987654.32"), snap(cash="99999999.99"))]  # inputs built in the normal context
+
+    def cases():
+        return [size(v, view_lineage=lineage(), reference=ref, snapshot=s, limits=LIMITS, rules=RULES, calendar=CAL,
+                     at=T, sizer_version=SIZER_VERSION).intent for v, ref, s in args]
+
+    expected = canonical_json(cases())
+    with decimal.localcontext(decimal.Context(prec=prec, rounding=getattr(decimal, rounding))) as caller:
+        caller.traps[decimal.Inexact] = True
+        intents = cases()  # only sizing runs under the caller's context
+    assert canonical_json(intents) == expected
+    with decimal.localcontext(decimal.Context(prec=prec, rounding=getattr(decimal, rounding))) as caller:
+        caller.traps[decimal.Inexact] = True
+        cases()
+        assert caller.prec == prec and caller.traps[decimal.Inexact]

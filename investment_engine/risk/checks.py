@@ -26,7 +26,7 @@ Deterministic and Decimal; comparisons exactly at a limit pass.
 
 from dataclasses import dataclass, replace
 from datetime import date, datetime
-from decimal import ROUND_FLOOR, Context, Decimal
+from decimal import ROUND_FLOOR, Decimal, getcontext
 
 from investment_engine.decision.market_view import MarketView, ViewDirection
 from investment_engine.lineage.records import register
@@ -36,10 +36,8 @@ from investment_engine.policy.decisions import CheckResult
 from investment_engine.portfolio.reference import RawReference
 from investment_engine.portfolio.snapshot import PortfolioSnapshot
 from investment_engine.quant.adjusted import BarRef
-from investment_engine.risk.decisions import RiskDecision, RiskOutcome
+from investment_engine.risk.decisions import RiskDecision, RiskOutcome, exact
 from investment_engine.risk.limits import Halt, RiskLimits
-
-CTX = Context(prec=34)
 
 
 @dataclass(frozen=True)
@@ -68,6 +66,7 @@ class HaltRequest:
 register(HaltRequest)
 
 
+@exact
 def average_daily_value(knowledge, calendar, source: str, instrument_id: str, session: date, sessions: int, *,
                         at: datetime) -> tuple[Decimal | None, tuple[BarRef, ...], str]:
     """Mean raw close x volume of the bars of the `sessions` regular sessions ending at `session`, all known at T.
@@ -85,8 +84,8 @@ def average_daily_value(knowledge, calendar, source: str, instrument_id: str, se
             return None, tuple(refs), f"volume history unavailable: {day} not known at {at.isoformat()}"
         refs.append(BarRef(bar.source, bar.instrument_id, bar.timeframe, bar.start_time, bar.revision, bar.import_id,
                            bar.available_from, bar.availability_basis))
-        total = CTX.add(total, CTX.multiply(bar.close, bar.volume))
-    return CTX.divide(total, Decimal(sessions)), tuple(refs), ""
+        total = getcontext().add(total, getcontext().multiply(bar.close, bar.volume))
+    return getcontext().divide(total, Decimal(sessions)), tuple(refs), ""
 
 
 def _floor(x: Decimal) -> Decimal:
@@ -94,9 +93,10 @@ def _floor(x: Decimal) -> Decimal:
 
 
 def _pct(x: Decimal) -> str:
-    return f"{CTX.multiply(x, Decimal(100)).quantize(Decimal('0.1'))}%"
+    return f"{getcontext().multiply(x, Decimal(100)).quantize(Decimal('0.1'))}%"
 
 
+@exact
 def check_risk(intent: OrderIntent, inputs: RiskInputs, *, at: datetime) -> tuple[RiskDecision, HaltRequest | None]:
     at = check_utc(at, "at")
     s, limits, ref, view = inputs.snapshot, inputs.limits, inputs.reference, inputs.view
@@ -132,8 +132,8 @@ def check_risk(intent: OrderIntent, inputs: RiskInputs, *, at: datetime) -> tupl
         reject.append("halt")
 
     if buy and s.peak_equity > 0:
-        threshold = CTX.multiply(s.peak_equity, CTX.subtract(Decimal(1), limits.drawdown_halt_fraction))
-        drawdown = CTX.divide(CTX.subtract(s.peak_equity, s.equity), s.peak_equity)
+        threshold = getcontext().multiply(s.peak_equity, getcontext().subtract(Decimal(1), limits.drawdown_halt_fraction))
+        drawdown = getcontext().divide(getcontext().subtract(s.peak_equity, s.equity), s.peak_equity)
         ok = s.equity > threshold
         checks.append(CheckResult("drawdown", ok, f"drawdown {_pct(drawdown)} < {_pct(limits.drawdown_halt_fraction)}"
                                   f" ({limits.version})" if ok else
@@ -155,11 +155,11 @@ def check_risk(intent: OrderIntent, inputs: RiskInputs, *, at: datetime) -> tupl
 
     held = s.held(intent.instrument_id)
     if buy:
-        cap = CTX.multiply(limits.max_position_fraction, s.equity)
-        after = CTX.multiply(CTX.add(held, qty), limit)
+        cap = getcontext().multiply(limits.max_position_fraction, s.equity)
+        after = getcontext().multiply(getcontext().add(held, qty), limit)
         ok = after <= cap
-        allowed = max(_floor(CTX.subtract(CTX.divide(cap, limit), held)), Decimal(0))
-        share = CTX.divide(after, s.equity) if s.equity > 0 else Decimal(0)
+        allowed = max(_floor(getcontext().subtract(getcontext().divide(cap, limit), held)), Decimal(0))
+        share = getcontext().divide(after, s.equity) if s.equity > 0 else Decimal(0)
         checks.append(CheckResult("position", ok, f"position {_pct(share)} <= {_pct(limits.max_position_fraction)} "
                                   f"({limits.version})" if ok else
                                   f"position {_pct(share)} > {_pct(limits.max_position_fraction)} ({limits.version}): "
@@ -167,10 +167,10 @@ def check_risk(intent: OrderIntent, inputs: RiskInputs, *, at: datetime) -> tupl
         if not ok:
             reducible["position"] = allowed
         gross_now = sum((p.value for p in s.positions), Decimal(0))
-        cost = CTX.multiply(qty, limit)
-        room = min(s.cash, CTX.subtract(CTX.multiply(limits.max_gross_exposure_fraction, s.equity), gross_now))
+        cost = getcontext().multiply(qty, limit)
+        room = min(s.cash, getcontext().subtract(getcontext().multiply(limits.max_gross_exposure_fraction, s.equity), gross_now))
         ok = cost <= room
-        allowed = max(_floor(CTX.divide(room, limit)), Decimal(0)) if room > 0 else Decimal(0)
+        allowed = max(_floor(getcontext().divide(room, limit)), Decimal(0)) if room > 0 else Decimal(0)
         checks.append(CheckResult("cash", ok, f"cost {cost} <= {room} available" if ok else
                                   f"cost {cost} > {room} available (no borrowing, D2): reduce {qty} -> {allowed}"))
         if not ok:
@@ -183,10 +183,10 @@ def check_risk(intent: OrderIntent, inputs: RiskInputs, *, at: datetime) -> tupl
         checks.append(CheckResult("liquidity", False, inputs.adv_missing or "volume history unavailable"))
         reject.append("liquidity")
     else:
-        cap = CTX.multiply(limits.max_order_adv_fraction, inputs.adv)
-        value = CTX.multiply(qty, ref.close)
+        cap = getcontext().multiply(limits.max_order_adv_fraction, inputs.adv)
+        value = getcontext().multiply(qty, ref.close)
         ok = value <= cap
-        allowed = _floor(CTX.divide(cap, ref.close))
+        allowed = _floor(getcontext().divide(cap, ref.close))
         checks.append(CheckResult("liquidity", ok, f"order {value} <= {_pct(limits.max_order_adv_fraction)} of "
                                   f"{limits.adv_sessions}-session ADV {inputs.adv.quantize(Decimal('0.01'))}" if ok else
                                   f"order {value} > {_pct(limits.max_order_adv_fraction)} of {limits.adv_sessions}-"
@@ -226,6 +226,7 @@ def check_risk(intent: OrderIntent, inputs: RiskInputs, *, at: datetime) -> tupl
                          reduced, at), halt_request)
 
 
+@exact
 def reduced_version(intent: OrderIntent, decision: RiskDecision, *, at: datetime) -> OrderIntent:
     """The next version: the same intent with the reduced quantity (Law 12: a new version, never an edit)."""
     if decision.outcome is not RiskOutcome.REDUCE or (decision.intent_id, decision.intent_version) != (

@@ -155,3 +155,44 @@ def test_decisions_are_deterministic_and_inconsistent_inputs_raise():
         decide(limits=replace(LIMITS, version="risk-2"))
     with pytest.raises(ValueError, match="snapshot"):
         check_risk(sized().intent, inputs(snap(cash="1")), at=T)
+
+
+# ---------------------------------------------------------------- the caller's decimal context never matters (B6)
+
+AMBIENT = [  # (precision, rounding, extra traps): what a caller might have set
+    (6, "ROUND_FLOOR", ()), (6, "ROUND_CEILING", ()), (9, "ROUND_HALF_UP", ("Inexact",)),
+    (50, "ROUND_DOWN", ("Rounded",)), (28, "ROUND_05UP", ("Inexact", "Rounded")),
+]
+
+
+def _ambient(prec, rounding, traps):
+    import decimal
+
+    context = decimal.Context(prec=prec, rounding=getattr(decimal, rounding))
+    for trap in traps:
+        context.traps[getattr(decimal, trap)] = True
+    return context
+
+
+def _risk_cases():
+    from investment_engine.lineage.records import canonical_json
+
+    big = replace(sized().intent, quantity=Decimal(100), snapshot_id=snap().snapshot_id)
+    decision, _ = check_risk(big, inputs(adv=Decimal("500000")), at=T)  # position and liquidity both reduce
+    v2 = reduced_version(big, decision, at=T + timedelta(seconds=1))
+    approve = decide()
+    drawdown = decide(s=other_holding("85000", "1000", peak="101000"))  # at the threshold: REJECT and a halt
+    return canonical_json([approve, decision, v2, check_risk(v2, inputs(adv=Decimal("500000")), at=T), drawdown])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("prec, rounding, traps", AMBIENT)
+def test_risk_results_ignore_the_callers_decimal_context(prec, rounding, traps):
+    """Codex B6: ambient rounding changed recorded reasons, and precision 6 raised InvalidOperation."""
+    import decimal
+
+    expected = _risk_cases()
+    with decimal.localcontext(_ambient(prec, rounding, traps)) as caller:
+        before = (caller.prec, caller.rounding, dict(caller.traps))
+        assert _risk_cases() == expected  # identical quantities, decisions, reasons and identities
+        assert (caller.prec, caller.rounding, dict(caller.traps)) == before  # the caller's context is untouched

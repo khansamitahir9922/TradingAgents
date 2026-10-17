@@ -16,7 +16,7 @@ Decimal throughout; no clock is read (`created_at = at`).
 
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import ROUND_DOWN, ROUND_FLOOR, ROUND_UP, Context, Decimal
+from decimal import ROUND_DOWN, ROUND_FLOOR, ROUND_UP, Decimal, getcontext
 from zoneinfo import ZoneInfo
 
 from investment_engine.decision.market_view import MarketView, ViewDirection
@@ -26,6 +26,7 @@ from investment_engine.oms.intents import OrderIntent, Side, intent_id_for
 from investment_engine.policy.rules import PolicyRules
 from investment_engine.portfolio.reference import RawReference
 from investment_engine.portfolio.snapshot import PortfolioSnapshot
+from investment_engine.risk.decisions import exact
 from investment_engine.risk.limits import RiskLimits
 
 SIZER_VERSION = "sizer-target-weight-1"
@@ -49,6 +50,7 @@ def _check_reference(view: MarketView, view_lineage, reference: RawReference, sn
                          "reference; size from one revision only")
 
 
+@exact
 def size(view: MarketView, *, view_lineage, reference: RawReference, snapshot: PortfolioSnapshot,
          limits: RiskLimits, rules: PolicyRules, calendar, at: datetime, sizer_version: str) -> SizingResult:
     at = check_utc(at, "at")
@@ -61,7 +63,7 @@ def size(view: MarketView, *, view_lineage, reference: RawReference, snapshot: P
     if Timeframe(reference.bar.timeframe).value not in rules.view_timeframes:
         return SizingResult(None, f"{reference.bar.timeframe} views aren't allowed (D12)")
     _check_reference(view, view_lineage, reference, snapshot)
-    ctx = Context(prec=34)
+    ctx = getcontext()  # the fresh calculation context `exact` set up (Codex M3 review B6)
     held = snapshot.held(reference.instrument_id)
     current = ctx.multiply(held, reference.close)
     if view.direction is ViewDirection.BULLISH:

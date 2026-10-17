@@ -6,14 +6,40 @@ that was never executed, with its reason; it is never shown or counted as a
 pass or a failure (Codex M3 review B3).
 """
 
+import functools
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import (
+    ROUND_HALF_EVEN,
+    Context,
+    Decimal,
+    DivisionByZero,
+    InvalidOperation,
+    Overflow,
+    localcontext,
+)
 from enum import StrEnum
 
 from investment_engine.lineage.records import register
 from investment_engine.market.availability import check_utc
 from investment_engine.policy.decisions import CheckResult
+
+
+def calculation_context() -> Context:
+    """A fresh, fully specified decimal context for sizing and risk (M3-11 rule 4; Codex M3 review B6)."""
+    return Context(prec=34, rounding=ROUND_HALF_EVEN, Emin=-999999, Emax=999999, capitals=1, clamp=0, flags=[],
+                   traps=[InvalidOperation, DivisionByZero, Overflow])
+
+
+def exact(fn):
+    """Run `fn` in a fresh calculation context: every Decimal operation inside it, unqualified `quantize`, `sum` and
+    reason formatting included, ignores the caller's precision, rounding and traps, and the caller's context is
+    left untouched."""
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        with localcontext(calculation_context()):
+            return fn(*args, **kwargs)
+    return run
 
 
 class RiskOutcome(StrEnum):

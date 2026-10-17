@@ -150,6 +150,19 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-08 and M3-11 follow-up, Codex M3 review B6: sizing and risk ignore the caller's decimal context)
+- **Finding:** explicit `Context` methods covered some operations, but unqualified `quantize`, built-in `sum` and the reason formatting used the caller's ambient context. Under different rounding, identical inputs gave different recorded reasons (so different decisions); at precision 6 an ordinary approval raised `InvalidOperation`. Risk also kept one shared module context, not the fresh one M3-11 rule 4 asks for.
+- **Change:**
+  - **`risk/decisions.py` (helpers, M3-11):** `calculation_context()` is a fresh, fully specified context: precision 34, ROUND_HALF_EVEN, traps on InvalidOperation, DivisionByZero and Overflow. `exact` runs a function inside it and leaves the caller's context untouched.
+  - **`risk/checks.py` (M3-11):** `check_risk`, `average_daily_value` and `reduced_version` are `exact`; the shared `CTX` is gone, and every operation, reasons included, uses the fresh context.
+  - **`portfolio/sizer.py` (M3-08):** `size` is `exact`, so the limit price's `quantize` too.
+- **Regression:**
+  - `test_risk_results_ignore_the_callers_decimal_context`: five ambient contexts (precision 6/9/28/50; floor, ceiling, half-up, down, 05up; Inexact and Rounded trapped). It covers approve, a two-check reduction and its v2 and re-check, and a drawdown rejection with its halt request, by canonical JSON (quantities, decisions, reasons, identities). The caller's context is checked as unchanged.
+  - `test_sizing_ignores_the_callers_decimal_context`: four contexts with Inexact trapped; BUY, SELL, and a large price.
+  - All 9 observed failing before the fix; the restructured sizing test again failed without the sizer change, and passes with it.
+- **Checks (Git Bash):** the risk, sizer and pipeline files passed. Ruff passed after sorting imports; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2835 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 630.88s (0:10:30) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-06, M3-07 and M3-12 follow-up, Codex M3 review B4: a clear records its equity, and the drawdown epoch is the latest clear)
 - **Finding:** D3 restarts the high-water mark from the equity **at the clear**. `clear_halt` made that value optional, and the CLI never supplied it. The baseline also came from the latest halt event, so a re-halt after a clear fell back to the original start. In Codex's example (100,000, cleared at 85,000, then 60,000), the post-clear loss showed as no drawdown.
 - **Change:**
