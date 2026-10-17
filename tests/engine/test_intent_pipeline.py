@@ -221,6 +221,41 @@ def test_a_view_must_be_exactly_the_decision_stored_in_its_lineage(env):
 
 
 @pytest.mark.unit
+def test_a_lineage_published_between_check_and_use_never_binds_an_unchecked_view(env, monkeypatch):
+    """Codex re-review R2: the check saw no lineage; a producer then committed the genuine NEUTRAL record on another
+    connection, and a later read let a BULLISH forgery become a BUY against it. The proposal now uses the one record
+    it read and checked."""
+    env.account("R1")
+    pending = []
+    with monkeypatch.context() as patch:  # a producer that has made its view but not yet committed its lineage
+        patch.setattr(env.stores.lineage, "append", pending.append)
+        neutral = view_for(env.stores, env.reader, SESSIONS[40], "NEUTRAL")
+    (record,) = pending
+    producer = env.connect()
+    real, missed = env.stores.lineage.get, []
+
+    def get(lineage_id):
+        try:
+            return real(lineage_id)
+        except KeyError:
+            if not missed:  # the first read really misses; the producer commits right after it
+                missed.append(lineage_id)
+                producer.lineage.append(record)
+            raise
+
+    monkeypatch.setattr(env.stores.lineage, "get", get)
+    forged = replace(neutral, direction=ViewDirection.BULLISH, strength=0.5)
+    outcome = env.propose("R1", forged)
+    assert missed == [record.lineage_id] and real(record.lineage_id) == record  # the record exists now
+    assert outcome.outcome is ProposalOutcome.PREREQUISITE_MISSING and outcome.missing == ("view lineage",)
+    assert env.count("intents") == 0 and env.count("intent_lineage_records") == 0
+    monkeypatch.undo()
+    again = env.propose("R1", forged)  # now refused against the published record itself
+    assert again.missing == ("view lineage",) and "differs from the decision stored" in again.reason
+    assert env.count("intents") == 0
+
+
+@pytest.mark.unit
 def test_missing_prerequisites_are_named_and_nothing_is_invented(env):
     env.account("NL", limits=False)
     env.account("NS", start=False)

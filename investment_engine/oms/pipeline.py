@@ -230,7 +230,14 @@ def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: C
         # unknown account, it gets a returned diagnostic and nothing is stored or expired.
         return ProposalRecord(account_id, view_lineage_id, at, ProposalOutcome.PREREQUISITE_MISSING,
                               "view lineage: the view names no lineage record", ("view lineage",), None, ())
-    mismatch = _view_mismatch(view, view_lineage_id, stores)
+    # The lineage record is read once, here, and this same object is both checked against the view and used by
+    # the proposal. A record missing now stays missing for this proposal even if it is published meanwhile: no
+    # later read can bring in a record the view was never compared with (Codex M3 re-review R2).
+    try:
+        view_lineage = stores.lineage.get(view_lineage_id)
+    except KeyError:
+        view_lineage = None
+    mismatch = _view_mismatch(view, view_lineage_id, view_lineage)
     if mismatch:
         # The view isn't the decision its lineage recorded, so nothing it would produce could be reconstructed
         # (Law 18). Like an unknown account, it gets a returned diagnostic; nothing is stored or expired, and the
@@ -244,18 +251,17 @@ def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: C
             return existing  # idempotent: the same account and view were already proposed
         _expire(account_id, at, stores)
         record = _propose(account_id, view, at, stores, knowledge, calendar, coverage, calendar_version, code_version,
-                          correlation_id, view_lineage_id)
+                          correlation_id, view_lineage_id, view_lineage)
         stores.proposals.append(record)
     return record
 
 
-def _view_mismatch(view: MarketView, view_lineage_id: str, stores: ControlStores) -> str:
-    """Why `view` isn't the decision stored under `view_lineage_id`, or "" if it is. M2's pipeline hands out the
-    stored decision with exactly its lineage id as evidence (decision/pipeline.py); no other difference is allowed,
-    and nothing is replaced or repaired here. An unknown id is left to the prerequisites (a stored record)."""
-    try:
-        stored = stores.lineage.get(view_lineage_id)
-    except KeyError:
+def _view_mismatch(view: MarketView, view_lineage_id: str, stored) -> str:
+    """Why `view` isn't the decision in `stored` (the LineageRecord read for this proposal), or "" if it is. M2's
+    pipeline hands out the stored decision with exactly its lineage id as evidence (decision/pipeline.py); no other
+    difference is allowed, and nothing is replaced or repaired here. No record (`stored` is None) is not a match:
+    the proposal records the missing view lineage as a prerequisite."""
+    if stored is None:
         return ""
     expected = dataclasses.replace(stored.decision, evidence_refs=(view_lineage_id,))
     if view == expected:
@@ -270,7 +276,7 @@ def _missing(account_id, view_lineage_id, at, missing: list[tuple[str, str]]) ->
 
 
 def _propose(account_id, view, at, stores: ControlStores, knowledge, calendar, coverage, calendar_version,
-             code_version, correlation_id, view_lineage_id) -> ProposalRecord:
+             code_version, correlation_id, view_lineage_id, view_lineage) -> ProposalRecord:
     missing: list[tuple[str, str]] = []
     try:
         autonomy = stores.accounts.autonomy_at(account_id, at)
@@ -284,10 +290,8 @@ def _propose(account_id, view, at, stores: ControlStores, knowledge, calendar, c
         rules = stores.limits.policy_at(account_id, at)
     except NoLimits as exc:
         rules, _ = None, missing.append(("rules", str(exc)))
-    try:
-        view_lineage = stores.lineage.get(view_lineage_id)
-    except KeyError:
-        view_lineage, _ = None, missing.append(("view lineage", f"{view_lineage_id or 'none'} is not stored"))
+    if view_lineage is None:  # as read, and checked, by propose(); never read again here
+        missing.append(("view lineage", f"{view_lineage_id or 'none'} is not stored"))
     instrument = reference = snapshot = starting = None
     try:
         instrument = stores.instruments.get(view.instrument_id)
