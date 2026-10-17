@@ -150,6 +150,29 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-00: Order contracts, the order store and the shared state machine)
+- **Built:**
+  - `oms/order_states.py`: G3 exactly, plus each edge's owner, `check(from, to, role)`, and the final, open and fill-only state sets.
+  - `oms/orders.py`: `Order`, `OrderStatus`, `Fill` (with provenance and its executed, delivered and recorded times), `CancelRequest`, `CancelProgress`, `GateDecision`, `OrderTransition`, `Anomaly` and `FillOutcome`. Order and client ids are derived deterministically from the intent version.
+  - `events/envelope.py`: the Part H envelope (a derived `event_id`) and the `OutboxWriter` port.
+  - `oms/order_store.py`: compare-and-set writes (one version and one event each), the rule 4 fill matrix, anomalies (no version, no event), gate decisions inside their NEW edge, cancel requests as their own aggregate, and point-in-time `as_of`.
+  - Schema `0011_orders.sql`: the edge table, an immutability, +1-version and legal-edge trigger, role triggers that fail closed when the role is unset or unknown, and append-only logs.
+  - The audit registry lists the new modules.
+- **Reading noted in the module:** G3's chain "SUBMITTED -> PARTIALLY_FILLED -> FILLED" is read as filling in steps, so a single complete fill goes SUBMITTED -> FILLED. This is the accepted M4-00 rule 4.
+- **Contract detail:** `OrderStore` also takes the injected clock, for `recorded_at`, as M3's stores do. `transition` refuses PARTIALLY_FILLED and FILLED, which only a recorded fill reaches.
+- **Tests (new):** `test_order_states.py` (G3 written out independently, every pair, every owner) and `test_order_store.py`:
+  - the schema edge table matches the module;
+  - create and recreate; role refusals; raw-SQL role refusals for an unset, empty, unknown or wrong role;
+  - no role leak; trigger refusals;
+  - 20 compare-and-set races;
+  - the fill matrix (partial fills, CANCELLED before a delayed fill, refused fills on NEW, GATE_REJECTED and REJECTED orders, a fill before the ack, duplicate, conflict and overfill);
+  - event numbering; gate decisions; cancel-request versions;
+  - the `as_of` boundary at exactly the recorded time;
+  - fresh-process audit decoding.
+  - Red: the modules didn't exist, so every new test failed on import first; 155 passed after.
+- **Checks (Git Bash):** the two files, 155 passed; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3020 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 962.21s (0:16:02) (only failure: the baseline cache-location test).
+
 ### 2026-10-18: Claude Code (M4 approved; step 0 on `m4/milestone`)
 - **Codex** accepted the M4 specification pack at `c59a863` (`docs/reviews/codex-m4-spec-accepted-c59a863.md`, imported unchanged into this branch).
 - **Owner approval (2026-10-18):** "approved", in answer to: "Approve D19–D34 as recommended, including D23's roadmap reading, and the whole M4 milestone (14 tasks, ~74 h, with the over-3 h exception) on `m4/milestone` from `c59a863`."

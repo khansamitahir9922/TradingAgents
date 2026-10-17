@@ -17,4 +17,7 @@ MODULES: tuple[str, ...] = (
     "investment_engine.oms.intent_store",  # M3-09
     "investment_engine.lineage.intent_lineage",  # M3-12
     "investment_engine.oms.pipeline",  # M3-12
+    "investment_engine.oms.order_states",  # M4-00
+    "investment_engine.oms.orders",  # M4-00
+    "investment_engine.events.envelope",  # M4-00
 )
