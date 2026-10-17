@@ -13,7 +13,8 @@ repr is redacted, and assertion explanations involving one are withheld (Codex
 M3 review B8). Code beyond the fixture (the root connection guard, the driver)
 rebuilds plain connection text, so every report is also scrubbed at the report
 boundary: each DSN and password the fixtures read is replaced in tracebacks,
-locals and captured output, wherever it came from (Codex M3 re-review R1).
+locals and captured output, wherever it came from (Codex M3 re-review R1),
+and a value pytest would shorten is redacted before it is shortened.
 """
 
 import os
@@ -99,6 +100,34 @@ def _scrub(text: str) -> str:
         return text
     pattern = "|".join(re.escape(secret) for secret in sorted(_SECRETS, key=len, reverse=True))
     return re.sub(pattern, "<redacted>", text)
+
+
+def _redact_before_truncation() -> None:
+    """pytest shortens a long repr (arguments, locals, assertion operands) by cutting out its middle, before any
+    report exists, so a password split by the cut leaves a fragment no full spelling matches (Codex M3 third
+    re-review). SafeRepr.repr is where every truncating saferepr goes through, so a value that shows a remembered
+    secret in full is redacted first and shortened only afterwards. This is pytest's private API (9.1.1): if it
+    changes, this raises at import and every engine test fails, rather than leaking quietly."""
+    from _pytest._io import saferepr as module
+
+    cls, ellipsize = module.SafeRepr, module._ellipsize
+    original = cls.repr
+    if getattr(original, "redacts_secrets", False):
+        return
+
+    def repr(self, x):
+        shown = original(self, x)
+        if not _SECRETS or self.maxsize is None:  # untruncated: the report boundary finds every full spelling
+            return shown
+        full = original(cls(None, self.use_ascii), x)
+        scrubbed = _scrub(full)
+        return shown if scrubbed == full else ellipsize(scrubbed, self.maxsize)
+
+    repr.redacts_secrets = True
+    cls.repr = repr
+
+
+_redact_before_truncation()
 
 
 @pytest.hookimpl(hookwrapper=True)

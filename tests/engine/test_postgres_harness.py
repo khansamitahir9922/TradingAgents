@@ -262,16 +262,27 @@ def fake_driver(monkeypatch):
 
     monkeypatch.setitem(root.PG_REAL, "sync", failure)
 '''
-# Synthetic passwords only. Codex M3 second re-review R1: a three-character one, and one whose libpq quoting is
-# then escaped again by repr.
-DRIVER_PASSWORDS = {"canary": "IE_DRIVER_PASSWORD_CANARY", "short": "q7X", "quoted": "IE_quote'back\\slash"}
+# Synthetic credentials only. Codex M3 second re-review R1: a three-character password, and one whose libpq quoting
+# is then escaped again by repr. Third re-review: a DSN long enough (389 characters normalized) that pytest
+# shortens the driver's conninfo argument, with the cut inside the password.
+DRIVER_CASES = {
+    "canary": ("IE_DRIVER_PASSWORD_CANARY", {}),
+    "short": ("q7X", {}),
+    "quoted": ("IE_quote'back\\slash", {}),
+    "long": ("IE_LONG_PASSWORD_CANARY_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcd",
+             {"user": "u" * 63, "application_name": "v" * 180}),
+}
 
 
 def leaked_spellings(password: str, text: str) -> list[str]:
-    """The ways `password` can be shown, written out here independently of the fixture's own list."""
+    """The ways `password` can be shown, written out here independently of the fixture's own list; and, for a
+    password long enough to have them, any 12-character fragment a shortened repr could leave."""
     libpq = password.replace("\\", "\\\\").replace("'", "\\'")
     shown = {password, libpq, repr(password)[1:-1], repr(libpq)[1:-1], repr(repr(libpq)[1:-1])[1:-1]}
+    shown |= {password[i:i + 12] for i in range(len(password) - 11)}
     return sorted(spelling for spelling in shown if spelling in text)
+
+
 NESTED_DRIVER_TESTS = '''
 import pytest
 
@@ -288,20 +299,21 @@ def test_logged_and_printed(pg_database):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("password", DRIVER_PASSWORDS.values(), ids=DRIVER_PASSWORDS.keys())
+@pytest.mark.parametrize("case", DRIVER_CASES.values(), ids=DRIVER_CASES.keys())
 @pytest.mark.parametrize("options", [[], ["-l", "--tb=long", "-rA"], ["--tb=native", "-rA"]],
                          ids=["default", "locals", "native"])
-def test_a_failing_connection_setup_never_prints_the_password(tmp_path, options, password):
+def test_a_failing_connection_setup_never_prints_the_password(tmp_path, options, case):
     """Codex re-review R1: the guard rebuilds the DSN as plain text for the driver; a driver failure's traceback
-    (its arguments and, with -l, its locals) must still not show the password, however short and however it is
-    escaped. Diagnostics stay."""
+    (its arguments and, with -l, its locals) must still not show the password or any part of it, however short,
+    however escaped and however pytest shortens it. Diagnostics stay."""
     import subprocess
     import sys
     from pathlib import Path
 
     from psycopg.conninfo import make_conninfo
 
-    dsn = make_conninfo(host="localhost", user="fake", password=password, dbname="postgres")
+    password, extra = case
+    dsn = make_conninfo(**{"host": "localhost", "user": "fake", "password": password, "dbname": "postgres", **extra})
     (tmp_path / "conftest.py").write_text(f"DSN = {dsn!r}\n" + NESTED_DRIVER_CONFTEST, encoding="utf-8")
     (tmp_path / "test_nested.py").write_text(NESTED_DRIVER_TESTS, encoding="utf-8")
     (tmp_path / "pytest.ini").write_text("[pytest]\nmarkers =\n    postgres\n", encoding="utf-8")
@@ -338,3 +350,27 @@ def test_the_scrubber_covers_composed_spellings_and_never_rescans_its_marker(mon
     assert all(f"b{backslash}" not in part and f"a{quote}" not in part for part in scrubbed.split(" | ")), scrubbed
     assert "red" not in scrubbed.replace("<redacted>", ""), scrubbed
     assert "<redacted>" in scrubbed and "<<" not in scrubbed and scrubbed.count("conninfo = ") == len(shown)
+
+
+@pytest.mark.unit
+def test_a_shortened_repr_never_keeps_part_of_a_password(monkeypatch):
+    """Codex M3 third re-review, directly on pytest's own saferepr: a value too long to show whole is redacted
+    before it is shortened, so no part of a remembered password survives the cut; other values are unchanged."""
+    from _pytest._io.saferepr import DEFAULT_REPR_MAX_SIZE, saferepr
+    from psycopg.conninfo import make_conninfo
+
+    from tests.engine import conftest as actual
+
+    password, extra = DRIVER_CASES["long"]
+    monkeypatch.setattr(actual, "_SECRETS", set())
+    dsn = make_conninfo(host="localhost", password=password, dbname="postgres", **extra)
+    plain = "x" * 300
+    assert len(dsn) > DEFAULT_REPR_MAX_SIZE
+    plain_before, before = saferepr(plain), saferepr(dsn)  # nothing remembered yet
+    assert leaked_spellings(password, before)  # the cut alone leaves a fragment: what this guards against
+    actual._remember(dsn)
+    for value in (dsn, {"conninfo": dsn}, [dsn, dsn], ("prefix", {"password": password, "pad": "w" * 300})):
+        shown = saferepr(value)
+        assert len(shown) <= DEFAULT_REPR_MAX_SIZE and not leaked_spellings(password, shown), shown
+    assert saferepr(plain) == plain_before and len(plain_before) == DEFAULT_REPR_MAX_SIZE  # shortened as ever
+    assert saferepr(dsn, maxsize=None) == repr(dsn)  # untruncated: left to the report boundary

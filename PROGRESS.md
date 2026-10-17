@@ -150,6 +150,20 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-00 follow-up, Codex M3 third re-review: no password fragment after pytest's repr truncation)
+- **Finding (`codex-m3-rereview3-9becef4.md`):** with a long valid DSN (a 63-character user, a 63-character password and a 180-character application name; 389 characters normalized), pytest's `saferepr` cut the driver's `conninfo` argument to 240 characters before any report existed. That left 39 characters of the password, which no full spelling matches. Codex reproduced this in both shells; it was the residual the previous package recorded.
+- **Fix (`tests/engine/conftest.py`):**
+  - `_redact_before_truncation()` wraps `_pytest._io.saferepr.SafeRepr.repr`. Every truncating `saferepr` goes through it: arguments, locals and assertion operands, and both its cuts (reprlib's string cut and `_ellipsize`).
+  - When a secret is remembered, the full repr is built and scrubbed. If that changed anything, the scrubbed text is shortened instead of the raw one, so a cut can't fall inside a password. Values without a secret, and untruncated reprs, are unchanged and still reach the report-boundary scrub.
+  - It uses pytest's private API (9.1.1). If that changes, it raises at import and every engine test fails, rather than leaking quietly.
+- **Regressions (`test_postgres_harness.py`):**
+  - The nested driver test gains a `long` case in Codex's DSN shape (371 characters as given, a 64-character synthetic password), run under all three styles. `leaked_spellings` now also checks every 12-character fragment of the password across the whole output.
+  - New `test_a_shortened_repr_never_keeps_part_of_a_password`: pytest's own `saferepr` on the DSN, a dict, a list and a nested tuple. Before the password is remembered, the cut alone leaves a fragment; afterwards none survives. Plain values are shortened exactly as before, and untruncated reprs are untouched.
+  - **Before the fix** (old `conftest.py` restored temporarily): `[default-long]`, `[locals-long]` and the direct test failed, the direct test on surviving fragments (`0123456789AB`, …). `[native-long]` passed, since native tracebacks print no arguments. **After the fix:** harness file 66 passed.
+- **Codex's probes:** `test_codex_m3_truncated_password_probe.py` (SHA-256 `001e33e7…7699a4`, as recorded), `[default]` and `[locals]`, plus the password-variant, short-password, follow-up and review probes all passed: 17 passed, 1 deselected (`database_created_before_equity_followup`, under S1). They ran from temporary copies that were then deleted.
+- **Checks (Git Bash):** ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2865 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 725.50s (0:12:05) (only failure: the baseline cache-location test).
+
 ### 2026-10-17: Claude Code (M3 third re-review package: Codex's remaining R1 password cases fixed)
 - **Codex's second re-review at `b716355`** (`docs/reviews/codex-m3-rereview2-b716355.md`) accepted R2/B2 and the API docs, and kept B1 and B3–B7 accepted. It left R1: a password under four characters, and a quote-and-backslash password shown as repr of its libpq form, survived redaction. The owner forwarded it on 2026-10-17 with: "fix both remaining password cases together, add regression coverage, preserve the accepted fixes, and return one checked follow-up package. Do not merge, push or start M4."
 - **Commit:** `9500b2c` (M3-00, test harness only). The red/green evidence and Codex's probes (15 passed) are in its entry below.
