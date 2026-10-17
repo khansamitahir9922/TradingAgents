@@ -150,6 +150,25 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-13: approve, decline and expire at the Admin CLI)
+- **Built:**
+  - `oms/approvals.py`: `approve`, `decline`, `ApprovalRefused` and `record_refusal`.
+  - The `intents approve|decline|expire` commands, added to `admin_cli.py`'s `GROUPS`.
+  - Who may act is checked at the real command time; the deadline, autonomy setting (by `setting_id`), limits and rules versions and any halt are checked at the business time.
+  - Both times are recorded; every refusal is audited in its own transaction.
+  - The account-control lock serializes approvals with control changes.
+- **Stale writes:** the command acts on the intent as read before the lock. If expiry or another approval changed it meanwhile, the aggregate-version check reports "intent changed meanwhile; nothing approved".
+- **Tests first:** both spec test files were written before the code and failed (module missing; commands missing).
+  - Refusals: wrong version, old version after a reduction, not awaiting, deadline (exactly at it too), earlier than the proposal, Viewer, inactive, unregistered, autonomy 1 -> 2 -> 1, new risk limits, new rules, halt. Each changes nothing and writes one refusal event.
+  - Races on PostgreSQL: approve vs expire and two approvals (10 repetitions each); approve vs `set_autonomy` and vs `limits publish` (50 each). The racers wait at a gate just before the account-control lock, and the test records lock order, which is commit order.
+  - CLI: an operator added today approves a 2021 intent; an inactive operator and a Viewer are refused with an earlier `--at`; PAPER refuses `--at`; expire changes one account only; `--paper` never touches RESEARCH; decline needs a reason.
+- **Deviations to review:**
+  1. The CLI checks `--version` and `--reason` itself instead of Typer's required options. Typer's usage-error box is not ASCII (rule 6), and a missing reason is now an audited refusal (rule 7).
+  2. A PAPER `--at` is refused by the CLI even when it equals the live time; the refusal is audited through the new `record_refusal`. `approve`/`decline` themselves refuse a PAPER `at` different from `command_at`.
+  3. A missing `--at` for RESEARCH is reported as a usage error, not audited (no time to act at).
+- **Checks (Git Bash):** the two files passed (25, about 2 minutes). Ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2807 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 586.44s (0:09:46) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-12: the intent pipeline, intent lineage and replay proposals)
 - **Built:**
   - `oms/pipeline.py`: `propose`, `expire_due`, `expire_paper_due`, `propose_over_replay`, `ProposalRecord`/`ProposalStore` and `ControlStores`. It covers the outcome matrix (B3), BUY admission under the `buy-admission|account|session` lock (B5), legal-edge routing including EXPIRED_ON_ARRIVAL (S5), one managed transaction per (account, view), idempotent re-runs, and replay reads through the Knowledge port (S2).

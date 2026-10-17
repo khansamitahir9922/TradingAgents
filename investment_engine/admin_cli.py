@@ -22,9 +22,11 @@ from investment_engine.clock import LiveClock
 accounts_app = typer.Typer(no_args_is_help=True, help="Accounts and their autonomy levels (Admin only).")
 limits_app = typer.Typer(no_args_is_help=True, help="Versioned risk limits, policy rules and halts (Admin only).")
 restricted_app = typer.Typer(no_args_is_help=True, help="The restricted list; each change is a new policy version.")
+intents_app = typer.Typer(no_args_is_help=True, help="Order intents: approve, decline, expire (M3-13) and report (M3-14).")
 operators_app = typer.Typer(no_args_is_help=True, help="Local named operators and their roles (Admin only).")
 GROUPS: dict[str, typer.Typer] = {"accounts": accounts_app, "operators": operators_app,  # later tasks add theirs
-                                  "limits": limits_app, "restricted": restricted_app}  # M3-06
+                                  "limits": limits_app, "restricted": restricted_app,  # M3-06
+                                  "intents": intents_app}  # M3-13
 
 
 def register(app: typer.Typer) -> None:
@@ -308,3 +310,153 @@ def declare_start(account_id: str, operator: str = typer.Option(..., "--operator
              f"{len(declared.positions)} positions, effective {declared.effective_at.isoformat()}; no ledger "
              "until M5")
     _run(go)
+
+
+# ---------------------------------------------------------------- intents: approve, decline, expire (M3-13)
+
+
+def _run_intents(command) -> None:
+    """Open the Operational Database, run `command(stores, clock)`, print refusals plainly, close."""
+    from investment_engine.cli import _fail, _open_db
+    from investment_engine.oms.approvals import ApprovalRefused
+    from investment_engine.oms.pipeline import ControlStores
+    from investment_engine.policy.accounts import NotAuthorized
+    from investment_engine.storage.sqlite import SqliteInstrumentRepository
+
+    conn = None
+    try:
+        conn, db = _open_db(read_only=False)
+        clock = LiveClock()
+        command(ControlStores.open(db, clock, instruments=SqliteInstrumentRepository(db)), clock)
+    except (NotAuthorized, ApprovalRefused) as exc:
+        _say(f"Refused: {exc}. Nothing was approved or declined; the refusal is recorded.")
+        raise typer.Exit(1) from None
+    except LookupError as exc:
+        _say(f"Cannot complete command: {exc}")
+        raise typer.Exit(1) from None
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        _fail(exc)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _exchange(value) -> str:
+    from zoneinfo import ZoneInfo
+
+    if value is None:
+        return "not set"
+    return f"{value.isoformat()} ({value.astimezone(ZoneInfo('America/New_York')).isoformat()} exchange)"
+
+
+def _times_for(stores, stored, at_text: str | None, clock, *, action: str, operator: str):
+    """(business time, command time, label) for an intent's account (Codex re-review R2).
+
+    The command time is read once from the LiveClock. A PAPER account acts at it, and any --at is refused,
+    with the refusal audited (M3-13 rules 4 and 7). A RESEARCH account needs --at, its replay time."""
+    from investment_engine.oms.approvals import ApprovalRefused, record_refusal
+    from investment_engine.policy.accounts import AccountKind
+
+    command_at = clock.now()
+    kind = stores.accounts.account(stored.intent.account_id).kind
+    if kind is AccountKind.PAPER:
+        if at_text is not None:
+            why = "a PAPER account acts at live time only; --at is refused"
+            record_refusal(stores, action, stored.intent.intent_id, operator, command_at, _when(at_text), why,
+                           _os_user())
+            raise ApprovalRefused(why)
+        return command_at, command_at, "PAPER (live time)"
+    if at_text is None:
+        raise ValueError("a RESEARCH account needs --at T: the replay time to act at")
+    return _when(at_text), command_at, "SIMULATED (replay time)"
+
+
+def _required_version(version: int | None) -> int:
+    if version is None:  # checked here, not by typer, so the message stays plain ASCII
+        raise ValueError("--version N is required: approval acts on one exact version (Law 12)")
+    return version
+
+
+def _print_version(stored, label: str) -> None:
+    i = stored.intent
+    _say(f"{label}: intent {i.intent_id} v{i.version}: {i.side} {i.quantity} {i.instrument_id} {i.time_in_force} "
+         f"{i.order_type} limit {i.limit_price} USD; reference {i.reference_price} USD; target session "
+         f"{i.target_session}" + (f"; reduced version of v{i.supersedes}" if i.supersedes else ""))
+    for name, decision in (("policy", stored.policy_decision), ("risk", stored.risk_decision)):
+        if decision is None or hasattr(decision, "stage"):
+            _say(f"  {name}: {'not run' if decision is not None else 'not reached'}")
+            continue
+        outcome = getattr(decision, "outcome", None)
+        _say(f"  {name}: {outcome.value if outcome is not None else ('PASSED' if decision.passed else 'FAILED')}"
+             + "; " + "; ".join(f"{c.name} {'ok' if c.passed else 'FAIL'}: {c.reason}" for c in decision.checks))
+    _say(f"  approval deadline {_exchange(stored.approval_deadline)}")
+    _say("  No order is created in M3.")
+
+
+@intents_app.command("approve")
+def approve_intent(intent_id: str, version: int | None = typer.Option(None, "--version"),
+                   operator: str = typer.Option(..., "--operator"), at: str | None = typer.Option(None, "--at"),
+                   reason: str = typer.Option("", "--reason")) -> None:
+    """Approve one exact intent version before its deadline (Admin or Trader; D11, D17)."""
+    from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+    from investment_engine.oms.approvals import approve
+
+    def go(stores, clock):
+        stored = stores.intents.get(intent_id)
+        business, command_at, label = _times_for(stores, stored, at, clock, action="intent.approve",
+                                                 operator=operator)
+        _print_version(stored, label)
+        approved = approve(intent_id, _required_version(version), operator_id=operator, at=business, command_at=command_at,
+                           stores=stores, calendar=load_us_equities_calendar(), reason=reason, os_user=_os_user())
+        _say(f"APPROVED ({label}) by {approved.approved_by} at {_exchange(approved.approved_at)}; recorded "
+             f"{approved.approval_recorded_at.isoformat()} (real command time); expires "
+             f"{_exchange(approved.approval_expires_at)}. No order is created in M3.")
+    _run_intents(go)
+
+
+@intents_app.command("decline")
+def decline_intent(intent_id: str, version: int | None = typer.Option(None, "--version"),
+                   operator: str = typer.Option(..., "--operator"), reason: str = typer.Option("", "--reason"),
+                   at: str | None = typer.Option(None, "--at")) -> None:
+    """Decline one exact intent version, with a reason (Admin or Trader)."""
+    from investment_engine.oms.approvals import decline
+
+    def go(stores, clock):
+        stored = stores.intents.get(intent_id)
+        business, command_at, label = _times_for(stores, stored, at, clock, action="intent.decline",
+                                                 operator=operator)
+        _print_version(stored, label)
+        decline(intent_id, _required_version(version), operator_id=operator, at=business, command_at=command_at, stores=stores,
+                reason=reason, os_user=_os_user())
+        _say(f"DECLINED ({label}) at {_exchange(business)}; recorded {command_at.isoformat()} (real command "
+             f"time): {reason}. No order is created in M3.")
+    _run_intents(go)
+
+
+@intents_app.command("expire")
+def expire_intents(account: str | None = typer.Option(None, "--account"), at: str | None = typer.Option(None, "--at"),
+                   paper: bool = typer.Option(False, "--paper")) -> None:
+    """Expire due intents of one account (RESEARCH: --at replay time) or of every PAPER account (--paper)."""
+    from investment_engine.oms.pipeline import expire_due, expire_paper_due
+    from investment_engine.policy.accounts import AccountKind
+
+    def go(stores, clock):
+        if paper:
+            if account or at:
+                raise ValueError("--paper expires every PAPER account at live time; it takes no --account or --at")
+            expired = expire_paper_due(clock=clock, stores=stores)
+        else:
+            if not account:
+                raise ValueError("name the account (--account A), or use --paper")
+            kind = stores.accounts.account(account).kind
+            if kind is AccountKind.PAPER and at is not None:
+                raise ValueError("a PAPER account expires at live time only; --at is refused")
+            if kind is AccountKind.RESEARCH and at is None:
+                raise ValueError("a RESEARCH account needs --at T: its own replay time")
+            expired = expire_due(account, at=_when(at), stores=stores)  # PAPER: None, the live time
+        for e in expired:
+            _say(f"EXPIRED intent {e.intent.intent_id} v{e.intent.version}")
+        _say(f"{len(expired)} intent(s) expired")
+    _run_intents(go)
