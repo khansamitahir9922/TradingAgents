@@ -249,16 +249,29 @@ pytest_plugins = ("tests.conftest", "tests.engine.conftest")
 
 @pytest.fixture(autouse=True)
 def fake_driver(monkeypatch):
-    """The real root guard and the real pg_database fixture; only the final driver call is replaced, and it fails
-    after the guard has normalized the DSN into plain connection text."""
-    monkeypatch.setenv(actual.ENV_TEST_PG_DSN,
-                       "host=localhost user=fake password=IE_DRIVER_PASSWORD_CANARY dbname=postgres")
+    """The real root guard and the real pg_database fixture; only the final driver call is replaced. It parses the
+    plain connection text the guard normalized, as the driver does, so the parameters are its locals, then fails."""
+    monkeypatch.setenv(actual.ENV_TEST_PG_DSN, DSN)
 
     def failure(conninfo, **kwargs):
+        from psycopg.conninfo import conninfo_to_dict
+
+        parameters = conninfo_to_dict(conninfo)
+        assert parameters
         raise RuntimeError("synthetic driver connection failure")
 
     monkeypatch.setitem(root.PG_REAL, "sync", failure)
 '''
+# Synthetic passwords only. Codex M3 second re-review R1: a three-character one, and one whose libpq quoting is
+# then escaped again by repr.
+DRIVER_PASSWORDS = {"canary": "IE_DRIVER_PASSWORD_CANARY", "short": "q7X", "quoted": "IE_quote'back\\slash"}
+
+
+def leaked_spellings(password: str, text: str) -> list[str]:
+    """The ways `password` can be shown, written out here independently of the fixture's own list."""
+    libpq = password.replace("\\", "\\\\").replace("'", "\\'")
+    shown = {password, libpq, repr(password)[1:-1], repr(libpq)[1:-1], repr(repr(libpq)[1:-1])[1:-1]}
+    return sorted(spelling for spelling in shown if spelling in text)
 NESTED_DRIVER_TESTS = '''
 import pytest
 
@@ -275,16 +288,21 @@ def test_logged_and_printed(pg_database):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("password", DRIVER_PASSWORDS.values(), ids=DRIVER_PASSWORDS.keys())
 @pytest.mark.parametrize("options", [[], ["-l", "--tb=long", "-rA"], ["--tb=native", "-rA"]],
                          ids=["default", "locals", "native"])
-def test_a_failing_connection_setup_never_prints_the_password(tmp_path, options):
+def test_a_failing_connection_setup_never_prints_the_password(tmp_path, options, password):
     """Codex re-review R1: the guard rebuilds the DSN as plain text for the driver; a driver failure's traceback
-    (its arguments and, with -l, its locals) must still not show the password. Diagnostics stay."""
+    (its arguments and, with -l, its locals) must still not show the password, however short and however it is
+    escaped. Diagnostics stay."""
     import subprocess
     import sys
     from pathlib import Path
 
-    (tmp_path / "conftest.py").write_text(NESTED_DRIVER_CONFTEST, encoding="utf-8")
+    from psycopg.conninfo import make_conninfo
+
+    dsn = make_conninfo(host="localhost", user="fake", password=password, dbname="postgres")
+    (tmp_path / "conftest.py").write_text(f"DSN = {dsn!r}\n" + NESTED_DRIVER_CONFTEST, encoding="utf-8")
     (tmp_path / "test_nested.py").write_text(NESTED_DRIVER_TESTS, encoding="utf-8")
     (tmp_path / "pytest.ini").write_text("[pytest]\nmarkers =\n    postgres\n", encoding="utf-8")
     root = Path(__file__).parents[2]
@@ -294,6 +312,29 @@ def test_a_failing_connection_setup_never_prints_the_password(tmp_path, options)
                          env={**os.environ, "PYTHONPATH": str(root)})
     text = out.stdout + out.stderr
     assert "2 error" in text and text.count("synthetic driver connection failure") >= 2, text[-3000:]
-    assert "IE_DRIVER_PASSWORD_CANARY" not in text
+    assert not leaked_spellings(password, text)
     if "--tb=native" not in options:  # native tracebacks show no arguments; the others show the connection text
         assert "<redacted>" in text  # still shown, minus the password
+
+
+@pytest.mark.unit
+def test_the_scrubber_covers_composed_spellings_and_never_rescans_its_marker(monkeypatch):
+    """Codex re-review R1, directly on the scrubber: a password of any length is remembered, each composed escaping
+    is redacted, and a password that also occurs in the marker itself ("red" in "<redacted>") is replaced once."""
+    from psycopg.conninfo import make_conninfo
+
+    from tests.engine import conftest as actual
+
+    quote, backslash = "'", chr(92)
+    password = f"a{quote}b{backslash}c"
+    monkeypatch.setattr(actual, "_SECRETS", set())
+    dsn = make_conninfo(host="localhost", user="fake", password=password, dbname="postgres")
+    actual._remember(dsn)
+    actual._remember(make_conninfo(host="localhost", user="fake", password="red", dbname="postgres"))
+    libpq = password.replace(backslash, 2 * backslash).replace(quote, backslash + quote)
+    assert libpq in dsn  # the guard's plain text, which pytest then shows by repr
+    shown = [password, libpq, repr(libpq), repr(repr(libpq)), repr({"password": password}), repr({"dsn": dsn})]
+    scrubbed = actual._scrub(" | ".join(["conninfo = " + s for s in shown]) + " | password=red | red")
+    assert all(f"b{backslash}" not in part and f"a{quote}" not in part for part in scrubbed.split(" | ")), scrubbed
+    assert "red" not in scrubbed.replace("<redacted>", ""), scrubbed
+    assert "<redacted>" in scrubbed and "<<" not in scrubbed and scrubbed.count("conninfo = ") == len(shown)

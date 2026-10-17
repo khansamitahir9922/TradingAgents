@@ -150,6 +150,22 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-00 follow-up, Codex M3 second re-review R1: short and doubly escaped passwords)
+- **Finding (`codex-m3-rereview2-b716355.md`):** `_remember` skipped passwords under four characters. A password with a quote and a backslash, libpq-quoted by the guard and then shown by pytest's repr, survived as that composed spelling. Codex reproduced both with synthetic credentials in both shells.
+- **Fix (`tests/engine/conftest.py`):**
+  - Every nonempty password is remembered, of any length.
+  - `_spellings` remembers the DSN and the password as written, and every composition of libpq quoting, Python repr and URL encoding up to three deep.
+  - `_scrub` replaces them in one regex pass, longest first, so a password that also occurs in the marker ("red" in `<redacted>`) can't match inside an earlier replacement.
+  - A short password redacts its every occurrence, wanted or not: an unreadable report is preferred to a leaked one.
+- **Regressions (`test_postgres_harness.py`):**
+  - The nested driver test now runs over three synthetic passwords (the canary, `q7X`, and `IE_quote'back\slash`) × the three traceback styles. Its fake driver parses the conninfo into locals, as Codex's probe does. It checks the five shown spellings, written out independently of the fixture.
+  - New `test_the_scrubber_covers_composed_spellings_and_never_rescans_its_marker`.
+  - **Before the fix** (old `conftest.py` restored temporarily): `[default-short]`, `[default-quoted]`, `[locals-short]` and `[locals-quoted]` failed, and the scrubber test failed on the composed spellings and the unremembered "red". **After the fix:** harness file 62 passed.
+- **Codex's probes:** `test_codex_m3_password_variants.py` (SHA-256 `a4dc6ce8…f07025`, as recorded), `test_codex_m3_short_password_probe.py`, and the earlier follow-up and review probes all passed: 15 passed, 1 deselected (`database_created_before_equity_followup`, under S1). They ran from temporary copies that were then deleted.
+- **Residual, recorded:** pytest 9.1.1 cuts the middle out of any repr over 240 characters (`saferepr`). A password inside a DSN longer than that could be split, leaving a fragment that no full spelling matches. The test DSNs are 70–100 characters. Not reproduced, and not addressed here.
+- **Checks (Git Bash):** ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2861 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 795.10s (0:13:15) (only failure: the baseline cache-location test).
+
 ### 2026-10-17: Claude Code (M3 second re-review package: Codex's R1 and R2 fixed)
 - **Codex's re-review at `776119c`** (`docs/reviews/codex-m3-rereview-776119c.md`) resolved B1, B3, B4, B5, B6 and B7, and left R1 (B8: the password in a failing connection setup's report) and R2 (B2: a lineage published between check and use). The owner forwarded it on 2026-10-17 with: "Fix R1/B8 and R2/B2 together, preserve the six accepted fixes, align the snapshot API documentation, and run the required checks. Return one combined re-review package with follow-up commits. Do not merge, push or start M4."
 - **Commits:**

@@ -59,26 +59,46 @@ def pytest_assertrepr_compare(config, op, left, right):
 
 
 _SECRETS: set[str] = set()  # every DSN and password the fixtures have read, as they may appear in a report
+_SPELLING_DEPTH = 3  # escapings composed: the guard's libpq text, then pytest's repr of it, inside a dict's repr
+
+
+def _spellings(secret: str) -> set[str]:
+    """`secret` as a report can show it: as written, libpq-quoted, repr'd and URL-encoded, and every composition of
+    those up to `_SPELLING_DEPTH` deep (a libpq-quoted password shown by repr is both; Codex M3 re-review R1)."""
+    from urllib.parse import quote
+
+    escapes = (lambda v: v.replace("\\", "\\\\").replace("'", "\\'"),  # libpq conninfo quoting
+               lambda v: repr(v)[1:-1],  # Python repr, as pytest shows arguments and locals
+               lambda v: quote(v, safe=""))  # a URI DSN's percent-encoding
+    found = frontier = {secret}
+    for _ in range(_SPELLING_DEPTH):
+        frontier = {escape(v) for v in frontier for escape in escapes} - found
+        found = found | frontier
+    return found
 
 
 def _remember(dsn: str) -> None:
     from psycopg.conninfo import conninfo_to_dict
 
-    found = {str(dsn)}
+    found = _spellings(str(dsn))
     try:
         password = conninfo_to_dict(str(dsn)).get("password")
     except Exception:  # an unparsable DSN is refused later; its whole text is still remembered
         password = None
-    if password:
-        # As written, as libpq quoting escapes it, and as a repr shows it.
-        found |= {password, password.replace("\\", "\\\\").replace("'", "\\'"), repr(password)[1:-1]}
-    _SECRETS.update(v for v in found if len(v) >= 4)
+    if password:  # of any length: a short password is still a password
+        found |= _spellings(password)
+    _SECRETS.update(v for v in found if v)
 
 
 def _scrub(text: str) -> str:
-    for secret in sorted(_SECRETS, key=len, reverse=True):
-        text = text.replace(secret, "<redacted>")
-    return text
+    """One pass, longest spelling first, so a short password can't match inside an earlier replacement. A short
+    password redacts its every occurrence, wanted or not: an unreadable report is preferred to a leaked one."""
+    import re
+
+    if not _SECRETS:
+        return text
+    pattern = "|".join(re.escape(secret) for secret in sorted(_SECRETS, key=len, reverse=True))
+    return re.sub(pattern, "<redacted>", text)
 
 
 @pytest.hookimpl(hookwrapper=True)
