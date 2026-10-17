@@ -8,7 +8,9 @@ PostgreSQL tests (marked `postgres`, docs/tasks/M3-00.md) each get a fresh,
 empty database created from template0 through the maintenance DSN in
 INVESTMENT_ENGINE_TEST_PG_DSN, and dropped afterwards even when the test
 fails. Without the variable they skip with a visible reason. The DSN is never
-printed: it may hold a password.
+printed: it may hold a password. It is handed out as a SecretDsn, a str whose
+repr is redacted, and assertion explanations involving one are withheld, so a
+failing test's report can't show it either (Codex M3 review B8).
 """
 
 import os
@@ -32,8 +34,30 @@ def _own_data_dir(tmp_path, monkeypatch):
     return data
 
 
+class SecretDsn(str):
+    """A DSN that libpq can use as a str, but whose repr (used by pytest's failure reports, `--showlocals` and
+    `!r` formatting) never shows its text."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<test PostgreSQL DSN, redacted>"
+
+
+def pytest_assertrepr_compare(config, op, left, right):
+    """pytest explains a failed comparison by quoting both sides. When a DSN is one side, the other may contain
+    it (`dsn in output`), so neither side is quoted, only its type."""
+    if isinstance(left, SecretDsn) or isinstance(right, SecretDsn):
+        def shown(side):
+            return repr(side) if isinstance(side, SecretDsn) else f"<{type(side).__name__}, not shown>"
+        return [f"{shown(left)} {op} {shown(right)}",
+                "(the comparison involves a test database DSN; neither side is shown)"]
+    return None
+
+
 def maintenance_dsn() -> str | None:
-    return os.environ.get(ENV_TEST_PG_DSN) or None
+    value = os.environ.get(ENV_TEST_PG_DSN)
+    return SecretDsn(value) if value else None
 
 
 @contextmanager
@@ -47,7 +71,7 @@ def temporary_database(dsn: str) -> Iterator[str]:
     with psycopg.connect(dsn, autocommit=True) as admin:
         admin.execute(sql.SQL("CREATE DATABASE {} TEMPLATE template0 ENCODING 'UTF8'").format(sql.Identifier(name)))
     try:
-        yield make_conninfo(dsn, dbname=name)
+        yield SecretDsn(make_conninfo(dsn, dbname=name))
     finally:
         _drop(dsn, name)
 

@@ -149,3 +149,90 @@ def test_a_temporary_database_is_dropped_afterwards_even_after_a_failure():
             conn.execute("CREATE TABLE t (x int)")
             raise RuntimeError("the test failed")
     assert not _database_exists(failed)
+
+
+# ---------------------------------------------------------------- the DSN never reaches failure output (Codex B8)
+
+CANARY = "IE_FAKE_PASSWORD_CANARY"
+NESTED_CONFTEST = '''
+from contextlib import contextmanager
+
+import pytest
+
+from tests.engine import conftest as actual
+
+pytest_plugins = ("tests.engine.conftest",)
+
+
+@pytest.fixture(autouse=True)
+def fake_database(monkeypatch, request):
+    """The real pg_database fixture, with a fake DSN and no server: nothing connects."""
+    monkeypatch.setenv(actual.ENV_TEST_PG_DSN, "host=localhost user=fake password=IE_FAKE_PASSWORD_CANARY")
+
+    @contextmanager
+    def fake(dsn):
+        if request.node.get_closest_marker("setup_fails"):
+            raise RuntimeError("database setup failed")
+        yield actual.SecretDsn(str(dsn) + " dbname=ie_test_fake")
+        if request.node.get_closest_marker("teardown_fails"):
+            raise RuntimeError("database teardown failed")
+
+    monkeypatch.setattr(actual, "temporary_database", fake)
+'''
+NESTED_TESTS = '''
+import pytest
+
+pytestmark = pytest.mark.postgres
+
+
+def test_body_fails(pg_database):
+    print("captured output names no credentials")
+    assert False, "forced failure without printing credentials"
+
+
+def test_equality_fails(pg_database):
+    assert pg_database == "host=elsewhere"
+
+
+def test_containment_fails(pg_database):
+    assert pg_database not in "prefix " + pg_database
+
+
+def test_repr_and_format(pg_database):
+    assert repr(pg_database) == f"{pg_database!r}" and "password" not in repr(pg_database)
+    raise RuntimeError(f"value was {pg_database!r}")
+
+
+@pytest.mark.setup_fails
+def test_setup_fails(pg_database):
+    pass
+
+
+@pytest.mark.teardown_fails
+def test_teardown_fails(pg_database):
+    pass
+'''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("options", [[], ["-l", "--tb=long", "-rA"], ["--tb=native"]], ids=["default", "locals",
+                                                                                              "native"])
+def test_failing_postgres_tests_never_print_the_dsn(tmp_path, options):
+    """A nested pytest run with the real fixture and a fake password: every failure route stays redacted."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    (tmp_path / "conftest.py").write_text(NESTED_CONFTEST, encoding="utf-8")
+    (tmp_path / "test_nested.py").write_text(NESTED_TESTS, encoding="utf-8")
+    (tmp_path / "pytest.ini").write_text("[pytest]\nmarkers =\n    postgres\n    setup_fails\n    teardown_fails\n",
+                                         encoding="utf-8")
+    root = Path(__file__).parents[2]
+    out = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--rootdir", str(tmp_path),
+                          "--confcutdir", str(tmp_path), *options, str(tmp_path / "test_nested.py")],
+                         capture_output=True, text=True, timeout=120, cwd=root,
+                         env={**os.environ, "PYTHONPATH": str(root)})
+    text = out.stdout + out.stderr
+    assert "4 failed, 1 passed, 2 errors" in text, text[-2000:]  # every route was really exercised
+    assert CANARY not in text and "password=" not in text
+    assert "<test PostgreSQL DSN, redacted>" in text

@@ -150,6 +150,17 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-00 follow-up, Codex M3 review B8: the test DSN never reaches failure output)
+- **Finding:** pytest prints a failing test's fixture values, so `pg_database`'s plain DSN string, password included, appeared in any failing PostgreSQL test's report. `bd18615` had covered subprocess argv only.
+- **Change (`tests/engine/conftest.py`):**
+  - The fixture, `maintenance_dsn()` and `temporary_database` hand out a `SecretDsn`: a `str` subclass that libpq uses as before, with the repr `<test PostgreSQL DSN, redacted>`. That covers failure reports, `--showlocals` and `!r` formatting.
+  - A `pytest_assertrepr_compare` hook withholds both sides of any failed comparison involving a DSN. pytest otherwise quotes the raw text, for example of `dsn not in output`.
+  - The environment-only subprocess change (`bd18615`) stays.
+- **Regression (`test_postgres_harness.py`):** a nested pytest run uses the real fixture with a fake canary password and no server. It covers a body failure with captured output, equality and containment failures, `!r` formatting, a setup error and a teardown error, under the default, `-l --tb=long -rA` and native tracebacks. The run must show exactly "4 failed, 1 passed, 2 errors" and never the canary or `password=`. It was observed failing before the change (the fixture had no redaction; the first containment hook still quoted the other side) and passes now. This is also the nested failure-output evidence that M3-00's deviation lacked.
+- **Owner decision (2026-10-17):** the owner keeps the current `ie_dev` password. It was printed only locally: a redacted scratch log and this session's output.
+- **Checks (Git Bash):** the harness file passed (52). Ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2819 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 690.48s (0:11:30) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3 milestone close: batch checks, self-review and the review package)
 - **All 15 tasks are committed (checked)** on `m3/milestone`, with follow-ups, in the range `6085fd9..` this commit. Package: `docs/reviews/claude-m3-milestone-package.md` (commits, where to look hardest, incidents, deviations, owner items).
 - **Batch checks:**
