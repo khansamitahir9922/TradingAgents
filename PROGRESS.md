@@ -150,6 +150,14 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-12 follow-up, Codex M3 review B2: a view must be the decision stored in its lineage)
+- **Finding:** the pipeline loaded the view's `LineageRecord` but sized and checked the separately supplied `MarketView` without comparing the two. A stored NEUTRAL decision re-presented as BULLISH under the same lineage id became a BUY in AWAITING_APPROVAL, which can't be reconstructed from the record (Law 18).
+- **Change (`oms/pipeline.py`):** before any mutation, the supplied view must equal the stored decision with exactly its lineage id as evidence, the form M2's `run_views` hands out. Nothing is replaced or repaired. A mismatch returns a PREREQUISITE_MISSING ("view lineage") diagnostic naming the differing fields, like an unknown account: nothing is stored, nothing expires, and the genuine view can still be proposed. A named but unstored lineage id keeps its ordinary stored record.
+- **Regression (`test_intent_pipeline.py`):** `test_a_view_must_be_exactly_the_decision_stored_in_its_lineage` covers forged direction, health, validity, generation time, instrument, an extra evidence reference, a stronger BULLISH view, and another decision under this lineage id. All are refused with the field named; database counts are unchanged; a waiting intent isn't expired; the genuine view then proposes normally. Observed failing without the fix (the forged view was accepted), passing with it.
+- **Test data corrected:** two tests had proposed a modified copy of a view (a shortened `valid_until`) under its original lineage. That is now refused, correctly. They store a genuine view with that validity instead, through a new `valid_until` parameter of `view_for`: `test_level_2_approval_never_outlives_the_view` (M3-12) and `test_the_view_validity_caps_the_expiry` (M3-13's `test_approvals.py`, test data only).
+- **Checks (Git Bash):** the pipeline, replay, CLI and approvals files passed. Ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2837 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 640.35s (0:10:40) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-09 follow-up, Codex M3 review B3: no unaudited metadata route)
 - **Finding:** `IntentStore.set_fields` could change approval fields, decisions, deadlines and lineage with only an aggregate compare-and-set. It checked neither state nor latest version and wrote no transition or audit event, against M3-09 rules 3 and 5. Codex rewrote an approved intent's approver with it.
 - **Change (`oms/intent_store.py`):** the unused mutator is removed (it had no callers). The store's only writers are `create`, `transition` and `supersede`, each atomic with its audit event. Material columns stay protected by the 0009 triggers.

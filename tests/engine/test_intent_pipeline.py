@@ -77,16 +77,18 @@ def bar_ref(reader, day, revision=1):
                   c.availability_basis)
 
 
-def view_for(stores, reader, day, direction="BULLISH", *, valid_days=1, tag="", bar=None, generated_at=None):
+def view_for(stores, reader, day, direction="BULLISH", *, valid_days=1, tag="", bar=None, generated_at=None,
+             valid_until=None):
     """A stored LineageRecord and its MarketView for `day`'s close, built on M2's own lineage fixture."""
     t = generated_at or t_of(day)
     health = DataHealth(NVDA, t, Applicability(True, ""), (), True)
     ref = bar or bar_ref(reader, day)
     base = lineage_record()
     snap = replace(base.snapshot, as_of=t, session_date=day, input_refs=(ref,), data_health=health)
-    valid_until = CAL.session(CAL.next_session(day).date).close
+    until, valid_until = valid_until, CAL.session(CAL.next_session(day).date).close
     for _ in range(valid_days - 1):
         valid_until = CAL.session(CAL.next_session(valid_until.date()).date).close
+    valid_until = until or valid_until
     strength = 0.5 if direction in ("BULLISH", "BEARISH") else 0.0
     reason = "required data not OK" if direction == "ABSTAIN" else ""
     decision = MarketView(NVDA, ViewDirection(direction), strength, None, "5 sessions", t, valid_until, None, health,
@@ -184,6 +186,38 @@ def test_views_without_lineage_get_a_returned_diagnostic_and_never_share_a_recor
     unstored = replace(view_for(env.stores, env.reader, SESSIONS[72], tag="u"), evidence_refs=("lin-unknown",))
     named = env.propose("R1", unstored)  # a named but unknown lineage is an ordinary stored record
     assert named.missing == ("view lineage",) and env.stores.proposals.for_view("R1", "lin-unknown") == named
+
+
+@pytest.mark.unit
+def test_a_view_must_be_exactly_the_decision_stored_in_its_lineage(env):
+    """Codex B2: a stored NEUTRAL decision, re-presented as BULLISH under the same lineage id, made a BUY."""
+    env.account("R1")
+    waiting = env.propose("R1", view_for(env.stores, env.reader, DAY))
+    neutral = view_for(env.stores, env.reader, SESSIONS[70], "NEUTRAL", tag="n")
+    other = view_for(env.stores, env.reader, SESSIONS[71], tag="o")
+    t = neutral.generated_at
+    forged = {
+        "direction": replace(neutral, direction=ViewDirection.BULLISH, strength=0.5),
+        "data_health": replace(neutral, data_health=DataHealth(NVDA, t, Applicability(True, ""), (), False)),
+        "valid_until": replace(neutral, valid_until=neutral.valid_until + timedelta(days=1)),
+        "generated_at": replace(neutral, generated_at=t - timedelta(minutes=1)),
+        "instrument_id": replace(neutral, instrument_id="EQ_US_AMD"),
+        "evidence_refs": replace(neutral, evidence_refs=(*neutral.evidence_refs, "lin-extra")),
+    }
+    before = env.counts()
+    late = t_of(SESSIONS[80])  # long after R1's deadline: a refused view must expire nothing
+    for field, view in forged.items():
+        record = env.propose("R1", view, at=late)
+        assert record.outcome is ProposalOutcome.PREREQUISITE_MISSING and record.missing == ("view lineage",), field
+        assert f"differs from the decision stored in {neutral.evidence_refs[0]}: {field}" in record.reason, field
+    stronger = env.propose("R1", replace(other, strength=0.9), at=late)  # a BULLISH view, re-presented stronger
+    assert stronger.missing == ("view lineage",) and stronger.reason.endswith(": strength")
+    swapped = env.propose("R1", replace(other, evidence_refs=neutral.evidence_refs), at=late)  # another decision
+    assert swapped.missing == ("view lineage",) and "direction" in swapped.reason
+    assert env.counts() == before and env.stores.proposals.for_view("R1", neutral.evidence_refs[0]) is None
+    assert env.stores.intents.get(waiting.intent_id).state is IntentState.AWAITING_APPROVAL
+    genuine = env.propose("R1", neutral)  # the real view is unaffected by the refused ones
+    assert genuine.outcome is ProposalOutcome.NO_INTENT and "NEUTRAL" in genuine.reason
 
 
 @pytest.mark.unit
@@ -343,9 +377,8 @@ def test_level_2_is_approved_by_rule_until_the_target_close(env):
 @pytest.mark.unit
 def test_level_2_approval_never_outlives_the_view(env):
     env.account("R2", level=2)
-    view = view_for(env.stores, env.reader, DAY)
     shorter = CAL.session(TARGET).open + timedelta(hours=1)
-    record = env.propose("R2", replace(view, valid_until=shorter))
+    record = env.propose("R2", view_for(env.stores, env.reader, DAY, valid_until=shorter))  # stored as such
     assert env.stores.intents.get(record.intent_id).approval_expires_at == shorter  # D10
 
 

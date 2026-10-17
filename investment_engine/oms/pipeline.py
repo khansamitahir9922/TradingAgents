@@ -230,6 +230,13 @@ def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: C
         # unknown account, it gets a returned diagnostic and nothing is stored or expired.
         return ProposalRecord(account_id, view_lineage_id, at, ProposalOutcome.PREREQUISITE_MISSING,
                               "view lineage: the view names no lineage record", ("view lineage",), None, ())
+    mismatch = _view_mismatch(view, view_lineage_id, stores)
+    if mismatch:
+        # The view isn't the decision its lineage recorded, so nothing it would produce could be reconstructed
+        # (Law 18). Like an unknown account, it gets a returned diagnostic; nothing is stored or expired, and the
+        # genuine view can still be proposed (Codex M3 review B2).
+        return ProposalRecord(account_id, view_lineage_id, at, ProposalOutcome.PREREQUISITE_MISSING,
+                              f"view lineage: {mismatch}", ("view lineage",), None, ())
     with stores.db.transaction():
         stores.db.lock(f"account-control|{account_id}")
         existing = stores.proposals.for_view(account_id, view_lineage_id)
@@ -240,6 +247,21 @@ def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: C
                           correlation_id, view_lineage_id)
         stores.proposals.append(record)
     return record
+
+
+def _view_mismatch(view: MarketView, view_lineage_id: str, stores: ControlStores) -> str:
+    """Why `view` isn't the decision stored under `view_lineage_id`, or "" if it is. M2's pipeline hands out the
+    stored decision with exactly its lineage id as evidence (decision/pipeline.py); no other difference is allowed,
+    and nothing is replaced or repaired here. An unknown id is left to the prerequisites (a stored record)."""
+    try:
+        stored = stores.lineage.get(view_lineage_id)
+    except KeyError:
+        return ""
+    expected = dataclasses.replace(stored.decision, evidence_refs=(view_lineage_id,))
+    if view == expected:
+        return ""
+    differ = [f.name for f in dataclasses.fields(view) if getattr(view, f.name) != getattr(expected, f.name)]
+    return f"the view differs from the decision stored in {view_lineage_id}: {', '.join(differ) or 'its type'}"
 
 
 def _missing(account_id, view_lineage_id, at, missing: list[tuple[str, str]]) -> ProposalRecord:

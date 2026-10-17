@@ -1,7 +1,6 @@
 """Level 1 approve and decline (docs/tasks/M3-13.md)."""
 
 import threading
-from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -87,9 +86,8 @@ def test_a_half_day_close_sets_the_expiry(env):
 
 @pytest.mark.unit
 def test_the_view_validity_caps_the_expiry(env):
-    view = view_for(env.stores, env.reader, DAY, tag="short")
     short = CAL.session(CAL.next_session(DAY).date).open + timedelta(hours=2)
-    record = env.propose("R1", replace(view, valid_until=short))
+    record = env.propose("R1", view_for(env.stores, env.reader, DAY, tag="short", valid_until=short))
     stored = env.stores.intents.get(record.intent_id)
     assert act(env, stored).approval_expires_at == short  # D10
 
