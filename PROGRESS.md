@@ -150,6 +150,19 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-14 follow-up, Codex M3 review B5: `intents propose --at T` proposes at T)
+- **Finding:** `--at T` picked the latest view at or before T but proposed it at the view's own time, with the feed stopping there. Deadlines, controls, expiry and knowledge were evaluated at the wrong time. One minute after a deadline, the command still created a fresh AWAITING_APPROVAL proposal dated the day before.
+- **Change (`intents_cli.py`):** a single-time research proposal replays with `proposal_delay = T - view time` and a feed through T, so it acts at T and knows everything delivered by T. The `--from/--to` range is unchanged: each view at its own time.
+- **Regression (`test_intents_cli.py`):** `test_research_at_is_the_proposal_time_with_knowledge_through_it`, through the CLI. Every proposal is recorded at T:
+  - one minute after the deadline: EXPIRED_ON_ARRIVAL;
+  - exactly at the deadline: EXPIRED_ON_ARRIVAL;
+  - one minute before: AWAITING_APPROVAL;
+  - a correction of a volume-window bar delivered between the view and T: its revision 2 is in the intent's lineage;
+  - Level 2 effective between the view and T: APPROVED.
+  Observed failing without the fix (no proposal recorded at T), passing with it.
+- **Checks (Git Bash):** `test_intents_cli.py` passed (9). Ruff passed after sorting an import block; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2840 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 782.68s (0:13:02) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-12 follow-up, Codex M3 review B7: a revision mismatch is a recorded prerequisite failure)
 - **Finding:** M3-08 rule 4 says a holding valued from another bar revision than the view's decision bar is a prerequisite failure. The sizer correctly refused it, but the pipeline let that refusal escape as a `ValueError`. A valid offline replay with a late correction (view on revision 1, correction delivered before the proposal, holdings with coverage) stopped the whole run.
 - **Change (`oms/pipeline.py`):** before sizing, if the snapshot holds the view's instrument valued from a different bar than the pinned reference, the pipeline records PREREQUISITE_MISSING ("reference") naming both revisions. It's a stored record like any other prerequisite, with no intent, checks or intent lineage; the snapshot is stored because it was built. Every other sizing error still raises, so programming errors aren't hidden as missing data.

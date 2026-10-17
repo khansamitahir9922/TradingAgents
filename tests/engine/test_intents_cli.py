@@ -14,7 +14,16 @@ from investment_engine.market.store.writer import MarketDataWriter
 from investment_engine.policy.accounts import AccountKind
 from investment_engine.portfolio.reference import StoreKnowledge
 from tests.engine.conftest import maintenance_dsn, temporary_database
-from tests.engine.test_intent_pipeline import CAL, NOW, SESSIONS, Env, t_of, view_for, write_bars
+from tests.engine.test_intent_pipeline import (
+    CAL,
+    NOW,
+    OWNER,
+    SESSIONS,
+    Env,
+    t_of,
+    view_for,
+    write_bars,
+)
 from tests.engine.test_raw_reference import observation, stored
 
 pytestmark = pytest.mark.postgres
@@ -298,3 +307,52 @@ def test_list_and_show_open_the_database_read_only(outcomes, monkeypatch):
     assert run("intents", "list", "--account", "R1").exit_code == 0
     assert run("intents", "show", records["awaiting"].intent_id).exit_code == 0
     assert modes == [True, True]  # rule 5: only views replay and intents propose write
+
+
+@pytest.mark.unit
+def test_research_at_is_the_proposal_time_with_knowledge_through_it(pg_database, tmp_path, monkeypatch):
+    """Codex B5: `--at T` proposed at the view's time instead of T."""
+    from investment_engine.oms.intents import IntentState
+    from investment_engine.oms.pipeline import ProposalOutcome
+
+    data = tmp_path / "data"
+    env = Env(pg_database, data / "market")
+    try:
+        env.account("R1")
+        run = patch_cli(monkeypatch, pg_database, data)
+
+        def propose_at(day, at, tag):
+            view_for(env.stores, env.reader, day, tag=tag)
+            result = run("intents", "propose", "--account", "R1", "--at", at.isoformat())
+            assert result.exit_code == 0, result.output
+            (record,) = [r for r in env.stores.proposals.for_account("R1") if r.at == at]  # recorded at T
+            return record
+
+        def deadline(day):
+            return CAL.session(CAL.next_session(day).date).open
+
+        late = propose_at(SESSIONS[40], deadline(SESSIONS[40]) + timedelta(minutes=1), "late")
+        assert late.outcome is ProposalOutcome.EXPIRED_ON_ARRIVAL  # recorded at T, past the deadline
+        exact = propose_at(SESSIONS[41], deadline(SESSIONS[41]), "exact")
+        assert exact.outcome is ProposalOutcome.EXPIRED_ON_ARRIVAL  # >= the deadline
+        early = propose_at(SESSIONS[42], deadline(SESSIONS[42]) - timedelta(minutes=1), "early")
+        assert early.outcome is ProposalOutcome.AWAITING_APPROVAL
+        # A correction of an earlier bar in the volume window, delivered between the view and T, is known at T.
+        fixed_day, view_day = SESSIONS[42], SESSIONS[43]
+        t = t_of(view_day) + timedelta(minutes=2)
+        MarketDataWriter(data / "market").write_candles(
+            [replace(observation(fixed_day, close="119.0000", received=t - timedelta(minutes=1)),
+                     volume=Decimal("1000000"))], import_id="fix")
+        corrected = propose_at(view_day, t, "fixed")
+        (lineage,) = env.stores.intent_lineage.for_intent(corrected.intent_id)
+        revision = {r.start_time.date(): r.revision for r in lineage.adv_refs}
+        assert revision[CAL.session(fixed_day).open.date()] == 2
+        # Controls are those in force at T: Level 2 from a minute after the view.
+        view_day = SESSIONS[44]
+        env.stores.accounts.set_autonomy("R1", 2, by=OWNER, reason="up", effective_at=t_of(view_day) + timedelta(
+            minutes=1))
+        approved = propose_at(view_day, t_of(view_day) + timedelta(minutes=2), "level2")
+        assert approved.outcome is ProposalOutcome.APPROVED
+        assert env.stores.intents.get(approved.intent_id).state is IntentState.APPROVED
+    finally:
+        env.close()

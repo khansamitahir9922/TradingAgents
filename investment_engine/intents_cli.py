@@ -214,13 +214,16 @@ def propose_intents(account: str = typer.Option(..., "--account"), at: str | Non
             if not views:
                 raise ValueError("no stored views in that range; run 'views replay' first")
             start = views[0].generated_at - timedelta(days=60)
-            end = max(v.generated_at for v in views) + timedelta(microseconds=1)
+            # --at T acts at T: the view is proposed after a delay of T minus its time, with everything the feed
+            # delivered through T (Codex M3 review B5). A range proposes each view at its own time.
+            delay = first - views[0].generated_at if at else timedelta(0)
+            end = (first if at else max(v.generated_at for v in views)) + timedelta(microseconds=1)
             feed = ReplayFeed(reader, ReplayClock(start), sources=[SOURCE], instrument_ids=[instrument],
                               timeframes=[Timeframe.D1], start=start, end=end)
             records = propose_over_replay(account, views, events=feed, stores=stores,
                                           knowledge_reader=ReplayKnowledgeReader(), calendar=calendar,
                                           coverage=None, calendar_version=calendar_version,
-                                          code_version=code_version)
+                                          code_version=code_version, proposal_delay=delay)
         _header(stores, account, records[-1].at if records else clock.now())
         for record in records:
             _proposal_line(record, stores)
