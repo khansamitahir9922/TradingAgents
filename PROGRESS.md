@@ -150,6 +150,12 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-06 and M3-07 docs, Codex M3 re-review: snapshot and clear API documentation)
+- `docs/tasks/M3-06.md`: the `LimitStore` contract shows `clear_halt(..., equity_now: Decimal, effective_at: datetime | None = None)` and the new `last_clear_at(account_id, at) -> Halt | None`, with a dated note (B4).
+- `docs/tasks/M3-07.md`: `build_snapshot(..., last_clear: Halt | None, history, source: str)`, with a dated note that the accepted text had `halt: Halt | None` and no `source`.
+- Both checked against `investment_engine/risk/limits.py:273-294` and `investment_engine/portfolio/snapshot.py:157-159`. Documentation only; no code or test changes.
+- **Wording correction (re-review, B4 integration evidence):** the earlier package and the B4 PROGRESS entry said a BUY can't reach a 15% drawdown under the 10% position cap. That holds only for the chosen single-instrument fixture, not for accounts with other holdings. Those dated records are left as written, and this entry and `docs/reviews/claude-m3-rereview2-package.md` give the corrected statement.
+
 ### 2026-10-17: Claude Code (M3-12 follow-up, Codex M3 re-review R2: the view is bound to the lineage record actually used)
 - **Finding:** `propose()` compared the view with the stored lineage, but `_propose()` read the record again. If the first read missed and a producer committed the genuine NEUTRAL record before the second read, the comparison was skipped and a forged BULLISH view became a BUY bound to that record.
 - **Fix (`investment_engine/oms/pipeline.py`):** the lineage record is read once in `propose()`. That same object is checked by `_view_mismatch(view, view_lineage_id, stored)` and passed to `_propose()`, which no longer reads it. A record missing at that read stays a missing `view lineage` prerequisite for this proposal, even if it is published meanwhile. The B2 checks themselves (every field compared, no repair) are unchanged.
