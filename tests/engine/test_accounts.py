@@ -232,15 +232,15 @@ def test_a_fresh_process_decodes_account_events_through_the_registry(env, pg_dat
     registry.create_account("R1", AccountKind.RESEARCH, "USD", by=owner(), reason="demo", effective_at=T2019)
     setting = registry.set_autonomy("R1", 1, by=owner(), reason="demo", effective_at=T2019)
     probe = (
-        "import json, sys\n"
+        "import json, os, sys\n"
         "from investment_engine.audit.events import AuditStore\n"  # nothing from policy is imported here
         "from investment_engine.storage.database import PostgresDatabase\n"
         "from investment_engine.storage.postgres import open_operational_pg\n"
-        "events = AuditStore(PostgresDatabase(open_operational_pg(sys.argv[1]))).for_target('account', 'R1')\n"
+        "events = AuditStore(PostgresDatabase(open_operational_pg(os.environ['IE_PROBE_DSN']))).for_target('account', 'R1')\n"
         "print(json.dumps([type(e.after).__name__ for e in events] + [events[-1].after.setting_id]))\n"
     )
     root = Path(__file__).parents[2]
-    out = subprocess.run([sys.executable, "-c", probe, pg_database], capture_output=True, text=True, timeout=120,
-                         cwd=root, env={**os.environ, "PYTHONPATH": str(root)})
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=120,
+                         cwd=root, env={**os.environ, "IE_PROBE_DSN": pg_database, "PYTHONPATH": str(root)})
     assert out.returncode == 0, out.stderr.splitlines()[-1:]
     assert json.loads(out.stdout) == ["tuple", "AutonomySetting", setting.setting_id]

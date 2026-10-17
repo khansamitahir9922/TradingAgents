@@ -225,17 +225,17 @@ def test_a_fresh_process_decodes_starting_state_events(stores, pg_database):
     store, db, audit = stores
     declared = store.declare_start("R1", by=OWNER, reason="D14 default", effective_at=START)
     probe = (
-        "import json, sys\n"
+        "import json, os, sys\n"
         "from investment_engine.audit.events import AuditStore\n"
         "from investment_engine.storage.database import PostgresDatabase\n"
         "from investment_engine.storage.postgres import open_operational_pg\n"
-        "events = AuditStore(PostgresDatabase(open_operational_pg(sys.argv[1]))).for_target('account', 'R1')\n"
+        "events = AuditStore(PostgresDatabase(open_operational_pg(os.environ['IE_PROBE_DSN']))).for_target('account', 'R1')\n"
         "e = [x for x in events if x.action == 'portfolio.declare_start'][0]\n"
         "print(json.dumps([type(e.after).__name__, e.after.state_id, str(e.after.cash)]))\n"
     )
     root = Path(__file__).parents[2]
-    out = subprocess.run([sys.executable, "-c", probe, pg_database], capture_output=True, text=True, timeout=120,
-                         cwd=root, env={**os.environ, "PYTHONPATH": str(root)})
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=120,
+                         cwd=root, env={**os.environ, "IE_PROBE_DSN": pg_database, "PYTHONPATH": str(root)})
     assert out.returncode == 0, out.stderr.splitlines()[-1:]
     assert json.loads(out.stdout) == ["StartingState", declared.state_id, "100000"]
 

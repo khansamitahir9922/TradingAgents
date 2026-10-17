@@ -178,18 +178,18 @@ def test_a_fresh_process_decodes_events_through_the_registry(db, store, pg_datab
     with db.transaction():
         store.append(event())
     probe = (
-        "import json, sys\n"
+        "import json, os, sys\n"
         "from investment_engine.audit import registry\n"
         "registry.MODULES = ('tests.engine.test_audit',)  # what a later task's registry line does\n"
         "from investment_engine.audit.events import AuditStore\n"
         "from investment_engine.storage.database import PostgresDatabase\n"
         "from investment_engine.storage.postgres import open_operational_pg\n"
-        "store = AuditStore(PostgresDatabase(open_operational_pg(sys.argv[1])))\n"
+        "store = AuditStore(PostgresDatabase(open_operational_pg(os.environ['IE_PROBE_DSN'])))\n"
         "(e,) = store.for_target('account', 'R1')\n"
         "print(json.dumps([e.event_id, type(e.after).__name__, e.after.name, e.after.quantity]))\n"
     )
-    out = subprocess.run([sys.executable, "-c", probe, pg_database], capture_output=True, text=True, timeout=120,
-                         cwd=Path(__file__).parents[2], env={**os.environ, "PYTHONPATH": str(Path(__file__).parents[2])})
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=120,
+                         cwd=Path(__file__).parents[2], env={**os.environ, "IE_PROBE_DSN": pg_database, "PYTHONPATH": str(Path(__file__).parents[2])})
     assert out.returncode == 0, out.stderr.splitlines()[-1:]
     assert json.loads(out.stdout) == [event().event_id, "ProbeValue", "risk-1", 10]
 

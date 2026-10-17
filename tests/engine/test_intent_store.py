@@ -291,15 +291,15 @@ def test_a_fresh_process_decodes_intent_events_through_the_registry(env, pg_data
     _, store, _ = env
     stored = store.create(intent(), by=CORE, correlation_id="c")
     probe = (
-        "import json, sys\n"
+        "import json, os, sys\n"
         "from investment_engine.audit.events import AuditStore\n"
         "from investment_engine.storage.database import PostgresDatabase\n"
         "from investment_engine.storage.postgres import open_operational_pg\n"
-        "(e,) = AuditStore(PostgresDatabase(open_operational_pg(sys.argv[1]))).for_target('intent', sys.argv[2])\n"
+        "(e,) = AuditStore(PostgresDatabase(open_operational_pg(os.environ['IE_PROBE_DSN']))).for_target('intent', sys.argv[1])\n"
         "print(json.dumps([type(e.after).__name__, e.after.intent_id, str(e.after.quantity)]))\n"
     )
     root = Path(__file__).parents[2]
-    out = subprocess.run([sys.executable, "-c", probe, pg_database, stored.intent.intent_id], capture_output=True,
-                         text=True, timeout=120, cwd=root, env={**os.environ, "PYTHONPATH": str(root)})
+    out = subprocess.run([sys.executable, "-c", probe, stored.intent.intent_id], capture_output=True,
+                         text=True, timeout=120, cwd=root, env={**os.environ, "IE_PROBE_DSN": pg_database, "PYTHONPATH": str(root)})
     assert out.returncode == 0, out.stderr.splitlines()[-1:]
     assert json.loads(out.stdout) == ["OrderIntent", stored.intent.intent_id, str(stored.intent.quantity)]

@@ -213,17 +213,17 @@ def test_a_fresh_process_decodes_limit_and_halt_events_through_the_registry(env,
     store.restrict("P1", "EQ_US_NVDA", by=OWNER, reason="non-empty list")
     store.set_halt("P1", at=NOW, limits_version=risk.version, reason="drawdown")
     probe = (
-        "import json, sys\n"
+        "import json, os, sys\n"
         "from investment_engine.audit.events import AuditStore\n"
         "from investment_engine.storage.database import PostgresDatabase\n"
         "from investment_engine.storage.postgres import open_operational_pg\n"
-        "events = AuditStore(PostgresDatabase(open_operational_pg(sys.argv[1]))).for_target('account', 'P1')\n"
+        "events = AuditStore(PostgresDatabase(open_operational_pg(os.environ['IE_PROBE_DSN']))).for_target('account', 'P1')\n"
         "print(json.dumps(sorted({type(e.after).__name__ for e in events})))\n"
         "print(json.dumps(sorted({tuple(e.after.restricted) for e in events if hasattr(e.after, 'restricted')})))\n"
     )
     root = Path(__file__).parents[2]
-    out = subprocess.run([sys.executable, "-c", probe, pg_database], capture_output=True, text=True, timeout=120,
-                         cwd=root, env={**os.environ, "PYTHONPATH": str(root)})
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=120,
+                         cwd=root, env={**os.environ, "IE_PROBE_DSN": pg_database, "PYTHONPATH": str(root)})
     assert out.returncode == 0, out.stderr.splitlines()[-1:]
     kinds, lists = out.stdout.splitlines()
     assert json.loads(kinds) == ["Halt", "PolicyRules", "RiskLimits", "tuple"]

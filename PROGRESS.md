@@ -150,6 +150,13 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-04, M3-05, M3-06, M3-07 and M3-09 follow-up: the test DSN never goes on a command line)
+- **Found:** five fresh-process tests passed the test database DSN to their subprocess as an argument. When one failed, pytest printed the `CompletedProcess` with its arguments, so the DSN, **password included**, appeared in a local scratch log (outside the repository) and in this session's tool output. It happened during the discounted M3-14 run, when Windows couldn't start processes. Nothing was committed or sent anywhere else.
+- **Change:** the probes now read the DSN from an `IE_PROBE_DSN` environment variable given to the subprocess. The environment isn't part of `CompletedProcess`'s output. The files are each task's own test file: `test_audit.py` (M3-04), `test_accounts.py` (M3-05), `test_limits.py` (M3-06), `test_portfolio_snapshot.py` (M3-07) and `test_intent_store.py` (M3-09).
+- **Owner action suggested:** change the local `ie_dev` test password and update `INVESTMENT_ENGINE_TEST_PG_DSN`. The role is local, loopback-only and not a superuser.
+- **Checks (Git Bash):** the five tests passed. One full run covered this and the M3-12 follow-up together; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2816 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 625.84s (0:10:25) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-12 follow-up: a view without lineage is never stored)
 - **Found in self-review:** proposal records are keyed by (account, view lineage id). A view naming no lineage record was stored under the empty id, so a second such view for the same account would have returned the first one's record.
 - **Change:** such a view now gets a returned PREREQUISITE_MISSING diagnostic ("view lineage"), like an unknown account. Nothing is stored and nothing expires. A view naming a lineage id that isn't stored still gets an ordinary stored record.
