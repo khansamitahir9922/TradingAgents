@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | **M0 Architecture: complete (locally).** **M1 Market foundation: in progress, 15 of 18 tasks done** (M1-00 – M1-11, M1-14 – M1-16). M1-12, M1-13 and M1-17 have their **daily parts merged** and their hourly parts unfinished (batch 3b, blocked on A4 permissions). **M2 Quant + initial evaluation: done** (daily only; merged 2026-10-16), under the owner's 2026-10-14 scheduling amendment. **M3 Portfolio, policy, risk: all 15 tasks committed (checked) on `m3/milestone`; in review** (not merged). |
 | **`main`** | Local `main` is at **`b7c5d2a`** (`docs: hand the R1 and R2 fixes back for a second re-review with checks and report`): the owner approved the fast-forward from `53c51bd` on 2026-10-16 after Codex's final M2 review passed (`docs/reviews/codex-m2-accepted-b7c5d2a.md`). It contains M1's merged scope and all of M2. **Nothing has been pushed** (`main` is 84 commits ahead of `origin/main`). |
-| **Current work** | **M3 built and handed over for one combined review** (`docs/reviews/claude-m3-milestone-package.md`, range `6085fd9..` the closing commit). Batch checks passed: Git Bash 2816 passed, PowerShell 2815 passed, only baseline failures; clean install passed. Nothing is merged or pushed; M4 not started. History: **M3 in progress on `m3/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m3`, from `docs/m3-specs` `6085fd9`): the owner approved D1–D18 as recommended and the whole milestone (15 tasks, 52 h) on 2026-10-16, after Codex accepted the specs. Then one combined Codex review. M2 is done (local `main` `b7c5d2a`, no push). M1's hourly parts remain blocked on A4. |
+| **Current work** | **M3: Codex's milestone review at `4102817` requested changes B1–B8; all fixed and handed back for one combined re-review** (`docs/reviews/claude-m3-rereview-package.md`, range `4102817..` the closing commit). Nothing merged or pushed; M4 not started. History: **M3 built and handed over for one combined review** (`docs/reviews/claude-m3-milestone-package.md`, range `6085fd9..` the closing commit). Batch checks passed: Git Bash 2816 passed, PowerShell 2815 passed, only baseline failures; clean install passed. Nothing is merged or pushed; M4 not started. History: **M3 in progress on `m3/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m3`, from `docs/m3-specs` `6085fd9`): the owner approved D1–D18 as recommended and the whole milestone (15 tasks, 52 h) on 2026-10-16, after Codex accepted the specs. Then one combined Codex review. M2 is done (local `main` `b7c5d2a`, no push). M1's hourly parts remain blocked on A4. |
 | **Package name** | **`investment_engine`**: OPEN-01 confirmed by the owner on 2026-10-09. It's the internal Python package name; public branding is decided separately. |
 | **Other branches** | `m1/batch-2` (at `0661d46`), `m1/batch-1` (at `109a72d`), `m1/M1-01-clock` (at `a8f338b`), `m1/M1-00-skeleton` (at `f906841`), `docs/m0-closeout` (at `9486f05`), `m0-architecture` (at `906ae85`) and `fix/report-reliability-baseline` (at `559f8c2`) are kept. Nothing has been deleted. |
 | **Runtime code** | `tradingagents/` and `cli/` unchanged. `investment_engine` on `main`: the M1-02 – M1-05 modules, `market/calendar/`, `market/availability.py`, `market/candles.py`, `market/corporate_actions.py`, `market/store/`, `market/importers/` (verified Yahoo daily bars and actions; hourly BLOCKED), `market/replay.py`, `market/resample.py`, `market/data_health.py` and the daily NVDA CLI (`python -m investment_engine`). M2 added `quant/`, `decision/`, `lineage/`, `evaluation/` and `reporting/` (merged). |
@@ -149,6 +149,19 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-17: Claude Code (M3 re-review package: Codex's B1–B8 fixed)
+- **Codex's review at `4102817`** (`docs/reviews/codex-m3-milestone-review-4102817.md`) requested changes B1–B8 and suggested S1–S4. The owner forwarded it on 2026-10-17 with "fix B1–B8 in one uninterrupted follow-up package, with regression tests, task commits and required checks; return one combined re-review package; do not merge, push or start M4."
+- **Fix commits:** `67a333a` B8, `c366387` B1, `46fd8b0` B4, `0059303` B6, `b66c075` B3, `d528c90` B2, `c81cb08` B7, `0558667` B5, `23f9d0a` S2 (tests), `2d38b3b` S3 (docs). Each has a regression test observed failing without its fix and passing with it, plus its own full run.
+- **Batch checks:**
+  - **PowerShell:** 2 failed, 2849 passed, 7 skipped, 3 deselected, 21 warnings, 99 subtests passed in 998.80s (0:16:38). Both are PowerShell baseline failures; no new ones.
+  - **Git Bash** (at the S2 tree): 1 failed, 2850 passed.
+  - **Ruff:** passed.
+  - **Clean install:** base and engine both passed.
+- **S1:** the disposable-database condition is kept explicit (no persistent M3 database exists).
+- **Owner decision:** keep the current `ie_dev` password.
+- **Still open:** `listen_addresses = 'localhost'`.
+- **Next:** Codex re-reviews `4102817..` the closing commit.
 
 ### 2026-10-17: Claude Code (M3 docs, Codex M3 review S3: current labels and implemented signatures)
 - `docs/tasks/M3-README.md`: the title, the "no M3 code" sentence and the "none accepted" decisions heading now give the current state (accepted; implemented on `m3/milestone`; B1–B8 fixed for re-review). The v0.3 wording is kept as dated history.
