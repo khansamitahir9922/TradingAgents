@@ -376,3 +376,8 @@ def db_copy_from_sqlite(path: str) -> None:
 from investment_engine.admin_cli import register as _register_admin_commands  # noqa: E402
 
 _register_admin_commands(app)
+
+# The intents report (docs/tasks/M3-14.md): `views replay`; `intents propose|list|show` join the Admin CLI's group.
+from investment_engine import intents_cli as _intents_cli  # noqa: E402
+
+app.add_typer(_intents_cli.views_app, name="views")

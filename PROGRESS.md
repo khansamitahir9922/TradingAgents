@@ -150,6 +150,31 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-14: the CLI report of proposed intents with reasons)
+- **Built:**
+  - `investment_engine/intents_cli.py`: `views replay`, and `intents propose|list|show` on the Admin CLI's intents group.
+  - `cli.py`: registration only (an import and `add_typer` for `views`).
+- **The report:**
+  - Every output starts with the safety header (account and kind, autonomy level, PAPER or RESEARCH mode, no orders, kill switch not built, declared starting state, limit and rule versions in force).
+  - `show` prints every version with each policy and risk check, reductions as "v1 82 -> v2 10: <reason> (risk-1)", deadlines and expiries in UTC and exchange time, the approver and the lineage id.
+  - `list` prints each proposal's outcome and reason and, for an intent, its current state ("now EXPIRED"). An intent that was AWAITING_APPROVAL when proposed may since have expired.
+  - `list` and `show` open the database read-only (rule 5).
+- **Tests first:** `tests/engine/test_intents_cli.py` was written first and failed (module missing). Eight tests:
+  - every outcome and its reason;
+  - the header;
+  - deterministic output;
+  - unavailable values never printed as 0;
+  - a PAPER account rejected for promotion at live time;
+  - `views replay` without local data writes nothing;
+  - read-only `list`/`show`;
+  - two end-to-end tests on a synthetic store with a late-delivered correction and an equal-time pair. The CLI-only setup and replay is byte-identical in two fresh databases set up on different days, and proposals before T0 are PREREQUISITE_MISSING. The CLI's proposals match `propose_over_replay` called directly with a feed over the whole store.
+- **Notes for review:**
+  - PAPER proposals take the live time (no time supplied).
+  - `propose` passes no action coverage, so an account declared with holdings gets PREREQUISITE_MISSING ("no established coverage"). M3 accounts are cash-only by default (D14), so the demo is unaffected.
+- **Checks (Git Bash):** the file passed (8). Ruff passed; whitespace clean; no `postgres` test skipped.
+  - **First full run, not counted:** 11 failed (the baseline plus 10 fresh-process and subprocess tests) in 732.14s. Every new failure was a subprocess exit 3221225794 (0xC0000142, DLL initialisation failed), including the unrelated `cli.main backtest --help`. Windows couldn't start processes. That run probably overlapped the previous check, which I had stopped to add the read-only change. The failing files passed alone (43 passed).
+  - **Rerun alone:** 1 failed, 2815 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 654.82s (0:10:54) (only failure: the baseline cache-location test)
+
 ### 2026-10-17: Claude Code (M3-13: approve, decline and expire at the Admin CLI)
 - **Built:**
   - `oms/approvals.py`: `approve`, `decline`, `ApprovalRefused` and `record_refusal`.
