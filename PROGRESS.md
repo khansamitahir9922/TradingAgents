@@ -150,6 +150,12 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3 docs, Codex M3 review S3: current labels and implemented signatures)
+- `docs/tasks/M3-README.md`: the title, the "no M3 code" sentence and the "none accepted" decisions heading now give the current state (accepted; implemented on `m3/milestone`; B1–B8 fixed for re-review). The v0.3 wording is kept as dated history.
+- `docs/tasks/README.md`: the M3 line says accepted and in review, with the draft history kept.
+- `docs/tasks/M3-12.md`: the contract block shows the implemented signatures: `at: datetime | None` on `propose` and `expire_due` (PAPER supplies none), and the full `propose_over_replay` parameters. The accepted text is quoted as history.
+- **Checks:** documents only; `git diff --check` clean.
+
 ### 2026-10-17: Claude Code (M3-07, M3-09 and M3-12 follow-up, Codex M3 review S2: tighter acceptance evidence, tests only)
 - **M3-12 (`test_intent_pipeline.py`):** the failure-injection helper also intercepts writes sent through `fetchone`/`fetchall`, so the intent store's compare-and-set `UPDATE ... RETURNING` writes are injected too. The each-write test asserts that at least one of them was.
 - **M3-09 (`test_intent_store.py`):**

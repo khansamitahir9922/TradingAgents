@@ -1,6 +1,6 @@
-# M3 specification pack: portfolio, policy, risk (draft for review)
+# M3 specification pack: portfolio, policy, risk (accepted; implemented on `m3/milestone`, in review)
 
-**Accepted for implementation (owner, 2026-10-16)**: Codex accepted the specs at `6085fd9` (`docs/reviews/codex-m3-spec-accepted-6085fd9.md`, imported unchanged), and the owner approved D1–D18 as recommended, the 52 h milestone with the 4 h exception, and building M3 on `m3/milestone`. Codex's three acceptance notes are folded into M3-05, M3-12 and M3-13. History: **Draft v0.3, 2026-10-16** (v0.2 `e7ec7e1` re-reviewed by Codex: R1–R3 and S1–S4 applied; B1–B6 accepted and preserved). Prepared by Claude on `docs/m3-specs`. v0.1 (`1ce5250`) was reviewed by Codex (`docs/reviews/codex-m3-spec-review-1ce5250.md`, imported unchanged into this branch). v0.2 applies blocking findings B1–B6 and suggestions S1–S7; see `docs/reviews/claude-m3-spec-package.md` for the correction table. **No M3 code has been written or authorized.** M2 is complete: local `main` was fast-forwarded to `b7c5d2a` on 2026-10-16 after Codex's final review (`docs/reviews/codex-m2-accepted-b7c5d2a.md`, also imported unchanged).
+**Accepted for implementation (owner, 2026-10-16)**: Codex accepted the specs at `6085fd9` (`docs/reviews/codex-m3-spec-accepted-6085fd9.md`, imported unchanged), and the owner approved D1–D18 as recommended, the 52 h milestone with the 4 h exception, and building M3 on `m3/milestone`. Codex's three acceptance notes are folded into M3-05, M3-12 and M3-13. History: **Draft v0.3, 2026-10-16** (v0.2 `e7ec7e1` re-reviewed by Codex: R1–R3 and S1–S4 applied; B1–B6 accepted and preserved). Prepared by Claude on `docs/m3-specs`. v0.1 (`1ce5250`) was reviewed by Codex (`docs/reviews/codex-m3-spec-review-1ce5250.md`, imported unchanged into this branch). v0.2 applies blocking findings B1–B6 and suggestions S1–S7; see `docs/reviews/claude-m3-spec-package.md` for the correction table. (History, as written for v0.3: no M3 code had then been written or authorized.) **Current, 2026-10-17:** all 15 tasks are implemented and committed on `m3/milestone`; Codex's milestone review at `4102817` (`docs/reviews/codex-m3-milestone-review-4102817.md`) requested changes B1–B8, which are fixed as follow-up commits for re-review. Nothing is merged. M2 is complete: local `main` was fast-forwarded to `b7c5d2a` on 2026-10-16 after Codex's final review (`docs/reviews/codex-m2-accepted-b7c5d2a.md`, also imported unchanged).
 
 **Milestone (architecture Part K, frozen):** move to PostgreSQL; PortfolioSnapshot, position sizer, versioned OrderIntent, policy (autonomy), risk, audit. **Visible result:** a CLI that shows proposed intents with their approve, reject or reduce reasons, and Level 1 approve/decline at the CLI. **No orders are created or executed in M3** (PRD §8). Concurrency tests run on PostgreSQL (ADR-008).
 
@@ -11,7 +11,7 @@
 - No new process, service, broker connection, outbox or credential holder.
 - Serialization uses PostgreSQL advisory locks inside existing transactions.
 
-## Owner decisions (all proposed; none accepted)
+## Owner decisions (accepted as recommended, owner, 2026-10-16; first proposed in the drafts)
 
 Plain English, with Claude's recommendation. Limits are stored as **versioned configuration**, so any value can change later without code changes. A change creates a new version, and approvals made under an older version are refused.
 
