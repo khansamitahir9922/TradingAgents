@@ -274,19 +274,6 @@ class IntentStore:
                                           f"intent.supersede:{intent_id}:{version}"))
         return self.get(intent_id, new.version)
 
-    def set_fields(self, intent_id: str, version: int, *, expected_aggregate_version: int, **fields) -> StoredIntent:
-        """Record decisions or the lineage id without a state change (still compare-and-set, no material field)."""
-        unknown = sorted(set(fields) - set(FIELDS))
-        if unknown or not fields:
-            raise ValueError(f"set_fields sets {FIELDS} only")
-        with self._db.transaction():
-            self._move(intent_id, expected_aggregate_version)
-            assignments = ", ".join(f"{name} = :{name}" for name in fields)
-            values = {name: (_blob(v) if name in ("policy_decision", "risk_decision") else v)
-                      for name, v in fields.items()}
-            self._db.execute(f"UPDATE intent_versions SET {assignments} WHERE intent_id = :id AND version = :version",
-                             {"id": intent_id, "version": version, **values})
-        return self.get(intent_id, version)
 
 
 __all__ = ["IntentStore", "StaleWrite", "StoredIntent", "Transition", "Side"]

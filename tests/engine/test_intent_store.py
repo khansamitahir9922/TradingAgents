@@ -303,3 +303,36 @@ def test_a_fresh_process_decodes_intent_events_through_the_registry(env, pg_data
                          text=True, timeout=120, cwd=root, env={**os.environ, "IE_PROBE_DSN": pg_database, "PYTHONPATH": str(root)})
     assert out.returncode == 0, out.stderr.splitlines()[-1:]
     assert json.loads(out.stdout) == ["OrderIntent", stored.intent.intent_id, str(stored.intent.quantity)]
+
+
+@pytest.mark.postgres
+@pytest.mark.unit
+def test_approval_evidence_and_history_change_only_through_audited_transitions(env):
+    """Codex B3: a metadata-only mutator could rewrite an approved version's approver without a transition or audit
+    event. The store's only writers are create, transition and supersede, each audited."""
+    _, store, _ = env
+    readers = {"get", "versions", "history", "for_account", "due_for_expiry", "admitted_buys", "was_admitted"}
+    public = {n for n, v in vars(IntentStore).items() if callable(v) and not n.startswith("_")}
+    assert public - readers == {"create", "transition", "supersede"}
+    approved = walk(store, [S.AWAITING_APPROVAL])
+    approved = store.transition(approved.intent.intent_id, 1, S.APPROVED,
+                                expected_aggregate_version=approved.aggregate_version, at=NOW, by=OWNER,
+                                reason="approved", approved_by="owner", approved_at=NOW,
+                                approval_expires_at=NOW + timedelta(hours=8), approval_recorded_at=NOW)
+    def events():
+        return env[0].fetchone("SELECT COUNT(*) FROM audit_events")[0]
+
+    before = events()
+    with pytest.raises(intent_states.IllegalTransition):  # no second approval with other evidence
+        store.transition(approved.intent.intent_id, 1, S.APPROVED,
+                         expected_aggregate_version=approved.aggregate_version, at=NOW, by=OWNER,
+                         reason="rewrite", approved_by="invented-approver")
+    assert store.get(approved.intent.intent_id) == approved and events() == before  # nothing written
+    reduced = store.create(intent(intent_id="int-history"), by=CORE, correlation_id="c")
+    v2 = store.supersede("int-history", 1, replace(reduced.intent, version=2, supersedes=1, quantity=Decimal("64")),
+                         expected_aggregate_version=1, at=NOW, by=CORE, reason="reduce")
+    after = events()
+    with pytest.raises(intent_states.IllegalTransition):  # a historical version never changes
+        store.transition("int-history", 1, S.AWAITING_APPROVAL, expected_aggregate_version=v2.aggregate_version,
+                         at=NOW, by=CORE, reason="old version")
+    assert store.versions("int-history")[0].state is S.SUPERSEDED and events() == after

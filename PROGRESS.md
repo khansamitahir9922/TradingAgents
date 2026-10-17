@@ -150,6 +150,14 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-17: Claude Code (M3-09 follow-up, Codex M3 review B3: no unaudited metadata route)
+- **Finding:** `IntentStore.set_fields` could change approval fields, decisions, deadlines and lineage with only an aggregate compare-and-set. It checked neither state nor latest version and wrote no transition or audit event, against M3-09 rules 3 and 5. Codex rewrote an approved intent's approver with it.
+- **Change (`oms/intent_store.py`):** the unused mutator is removed (it had no callers). The store's only writers are `create`, `transition` and `supersede`, each atomic with its audit event. Material columns stay protected by the 0009 triggers.
+- **Not done:** a SQL trigger refusing same-state updates of approval fields. It would mean editing `0009_intents.sql` in place again, which Codex accepted only for disposable databases (S1). It is left as possible later hardening.
+- **Regression (`test_intent_store.py`):** `test_approval_evidence_and_history_change_only_through_audited_transitions`. The public writers are exactly create, transition and supersede. A second approval with other evidence raises IllegalTransition and writes nothing (record and audit count unchanged). A superseded version can't be moved. Observed failing before the change (`set_fields` was a public writer), passing after.
+- **Checks (Git Bash):** `test_intent_store.py` passed (102). Ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 2836 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 636.30s (0:10:36) (only failure: the baseline cache-location test). The whitespace check then flagged a blank line at the end of the test file, which my script had added; it was removed before this commit.
+
 ### 2026-10-17: Claude Code (M3-08 and M3-11 follow-up, Codex M3 review B6: sizing and risk ignore the caller's decimal context)
 - **Finding:** explicit `Context` methods covered some operations, but unqualified `quantize`, built-in `sum` and the reason formatting used the caller's ambient context. Under different rounding, identical inputs gave different recorded reasons (so different decisions); at precision 6 an ordinary approval raised `InvalidOperation`. Risk also kept one shared module context, not the fresh one M3-11 rule 4 asks for.
 - **Change:**
