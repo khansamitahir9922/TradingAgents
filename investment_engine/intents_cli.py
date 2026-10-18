@@ -341,3 +341,106 @@ def show_intent(intent_id: str, version: int | None = typer.Option(None, "--vers
         _header(stores, latest.intent.account_id, latest.intent.created_at)
         _show(stores, intent_id, version)
     _run(go, read_only=True)
+
+
+# ---------------------------------------------------------------- the simulated run and the order log (M4-13)
+
+
+@intents_app.command("simulate")
+def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = typer.Option(..., "--from"),
+                 to_day: str = typer.Option(..., "--to"), instrument: str = NVDA) -> None:
+    """Replay stored views through the full order path to the simulated broker (a RESEARCH account at Level 2;
+    D23, D24). Offline: the local market store only; nothing is downloaded.
+
+    Knowledge is the replay's, as for `intents propose --from/--to`: every bar and action of the local store is
+    delivered at its availability (M2's ReplayFeed), so a history downloaded today is known at its historical time,
+    and a later correction only from its own delivery. The feed runs three weeks past the range, so the last orders
+    reach their decision moments."""
+    def go(db):
+        from datetime import UTC
+
+        from investment_engine import config
+        from investment_engine.decision.pipeline import ReplayKnowledgeReader
+        from investment_engine.killswitch.flag import FLAG_FILE
+        from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+        from investment_engine.market.candles import Timeframe
+        from investment_engine.market.corporate_actions import ActionType
+        from investment_engine.market.replay import ReplayFeed
+        from investment_engine.portfolio.reference import ReplayKnowledge
+        from investment_engine.quant.adjusted import establish_coverage
+        from investment_engine.simulation.run import SimulationRefused, simulate, stored_views
+        from investment_engine.storage.database import PostgresDatabase
+        from investment_engine.storage.postgres import open_operational_pg
+
+        calendar, reader = load_us_equities_calendar(), _market()
+        first = datetime.combine(_day(from_day), datetime.min.time(), tzinfo=UTC)
+        last = datetime.combine(_day(to_day) + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
+        views = stored_views(db, instrument, first, last)
+        knowledge = None
+        if views:
+            start, end = views[0].generated_at - timedelta(days=60), last + timedelta(days=21)
+            knowledge_reader = ReplayKnowledgeReader()
+            for event in ReplayFeed(reader, ReplayClock(start), sources=[SOURCE], instrument_ids=[instrument],
+                                    timeframes=[Timeframe.D1], start=start, end=end):
+                knowledge_reader.accept(event)
+            # Every event delivered before `end` is accepted; each is known only from its own delivery.
+            knowledge = ReplayKnowledge(knowledge_reader, calendar=calendar, complete_through=end)
+        evidence, cov_first, cov_last, reason = _coverage(last)
+        coverage = establish_coverage(evidence, source=SOURCE, instrument_id=instrument,
+                                      types=(ActionType.SPLIT, ActionType.DIVIDEND), first=cov_first, last=cov_last,
+                                      as_of=last, reason=reason)
+        calendar_version, code_version = _versions()
+        opened = []
+
+        def open_db():
+            opened.append(open_operational_pg(config.operational_db_dsn()))
+            return PostgresDatabase(opened[-1])
+
+        try:
+            report = simulate(account, views=views, open_db=open_db, knowledge=knowledge,
+                              calendar=calendar, coverage=coverage, flag_path=config.control_dir() / FLAG_FILE,
+                              source=SOURCE, calendar_version=calendar_version, code_version=code_version)
+        except SimulationRefused as exc:
+            _say(f"Refused: {exc}. Nothing was run.")
+            raise typer.Exit(1) from None
+        finally:
+            for conn in opened:
+                conn.close()
+        _say("SIMULATED | RESEARCH | NOT PROMOTED | PROVISIONAL POSITIONS")
+        _say(f"{report.views} views; proposals: " + ", ".join(f"{k} {v}" for k, v in sorted(report.proposals.items()))
+             + f"; {report.orders} orders. See `intents order-log --account {account}`.")
+        for stop in report.stops:
+            _say(f"stopped proposing: {stop}")
+    _run(go)
+
+
+@intents_app.command("order-log")
+def order_log(account: str = typer.Option(..., "--account"),
+              json_path: str | None = typer.Option(None, "--json", help="also write the log as JSON here")) -> None:
+    """Every order of an account, explained: gate checks, transitions, fills with provenance (ASCII)."""
+    def go(db):
+        from pathlib import Path
+
+        from investment_engine import config
+        from investment_engine.events.outbox import Outbox
+        from investment_engine.killswitch.flag import FLAG_FILE, KillSwitchReader
+        from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+        from investment_engine.oms.order_states import ProcessRole
+        from investment_engine.oms.order_store import OrderStore
+        from investment_engine.reporting.order_log import build_order_log
+
+        clock, calendar = LiveClock(), load_us_equities_calendar()
+        stores = _stores(db, clock)
+        orders = OrderStore(db, role=ProcessRole.CORE, audit=stores.audit,
+                            outbox=Outbox(db, writer=ProcessRole.CORE, clock=clock), clock=clock)
+        reading = KillSwitchReader(config.control_dir() / FLAG_FILE).read()
+        switch = "enabled" if reading.enabled else f"disabled ({reading.problem or 'halted'})"
+        log = build_order_log(account, orders=orders, intents=stores.intents, lineage=stores.lineage,
+                              calendar=calendar, source=SOURCE, header_extra={"kill switch now": switch,
+                                                                              "promotion": "NOT PROMOTED (D23)"},
+                              snapshots=stores.snapshots, at=clock.now())
+        _say(log.to_text())
+        if json_path:
+            Path(json_path).write_text(log.to_json() + "\n", encoding="utf-8")
+            _say(f"JSON written to {json_path}")
+    _run(go)

@@ -34,4 +34,12 @@ def build_broker(kind: str, *, account_kind: AccountKind, **deps):
                            source=deps.get("source", "yfinance"), fees=load_fee_schedule())
 
 
-__all__ = ["KINDS", "BrokerUnavailable", "build_broker", "check_available"]
+def build_gate_reads(stores, orders, *, knowledge, calendar, fingerprints):
+    """The gate's read provider, for a composer outside this package (the offline harness, M4-13) that may import
+    only this factory, the worker, the port and the simulator (M4-03 layering)."""
+    from investment_engine.execution.reads import StoreGateReads
+
+    return StoreGateReads(stores, orders, knowledge=knowledge, calendar=calendar, fingerprints=fingerprints)
+
+
+__all__ = ["KINDS", "BrokerUnavailable", "build_broker", "build_gate_reads", "check_available"]

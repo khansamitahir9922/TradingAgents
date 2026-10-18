@@ -10,6 +10,7 @@ transaction; the Core Engine never touches the Execution Worker's transitions.
 
 from dataclasses import dataclass
 
+from investment_engine.events.consumer import Consumer
 from investment_engine.events.outbox import Outbox
 from investment_engine.oms.conversion import convert_approved
 from investment_engine.oms.order_states import ProcessRole
@@ -21,6 +22,7 @@ from investment_engine.policy.accounts import AccountKind
 class CoreStepReport:
     converted: int
     published: int
+    consumed: int = 0
 
 
 class CoreEngine:
@@ -29,6 +31,9 @@ class CoreEngine:
         self.outbox = Outbox(stores.db, writer=ProcessRole.CORE, clock=clock)
         self.orders = OrderStore(stores.db, role=ProcessRole.CORE, audit=stores.audit, outbox=self.outbox,
                                  clock=clock)
+        # The Core's order-log projection consumer (M4-01 rule 6, M4-13): it applies every event once, in order per
+        # aggregate, and records what it has seen; the order log itself reads the order store directly.
+        self.consumer = Consumer(stores.db, name="order-log", handles={}, clock=clock)
 
     def step(self) -> CoreStepReport:
         converted = 0
@@ -37,7 +42,9 @@ class CoreEngine:
             if account.kind is AccountKind.PAPER:
                 converted += len(convert_approved(account.account_id, at=now, stores=self.stores,
                                                   orders=self.orders).converted)
-        return CoreStepReport(converted, self.outbox.publish_pending())
+        published = self.outbox.publish_pending()
+        report = self.consumer.run_once(limit=1000)
+        return CoreStepReport(converted, published, report.applied + report.unhandled)
 
 
 __all__ = ["CoreEngine", "CoreStepReport"]

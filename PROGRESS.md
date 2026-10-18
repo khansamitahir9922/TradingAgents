@@ -150,6 +150,40 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-13: the simulated run and the order log)
+- **Built:**
+  - `investment_engine/simulation/run.py`: `simulate()`, the offline research harness (D24). It builds the unchanged Execution Worker and Core-side stores, each with its own connection, process role and replay clock, and the broker only through `build_broker("simulated", account_kind=RESEARCH)`; no secrets are loaded.
+    - For each stored view, in time order: a worker step at the view's time (everything decided by then is ingested, so sizing sees the post-fill portfolio); the proposal against the provisional projection (M4-09); Level 2 approval; conversion; publishing and the `order-log` consumer; then a worker step a microsecond later (gate and pre-open submission). A final step at the last target session's next open ingests the last outcomes.
+    - PAPER accounts are refused, and so is an account that already has orders (rule 6).
+    - **Rule 4:** once a proposal finds the projection Unavailable (`snapshot` among the missing prerequisites), proposing stops for the account, with the reason. The worker keeps stepping, so orders already placed reach a final state.
+  - `investment_engine/reporting/order_log.py`: `build_order_log()`, which reads the order store, intents, lineage and the latest snapshot's adjustments only (never `sim_broker`). It gives the header, every order (gate checks, transitions, fills with provenance, anomalies, final state) and the summary. The label is `SIMULATED | RESEARCH | NOT PROMOTED | PROVISIONAL POSITIONS`. Output is ASCII text or JSON. Values that are missing say "none (no orders)", never `None` or blank. Units are shares and USD; dividends show "receivable X USD" and splits "ratio N".
+  - `intents simulate --account --from --to` and `intents order-log --account [--json PATH]`. `simulate` uses the **replay's knowledge**, as `intents propose --from/--to` does: M2's ReplayFeed over the local store (60 days before the first view to three weeks after the range), accepted by a ReplayKnowledgeReader, so each bar or action is known from its replay delivery.
+  - `core/engine.py`: the Core's `order-log` consumer (M4-01 rule 6); `CoreStepReport.consumed`.
+- **Deviations, recorded:**
+  1. `execution/factory.py` (M4-06's file, not in M4-13's list) gains `build_gate_reads()`. The harness may import only the factory, worker, port and simulator (M4-03 layering), but it needs the gate's read provider. A thin factory function keeps `execution.reads` private to the package.
+  2. `tests/engine/test_layering.py`: M4-03's harness rule read `from investment_engine.execution.factory import build_broker` as importing a module named `factory.build_broker`. It now allows an import that is, or is inside, an allowed module, with a test of both cases. That flaw caused M4-12's two layering failures (see M4-12's entry).
+  3. Acceptance "with the flag disabled, cancels aren't blocked" isn't asserted in the simulated run. With the switch off, every order is GATE_REJECTED before the broker sees it, so there is nothing to cancel. The same `ExecutionWorker` is covered by `test_worker_cancels.py::test_a_cancel_goes_through_with_trading_disabled_and_closes_when_final` (M4-07).
+- **Found by the full run, fixed here:** the first full run made 0 orders. Every proposal was PREREQUISITE_MISSING with "decision bar ... is not known". `simulate` had used `StoreKnowledge`, which counts a bar only after its download time (2026), so no historical bar was ever known. The CLI test now uses backfilled bars received "today", like the real store. It failed first (0 orders) and passes with replay knowledge. Another full-run finding was fixed separately in the M4-09 follow-up commit after this one.
+- **Tests:** `test_simulated_run.py` (8): the hand-checked short range (an open fill; an intraday-only SELL stamped at the close at 118.80; a gate `view` rejection after a correction; an expiry; the SELL sized on the post-fill portfolio); trading disabled; byte-identical logs from two fresh databases; label, ASCII and units; refusals; a missing bar expiring at the cutoff; a covered dividend becoming a receivable listed in the log; a fractional split stopping proposals with the reason. `test_order_log.py` (3): the CLI with backfilled bars; an account without orders; the reporter never names `sim_broker`. **Red evidence:** disabling the stop failed the fractional-split test (3 stops, not 1).
+- **Optional full run (recorded, not asserted).** A throwaway PostgreSQL database plus a scratch data directory holding a *copy* of the M2 report's verified market store; the M2 report's `operational.sqlite3` copied in with `db copy-from-sqlite` (1954 lineage records, the instrument and its symbol mapping). Then the documented M3-14 setup (Admin, RESEARCH account R2 at Level 2, declared 100,000 USD start, limits risk-1/policy-1, kill switch resumed), then `intents simulate --account R2 --from 2019-01-02 --to 2026-10-09` (159.5 s) and `intents order-log`. Nothing was downloaded, and the owner's data directory and database weren't touched.
+  - 1954 views:
+    - 831 RISK_REJECTED (the drawdown halt);
+    - 218 NO_INTENT "BEARISH: nothing held";
+    - 199 ABSTAIN (warm-up);
+    - 93 NEUTRAL;
+    - the rest NO_INTENT "already at the target", "below one share" or reduced to zero;
+    - 2 APPROVED buys.
+  - **3 orders, all FILLED:**
+    - BUY 50 at 196.10 at the open on 2019-10-17;
+    - BUY 1 at 192.39 on 2019-10-21, an intraday touch stamped at the close;
+    - SELL 204 at 216.98 at the open on 2022-04-21, after the 4:1 split of 2021-07-20.
+  - Filled notional 54261.31 USD; fees 0; no UNKNOWN; no stop.
+  - Adjustments: ten dividends of 8.16 USD receivable each (51 × 0.16, then 204 × 0.04) and the split (ratio 4).
+  - The drawdown halt from 2023-01-24 checks out. The strategy only adds, so the position grew to about 40% of equity. The April 2022 sale realized about 134.4k against a peak near 158k (15.1% ≥ 15%). The check first ran at the next bullish proposal, and the halt holds until an Admin clears it (D3).
+  - Three runs gave the same order ids.
+- **Checks (Git Bash):** the two M4-13 files, 11 passed; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite, on the working tree holding this task and the M4-09 follow-up together: 1 failed, 3257 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1725.11s (0:28:45). The only failure is the baseline cache-location test. **No new failures.** The follow-up changes only `portfolio/provisional.py` and its test file.
+
 ### 2026-10-18: Claude Code (M4-12: two-process fault injection)
 - **Built (tests only):**
   - `tests/engine/test_fault_injection.py`: Part J's list with the Core Engine and the Execution Worker as real OS processes (the M4-08 harness), each from a fresh database, asserting store state:

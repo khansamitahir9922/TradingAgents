@@ -105,7 +105,10 @@ def execution_boundary_offenders(package: Path) -> list[str]:
             if bad:
                 offenders.append(f"{rel}: execution imports analysis/harness {sorted(bad)}")
         elif rel.startswith("simulation/"):
-            bad = {m for m in execution if m not in HARNESS_MAY_IMPORT and m != "investment_engine.execution"}
+            # `from investment_engine.execution.factory import build_broker` names a module and an attribute: an
+            # import is allowed when it is, or is inside, an allowed module (M4-13 found the attribute case).
+            bad = {m for m in execution if m != "investment_engine.execution"
+                   and not any(m == a or m.startswith(a + ".") for a in HARNESS_MAY_IMPORT)}
             if bad:
                 offenders.append(f"{rel}: the harness may import only {sorted(HARNESS_MAY_IMPORT)}, not {sorted(bad)}")
         elif execution:
@@ -162,3 +165,16 @@ def test_only_the_admin_cli_imports_the_kill_switch_writer():
         if any(m == "investment_engine.killswitch.admin" for m in _modules(path, PACKAGE))
         and path.relative_to(PACKAGE).as_posix() != "killswitch/admin.py")
     assert writers == ["admin_cli.py"]
+
+
+@pytest.mark.unit
+def test_an_attribute_imported_from_an_allowed_module_is_allowed_but_not_from_another(tmp_path):
+    """M4-13: `from ...execution.factory import build_broker` names a module and an attribute."""
+    package = tmp_path / "investment_engine"
+    (package / "simulation").mkdir(parents=True)
+    (package / "simulation" / "run.py").write_text(
+        "from investment_engine.execution.factory import build_broker, build_gate_reads\n", encoding="utf-8")
+    assert execution_boundary_offenders(package) == []
+    (package / "simulation" / "run.py").write_text(
+        "from investment_engine.execution.reads import StoreGateReads\n", encoding="utf-8")
+    assert any("the harness may import only" in o for o in execution_boundary_offenders(package))
