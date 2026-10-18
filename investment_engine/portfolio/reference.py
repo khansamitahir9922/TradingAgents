@@ -134,9 +134,12 @@ class ReplayKnowledge:
     delivered."""
 
     def __init__(self, reader, *, through_sequence: int | None = None, calendar=None,
-                 complete_through: datetime | None = None) -> None:
+                 complete_through: datetime | None = None, known_from: datetime | None = None) -> None:
+        """`known_from` is when the feed this reader was given begins: nothing before it was delivered, so a
+        projection from an earlier declared start is unavailable rather than silently missing actions (B7)."""
         self._reader, self._through, self._calendar = reader, through_sequence, calendar
         self._complete = None if complete_through is None else check_utc(complete_through, "complete_through")
+        self.known_from = None if known_from is None else check_utc(known_from, "known_from")
 
     def _known(self, identity: tuple, at: datetime) -> list[Candle]:
         if self._complete is not None and check_utc(at, "at") <= self._complete:

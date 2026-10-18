@@ -354,8 +354,9 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
 
     Knowledge is the replay's, as for `intents propose --from/--to`: every bar and action of the local store is
     delivered at its availability (M2's ReplayFeed), so a history downloaded today is known at its historical time,
-    and a later correction only from its own delivery. The feed runs three weeks past the range, so the last orders
-    reach their decision moments."""
+    and a later correction only from its own delivery. The feed covers the whole local history (every action since
+    the declared start, B7) and runs three weeks past the range, so the last orders reach their decision moments.
+    Each proposal stops at its own view's decision bar within that instant (B3)."""
     def go(db):
         from datetime import UTC
 
@@ -378,7 +379,9 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
         views = stored_views(db, instrument, first, last)
         knowledge = None
         if views:
-            start, end = views[0].generated_at - timedelta(days=60), last + timedelta(days=21)
+            # The whole local history: an action delivered before the declared start can take effect after it, so
+            # a feed cut anywhere later could miss it while looking complete (Codex M4 review B7).
+            start, end = datetime(1970, 1, 1, tzinfo=UTC), last + timedelta(days=21)
             knowledge_reader, sequences = ReplayKnowledgeReader(), {}
             for event in ReplayFeed(reader, ReplayClock(start), sources=[SOURCE], instrument_ids=[instrument],
                                     timeframes=[Timeframe.D1], start=start, end=end):
@@ -386,7 +389,7 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
                 p = event.payload
                 sequences[(p.source, p.instrument_id, getattr(p, "start_time", None), p.revision)] = event.sequence
             # Every event delivered before `end` is accepted; each is known only from its own delivery.
-            knowledge = ReplayKnowledge(knowledge_reader, calendar=calendar, complete_through=end)
+            knowledge = ReplayKnowledge(knowledge_reader, calendar=calendar, complete_through=end, known_from=start)
 
         def proposal_knowledge(view, stores):
             """The proposal's knowledge stops at its view's own decision bar within that instant, exactly as M3's
@@ -395,7 +398,7 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
 
             bar = _decision_bar(stores, view)
             return ReplayKnowledge(knowledge_reader, through_sequence=sequences.get(bar) if bar else None,
-                                   calendar=calendar, complete_through=view.generated_at)
+                                   calendar=calendar, complete_through=view.generated_at, known_from=start)
         evidence, cov_first, cov_last, reason = _coverage(last)
         coverage = establish_coverage(evidence, source=SOURCE, instrument_id=instrument,
                                       types=(ActionType.SPLIT, ActionType.DIVIDEND), first=cov_first, last=cov_last,

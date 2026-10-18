@@ -331,3 +331,47 @@ def test_the_projection_ignores_the_callers_decimal_context(hostile):
         hostile_context(context, hostile)
         projected = proj(orders, at, knowledge=actions, start=starting(cash="100000.07", positions=("10",)))
     assert projected == expected
+
+
+# ---------------------------------------------------------------- the declared-start boundary (B7)
+
+
+def declared(at, positions=("10",)):
+    return replace(starting(positions=positions), effective_at=at)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("start, applied", [
+    (t_open(D3) - timedelta(hours=1), True),   # before the split's open: the split still applies
+    (t_open(D3), False),                       # at the same instant: the start is taken to reflect it
+    (t_open(D3) + timedelta(hours=1), False),  # after it: already reflected
+], ids=["before-the-open", "at-the-open", "after-the-open"])
+def test_an_action_on_the_start_date_applies_only_if_it_takes_effect_after_the_start(start, applied):
+    """B7 (Codex M4 review): every action dated on the start's local date was skipped, though a date can't say
+    whether the start was before or after that day's open: ten shares declared an hour before a 10-for-1 split's
+    open stayed ten."""
+    split = action(ActionType.SPLIT, D3, ratio="10")
+    p = proj(Orders(), t_close(D3), start=declared(start), knowledge=Knowledge([split]))
+    assert p.held(NVDA) == (Decimal(100) if applied else Decimal(10))
+    assert [a.kind for a in p.adjustments] == (["SPLIT"] if applied else [])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("start, entitled", [(t_open(D3) - timedelta(hours=1), True), (t_open(D3) + timedelta(hours=1), False)],
+                         ids=["before-the-open", "after-the-open"])
+def test_a_dividend_on_the_start_date_follows_the_same_rule(start, entitled):
+    dividend = action(ActionType.DIVIDEND, D3, amount="0.10")
+    p = proj(Orders(), t_close(D3), start=declared(start), knowledge=Knowledge([dividend]))
+    assert p.receivables == (Decimal("1.00") if entitled else Decimal(0))
+
+
+@pytest.mark.unit
+def test_knowledge_that_begins_after_the_declared_start_makes_the_projection_unavailable():
+    """B7: a feed preloaded from sixty days before the first view held no record of an earlier split, and the
+    projection carried ten shares as if none had happened. A truncated history is not evidence of no actions."""
+    knowledge = Knowledge([])
+    knowledge.known_from = START + timedelta(days=400)
+    p = proj(Orders(), START + timedelta(days=500), start=declared(START), knowledge=knowledge)
+    assert isinstance(p, Unavailable) and "knowledge begins" in p.reason
+    knowledge.known_from = START  # complete from the start: no action, so the holding stands
+    assert proj(Orders(), START + timedelta(days=500), start=declared(START), knowledge=knowledge).held(NVDA) == 10

@@ -144,3 +144,31 @@ def test_a_proposal_never_sees_an_equal_time_event_its_view_did_not(cli_with_a_c
         assert [c.name for c in gate.checks if not c.passed] == ["view"]
     finally:
         conn.close()
+
+
+@pytest.mark.unit
+def test_simulate_feeds_the_whole_local_history_and_says_where_its_knowledge_begins(cli, monkeypatch):
+    """B7 (Codex M4 review): the feed began sixty days before the first view, so actions since an earlier declared
+    start were absent while the projection looked complete."""
+    import investment_engine.market.replay as replay
+    from investment_engine.simulation import run as run_module
+    from tests.engine.test_intent_pipeline import START
+
+    app, _ = cli
+    starts, seen = [], []
+    real_feed, real_simulate = replay.ReplayFeed, run_module.simulate
+
+    def recording_feed(*args, **kwargs):
+        starts.append(kwargs["start"])
+        return real_feed(*args, **kwargs)
+
+    def recording_simulate(*args, **kwargs):
+        seen.append(kwargs["knowledge"].known_from)
+        return real_simulate(*args, **kwargs)
+
+    monkeypatch.setattr(replay, "ReplayFeed", recording_feed)
+    monkeypatch.setattr(run_module, "simulate", recording_simulate)
+    done = run(app, "intents", "simulate", "--account", "R2", "--from", SESSIONS[59].isoformat(), "--to",
+               SESSIONS[63].isoformat())
+    assert done.exit_code == 0, done.output
+    assert starts and starts[0] <= START and seen == [starts[0]]  # from before the declared start, and it says so

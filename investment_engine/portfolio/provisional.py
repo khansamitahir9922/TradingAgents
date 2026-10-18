@@ -84,6 +84,11 @@ def project(account_id: str, *, at: datetime, starting, orders, knowledge, calen
     at = check_utc(at, "at")
     if at < starting.effective_at:
         return Unavailable(f"{account_id}'s declared start is after {at.isoformat()}")
+    known_from = getattr(knowledge, "known_from", None)
+    if known_from is not None and known_from > starting.effective_at:
+        # A history that starts later is no evidence that nothing happened before it (Codex M4 review B7).
+        return Unavailable(f"the knowledge begins at {known_from.isoformat()}, after {account_id}'s declared start "
+                           f"{starting.effective_at.isoformat()}; actions since the start can't be established")
     zone = ZoneInfo(calendar.timezone)
     first, last = starting.effective_at.astimezone(zone).date(), at.astimezone(zone).date()
 
@@ -98,10 +103,13 @@ def project(account_id: str, *, at: datetime, starting, orders, knowledge, calen
     actions = []
     for instrument_id in sorted(instruments):
         for a in knowledge.actions_between(source, instrument_id, first, last, at=at):
-            if a.ex_date <= first:
-                continue  # already reflected in the declared start
             session = a.ex_date if calendar.is_session(a.ex_date) else calendar.next_session(a.ex_date).date
             effective = calendar.session(session).open
+            if effective <= starting.effective_at:
+                # In force when the start was declared, so already reflected in it. The comparison is of instants,
+                # not dates (B7): a start declared before an ex-date's open still receives that day's action, and
+                # one declared at the very instant it takes effect is taken to reflect it.
+                continue
             if effective <= at:
                 actions.append((effective, 0, _action_ref(a), ("action", a, None)))
 

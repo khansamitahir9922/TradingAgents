@@ -150,6 +150,20 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B7: actions at the declared-start boundary and since it)
+- **Codex M4 review B7:**
+  - The projection skipped every action dated on the start's local date: ten shares declared an hour before a 10-for-1 split's open stayed ten.
+  - The CLI's feed began sixty days before the first view, so actions since an earlier declared start were missing while the projection looked complete.
+- **Fix:**
+  - **Instants, not dates.** `provisional.project` compares each action's effective instant (its ex-date session's open) with the declared start. At or before the start, it is already reflected; at the very same instant, the start is taken to reflect it (documented). After it, it applies.
+  - **Fail closed on a short history.** `ReplayKnowledge(known_from=)` says where its feed begins; a projection whose start is earlier is Unavailable, with the reason, never projected without the missing actions.
+  - **Whole history in the CLI.** `intents simulate` feeds the whole local history and passes `known_from`. An action delivered before the start can take effect after it, so no later cut is safe.
+- **Tests:**
+  - `test_provisional_positions.py`: split before, at and after the open of the start date; dividend before and after; knowledge beginning after the start is Unavailable, and complete knowledge projects normally. Three failed first; Codex's first probe passes.
+  - `test_order_log.py`: `simulate` feeds from before the declared start and its knowledge says so.
+  - Codex's second probe builds knowledge with no `known_from` from a truncated feed and expects the full answer. That can't be known, and the review's own fix allows "report that it is unavailable"; every production caller now passes `known_from`.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3304 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1794.38s (0:29:54) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B3: equal-time sequence kept, in the broker and in each proposal)
 - **Codex M4 review B3:**
   - `first_known_closed` dropped the feed sequence and re-selected the latest revision at a bare timestamp, so a correction delivered at the same instant changed the simulator's decision bar depending on when it was first asked.
