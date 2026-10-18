@@ -237,3 +237,38 @@ def test_the_reference_guard_itself_refuses_a_forming_decision_bar(store):
 
     found = decision_reference(lineage(ref_of(candle)), knowledge=FormingKnowledge(), instruments=Instruments(), at=T)
     assert isinstance(found, Unavailable) and "FORMING, not CLOSED" in found.reason
+
+
+# ---------------------------------------------------------------- first_known_closed (docs/tasks/M4-06.md, V1)
+
+
+@pytest.mark.unit
+def test_store_first_known_is_receipt_time_and_later_corrections_never_replace_it(store):
+    writer, reader = store
+    late = T + timedelta(days=1)
+    writer.write_candles([observation(close="120.7500", received=late)], import_id="correction")
+    knowledge = StoreKnowledge(reader)
+    received = SESSION.close + timedelta(minutes=1)  # the first revision is available at the close, received a minute later
+    known_at, bar = knowledge.first_known_closed("yfinance", NVDA, DAY, not_after=late + timedelta(hours=1))
+    assert (known_at, bar.revision, bar.close) == (received, 1, Decimal("120.5000"))
+    assert knowledge.first_known_closed("yfinance", NVDA, DAY, not_after=received - timedelta(microseconds=1)) is None
+    assert knowledge.first_known_closed("yfinance", NVDA, DAY, not_after=received)[0] == received
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("latency", [timedelta(0), timedelta(minutes=10)], ids=["zero", "ten-minutes"])
+def test_replay_first_known_counts_delivery_latency(store, latency):
+    _, reader = store
+    (first,) = stored(reader)
+    delivered = first.available_from + latency
+    correction = replace(first, revision=2, close=Decimal("120.7500"), import_id="correction",
+                         received_at=delivered + timedelta(hours=1), processed_at=delivered + timedelta(hours=1),
+                         available_from=delivered + timedelta(hours=1), availability_basis=AvailabilityBasis.OBSERVED)
+    known = ReplayKnowledgeReader()
+    known.accept(event(first, 1, received=delivered))
+    known.accept(event(correction, 2, received=delivered + timedelta(hours=1)))
+    knowledge = ReplayKnowledge(known)
+    at, bar = knowledge.first_known_closed("yfinance", NVDA, DAY, not_after=delivered + timedelta(hours=1))
+    assert (at, bar.revision) == (delivered, 1)  # available earlier, but known only when delivered
+    if latency:
+        assert knowledge.first_known_closed("yfinance", NVDA, DAY, not_after=first.available_from) is None

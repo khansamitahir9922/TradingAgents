@@ -56,7 +56,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         clock = LiveClock()
         db = PostgresDatabase(conn)
-        broker = build_broker(args.broker, account_kind=AccountKind.RESEARCH, db=db, clock=clock, secrets=secrets)
+        from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+        from investment_engine.market.store.reader import MarketDataReader
+        from investment_engine.portfolio.reference import StoreKnowledge
+
+        calendar = load_us_equities_calendar()
+        knowledge = StoreKnowledge(MarketDataReader(config.market_store_dir()), calendar)
+        broker = build_broker(args.broker, account_kind=AccountKind.RESEARCH, db=db, clock=clock, secrets=secrets,
+                              knowledge=knowledge, calendar=calendar)
         worker = ExecutionWorker(db, clock=clock, broker=broker)
         if args.once:
             worker.outbox.publish_pending()

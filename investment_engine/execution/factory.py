@@ -1,8 +1,7 @@
 """Which broker adapters exist, and for which accounts: an allowlist (D23; docs/tasks/M4-03.md rule 1).
 
-M4-03 knows no production adapter, so every request is refused and the worker
-won't start; tests build the worker with a test-only broker double instead.
-M4-06 adds `simulated`, for RESEARCH accounts only. M7 adds the paper adapter.
+M4-03 knew no adapter (tests build the worker with a test-only double). M4-06
+adds `simulated`, for RESEARCH accounts only (D23). M7 adds the paper adapter.
 No path here loads secrets: the entry point passes in what an adapter needs.
 """
 
@@ -13,7 +12,7 @@ class BrokerUnavailable(RuntimeError):
     """No adapter of this kind is available for this account kind."""
 
 
-KINDS: dict[str, frozenset[AccountKind]] = {}  # kind -> the account kinds it may serve
+KINDS: dict[str, frozenset[AccountKind]] = {"simulated": frozenset({AccountKind.RESEARCH})}  # kind -> who it serves
 
 
 def check_available(kind: str, *, account_kind: AccountKind) -> None:
@@ -27,8 +26,12 @@ def check_available(kind: str, *, account_kind: AccountKind) -> None:
 
 
 def build_broker(kind: str, *, account_kind: AccountKind, **deps):
+    """`simulated` needs db, knowledge and calendar (and optionally source); it holds no credentials."""
     check_available(kind, account_kind=account_kind)
-    raise BrokerUnavailable(f"{kind} is listed but not built")  # replaced when an adapter is wired (M4-06)
+    from investment_engine.execution.simulated_broker import SimulatedBroker, load_fee_schedule
+
+    return SimulatedBroker(deps["db"], knowledge=deps["knowledge"], calendar=deps["calendar"],
+                           source=deps.get("source", "yfinance"), fees=load_fee_schedule())
 
 
 __all__ = ["KINDS", "BrokerUnavailable", "build_broker", "check_available"]

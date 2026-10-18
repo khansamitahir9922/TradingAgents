@@ -38,20 +38,21 @@ def schema(dsn):
 
 
 @pytest.mark.unit
-def test_no_adapter_is_available_yet_and_the_factory_refuses_every_kind():
-    for kind in ("simulated", "paper", "anything"):
+def test_the_factory_is_an_allowlist_the_simulator_serves_research_only():
+    for kind in ("paper", "anything"):  # no paper or live adapter exists in M4
         with pytest.raises(BrokerUnavailable, match="no broker adapter"):
             check_available(kind, account_kind=AccountKind.RESEARCH)
-        with pytest.raises(BrokerUnavailable):
-            build_broker(kind, account_kind=AccountKind.PAPER)
+    check_available("simulated", account_kind=AccountKind.RESEARCH)  # M4-06
+    with pytest.raises(BrokerUnavailable, match="serves only"):
+        build_broker("simulated", account_kind=AccountKind.PAPER)  # D23: never for a PAPER account
 
 
 @pytest.mark.unit
 def test_the_worker_refuses_to_start_without_an_adapter(tmp_path):
-    out = subprocess.run([sys.executable, "-m", "investment_engine.execution", "run", "--broker", "simulated"],
+    out = subprocess.run([sys.executable, "-m", "investment_engine.execution", "run", "--broker", "paper"],
                          capture_output=True, text=True, timeout=120, cwd=ROOT, env=environment(tmp_path))
     assert out.returncode == 2
-    assert "Execution Worker not started: no broker adapter 'simulated' is available yet" in out.stdout
+    assert "Execution Worker not started: no broker adapter 'paper' is available yet" in out.stdout
     missing = subprocess.run([sys.executable, "-m", "investment_engine.execution", "run"], capture_output=True,
                              text=True, timeout=120, cwd=ROOT, env=environment(tmp_path))
     assert missing.returncode == 2 and "--broker" in missing.stderr
@@ -168,7 +169,7 @@ def test_the_probe_does_see_the_worker_read_its_secrets(tmp_path):
     secrets.parent.mkdir(parents=True)
     secrets.write_text(f"BROKER_KEY={CANARY}\n", encoding="utf-8")
     out = subprocess.run([sys.executable, "-c", PROBE, str(secrets), "investment_engine.execution", "run", "--broker",
-                          "simulated"], capture_output=True, text=True, timeout=120, cwd=ROOT,
+                          "paper"], capture_output=True, text=True, timeout=120, cwd=ROOT,
                          env=environment(tmp_path))
     assert "SECRETS-OPENED" in out.stdout, out.stdout + out.stderr
     assert CANARY not in out.stdout + out.stderr  # read, never printed

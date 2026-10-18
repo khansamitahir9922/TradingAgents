@@ -1,0 +1,6 @@
+{
+  "version": "fees-1",
+  "commission_per_order": "0",
+  "slippage_bps": "5",
+  "note": "D25: commission 0, slippage 5 bps against the order, never past the limit; the same costs as M2."
+}

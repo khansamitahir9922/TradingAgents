@@ -51,6 +51,23 @@ class Knowledge(Protocol):
     def actions_between(self, source: str, instrument_id: str, first: date, last: date, *,
                         at: datetime) -> list: ...
 
+    def first_known_closed(self, source: str, instrument_id: str, session: date, *, not_after: datetime,
+                           calendar=None) -> "tuple[datetime, Candle] | None":
+        """The earliest knowledge time k <= not_after at which latest_closed(session, at=k) is a CLOSED bar, and
+        that bar: the revision known at k, never one learned later (docs/tasks/M4-06.md, V1)."""
+        ...
+
+
+def _first_known(knowledge, times, source, instrument_id, session, not_after, calendar):
+    """Walk the candidate knowledge times in order; the first at which a CLOSED revision is the latest known."""
+    for t in sorted(set(times)):
+        if t > not_after:
+            break
+        bar = knowledge.latest_closed(source, instrument_id, session, at=t, calendar=calendar)
+        if bar is not None:
+            return t, bar
+    return None
+
 
 def _identity(candle: Candle, ref: BarRef) -> bool:
     return ((candle.source, candle.instrument_id, candle.timeframe, candle.start_time, candle.revision)
@@ -83,6 +100,18 @@ class StoreKnowledge:
         known = [c for c in history if c.available_from <= at and c.received_at <= at]
         latest = max(known, key=lambda c: c.revision) if known else None
         return latest if latest is not None and latest.state is BarState.CLOSED else None
+
+    def first_known_closed(self, source: str, instrument_id: str, session: date, *, not_after: datetime,
+                           calendar=None):
+        """A revision becomes known at max(available_from, received_at) (V1)."""
+        from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+
+        not_after = check_utc(not_after, "not_after")
+        cal = calendar or self._calendar or load_us_equities_calendar()
+        opening = cal.session(session).open
+        history = self._reader.candle_revision_history(source, instrument_id, Timeframe.D1, opening, opening + _TICK)
+        times = [max(c.available_from, c.received_at) for c in history]
+        return _first_known(self, times, source, instrument_id, session, not_after, cal)
 
     def actions_between(self, source: str, instrument_id: str, first: date, last: date, *, at: datetime) -> list:
         """Corporate actions with ex-dates in [first, last] known at T (available and received by T)."""
@@ -126,6 +155,18 @@ class ReplayKnowledge:
         known = self._known((source, instrument_id, Timeframe.D1, opening), at)
         latest = max(known, key=lambda c: c.revision) if known else None
         return latest if latest is not None and latest.state is BarState.CLOSED else None
+
+    def first_known_closed(self, source: str, instrument_id: str, session: date, *, not_after: datetime,
+                           calendar=None):
+        """A revision becomes known at max(available_from, delivered): delivery includes the replay latency (V1)."""
+        from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+
+        not_after = check_utc(not_after, "not_after")
+        cal = calendar or self._calendar or load_us_equities_calendar()
+        opening = cal.session(session).open
+        revisions = self._reader._candles.get((source, instrument_id, Timeframe.D1, opening), {})  # read-only use
+        times = [max(p.available_from, delivered) for p, delivered, _ in revisions.values()]
+        return _first_known(self, times, source, instrument_id, session, not_after, cal)
 
     def actions_between(self, source: str, instrument_id: str, first: date, last: date, *, at: datetime) -> list:
         query_at = at

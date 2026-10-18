@@ -150,6 +150,26 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-06: the simulated broker)
+- **Built:**
+  - `execution/simulated_broker.py`: its own state (schema `0013_sim_broker`); four separate times (a submit at or after the open is REJECTED; executed at the open, or at the close marked `INTRADAY_UNKNOWN`; delivered at the decision moment D; recorded by the worker).
+  - **D** comes from `Knowledge.first_known_closed` (availability and delivery both counted), on the revision known then.
+  - `materialize(t)` runs before every call, so polling never changes an outcome.
+  - Cancels: before the open, conclusive; from the open to D, PENDING with the first receipt time kept; at or after D, TOO_LATE (a tie is too late). At D an opening fill stands, and an intraday-only fill loses to a pending cancel (recorded).
+  - The missing-bar cutoff (the next session's open) gives EXPIRED, or CANCELLED if a cancel was pending, with no fill.
+  - Slippage 5 bps, capped at the limit, rounded half-even to the cent; fees from `fees.json` (version `fees-1`, commission 0).
+  - Provenance as plain sorted JSON: the bar's provider, instrument, timeframe, start, revision and import id; the model and fee versions; base price, after slippage, final price; timing; decided_at.
+  - `execution/broker_contract.py`: five reusable contract cases.
+  - `portfolio/reference.py`: `first_known_closed` on the `Knowledge` port, `StoreKnowledge` (max of available_from and received_at) and `ReplayKnowledge` (max of available_from and delivered).
+  - Factory: `simulated` for RESEARCH only; the worker's entry point wires it with `StoreKnowledge` over the market store. `pyproject.toml`: `execution/fees.json` added to package data only.
+- **Deviation, justified:** `tests/engine/test_execution_process.py` (M4-03) asserted that `simulated` wasn't available yet. It now asserts the allowlist as built: no `paper` or unknown kind, and `simulated` for RESEARCH only, refused for PAPER. Its worker-start and positive-control tests use `--broker paper` for the refusal path. The change follows directly from this task's wiring.
+- **Tests (new):**
+  - `test_simulated_broker.py` (27): the hand-computed fill table (5 rows, rounding and cap shown); a limit never reached; a late submit; nothing before D and later corrections ignored (early versus late polling); a bar after the cutoff counts as missing; a pre-open cancel with no price; R1's two future bars (the same PENDING, then FILL versus CANCELLED); retries and a restart keep the first receipt; V2 late cancels just before, at and after D under frequent and late-first polling; a cancel after the cutoff; a pending cancel with no data; half-day expiry; determinism; the contract suite.
+  - `test_raw_reference.py`: `first_known_closed` for the store (receipt time, corrections ignored, boundary) and for replay (zero and ten-minute latency).
+  - Red: the modules didn't exist.
+- **Checks (Git Bash):** the targeted files, 51 passed; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3164 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1075.94s (0:17:55) (only failure: the baseline cache-location test). M4-07's new files were in the tree, uncollected.
+
 ### 2026-10-18: Claude Code (M4-05: the Pre-Execution Gate)
 - **Built:**
   - `execution/gate.py`: the pure `check_gate`, whose eight checks (kill switch, intent version, approval, view, controls, positions, session, cancel) always run and are recorded; typed `GateInputs` with `Missing` kept apart from False; `SessionWindow`; and `gate_order`, the gate transaction (the account-control lock, then the order row `FOR UPDATE`, then fresh reads; the decision and its edge written by compare-and-set).
