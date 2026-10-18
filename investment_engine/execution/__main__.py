@@ -5,10 +5,12 @@ from the factory's allowlist; with none available the worker refuses to start
 and says why, before touching the database. SIGINT and SIGTERM (CTRL_BREAK on
 Windows, for a process started in its own process group) finish the current
 step and exit; a crash at any point is safe because every write is a
-transaction (rule 6). Output is plain ASCII and never shows a secret or the DSN.
+transaction (rule 6). A lost database connection is rebuilt in the running loop,
+which recovers before it resumes (M4-08; Codex M4 review B4). Output is plain ASCII and never shows a secret or the DSN.
 """
 
 import argparse
+import contextlib
 import signal
 import sys
 from decimal import Decimal
@@ -52,28 +54,31 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("SIGINT", "SIGTERM", "SIGBREAK"):
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), stop)
-    conn = open_operational_pg(config.operational_db_dsn())
-    # The broker gets its own connection: a broker call that outlives the D26 deadline must never share the
-    # worker's (Codex M4 review B5).
-    broker_conn = open_operational_pg(config.operational_db_dsn())
-    try:
-        clock = LiveClock()
-        db = PostgresDatabase(conn)
-        from investment_engine.market.calendar.us_equities import load_us_equities_calendar
-        from investment_engine.market.store.reader import MarketDataReader
-        from investment_engine.portfolio.reference import StoreKnowledge
+    from investment_engine.execution.reads import StoreGateReads
+    from investment_engine.killswitch.flag import FLAG_FILE, KillSwitchReader
+    from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+    from investment_engine.market.store.reader import MarketDataReader
+    from investment_engine.oms.pipeline import ControlStores
+    from investment_engine.portfolio.provisional import ProvisionalFingerprints
+    from investment_engine.portfolio.reference import StoreKnowledge
+    from investment_engine.storage.sqlite import SqliteInstrumentRepository
 
-        calendar = load_us_equities_calendar()
-        knowledge = StoreKnowledge(MarketDataReader(config.market_store_dir()), calendar)
-        broker = build_broker(args.broker, account_kind=AccountKind.RESEARCH, db=PostgresDatabase(broker_conn),
-                              clock=clock, secrets=secrets,
-                              knowledge=knowledge, calendar=calendar)
-        from investment_engine.execution.reads import StoreGateReads
-        from investment_engine.killswitch.flag import FLAG_FILE, KillSwitchReader
-        from investment_engine.oms.pipeline import ControlStores
-        from investment_engine.portfolio.provisional import ProvisionalFingerprints
-        from investment_engine.storage.sqlite import SqliteInstrumentRepository
+    clock, calendar = LiveClock(), load_us_equities_calendar()
+    knowledge = StoreKnowledge(MarketDataReader(config.market_store_dir()), calendar)
+    opened = []
 
+    def build() -> ExecutionWorker:
+        """The worker and its broker, each on a new connection: at start-up, and again after a lost connection
+        (Codex M4 review B4). The broker never shares the worker's connection (B5)."""
+        for old in opened:
+            with contextlib.suppress(Exception):  # already gone with the lost connection
+                old.close()
+        opened.clear()
+        dsn = config.operational_db_dsn()
+        opened.extend([open_operational_pg(dsn), open_operational_pg(dsn)])
+        db = PostgresDatabase(opened[0])
+        broker = build_broker(args.broker, account_kind=AccountKind.RESEARCH, db=PostgresDatabase(opened[1]),
+                              clock=clock, secrets=secrets, knowledge=knowledge, calendar=calendar)
         worker = ExecutionWorker(db, clock=clock, broker=broker,
                                  kill_switch=KillSwitchReader(config.control_dir() / FLAG_FILE))
         stores = ControlStores.open(db, clock, instruments=SqliteInstrumentRepository(db))
@@ -83,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
                                       fingerprints=ProvisionalFingerprints(stores.snapshots, worker.orders,
                                                                            knowledge=knowledge, calendar=calendar,
                                                                            coverage=None))
+        return worker
+
+    try:
+        worker = build()
         if args.once:
             from investment_engine.execution.recovery import recover
 
@@ -91,11 +100,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Execution Worker: one step done; published {report.published} events.")
         else:
             print("Execution Worker running; stop with Ctrl+C.")
-            worker.run(poll_seconds=Decimal(args.poll), stop=lambda: bool(stopping))
+            worker.run(poll_seconds=Decimal(args.poll), stop=lambda: bool(stopping), reconnect=build)
             print("Execution Worker stopped.")
     finally:
-        conn.close()
-        broker_conn.close()
+        for conn in opened:
+            conn.close()
     return 0
 
 

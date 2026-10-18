@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from investment_engine.execution.broker_port import BrokerMessage
 from investment_engine.market.availability import check_utc
+from investment_engine.oms.intent_store import StaleWrite
 from investment_engine.oms.order_states import FINAL, OrderState
 from investment_engine.oms.orders import Fill, FillOutcome
 
@@ -114,7 +115,10 @@ def ingest(*, broker, orders, clock) -> IngestReport:
     now = check_utc(clock.now(), "now")
     counts = {"applied": 0, "skipped": 0, "anomaly": 0}
     for message in broker.messages(after=None, at=now):
-        counts[apply_message(message, orders=orders, clock=clock)] += 1
+        try:
+            counts[apply_message(message, orders=orders, clock=clock)] += 1
+        except StaleWrite:  # the order changed meanwhile: the message is read again next step (B4)
+            counts["skipped"] += 1
     return IngestReport(counts["applied"], counts["skipped"], counts["anomaly"])
 
 

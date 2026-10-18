@@ -150,6 +150,24 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B4: uncertain orders retried every step; reconnecting role loops)
+- **Codex M4 review B4:**
+  - SUBMITTING orders were looked up only at start-up, so one failed lookup left an order SUBMITTING and reserved until a restart.
+  - UNKNOWN lookup errors were uncaught.
+  - The deployed loops exited on a lost connection, and the test named as a reconnect asserted the failure and built a new worker by hand.
+- **Fix:**
+  - **Every step reconciles.** `ExecutionWorker.reconcile_submitting()` (used by recovery too) runs each step before the UNKNOWN lookups. An inconclusive answer keeps SUBMITTING and its reservation; nothing is resubmitted; an order looked up a moment ago in the same pass is not looked up twice.
+  - **Per-item isolation.** A broker error or StaleWrite on one order, message or cancel request skips only that item for the step.
+  - **Reconnecting loops.** `ExecutionWorker.run(..., reconnect=)` and the new `CoreEngine.run(..., reconnect=)` catch a lost connection (`storage.postgres.connection_lost_errors()`, new; only the storage package imports the driver). They rebuild connections and stores, recover again (republish; SUBMITTING and UNKNOWN for the worker), and resume. A stalled broker call carries over. Both entry points pass `reconnect`.
+- **Tests (`test_worker_resilience.py`, new):**
+  - a SUBMITTING lookup error at start-up is retried by the next normal step (Codex's probe);
+  - a lookup error on one UNKNOWN order doesn't stop another;
+  - a StaleWrite on one message skips only it;
+  - inside the **running** loops, a server-side `pg_terminate_backend` of the worker's or the Core's connection is followed by a rebuild and recovery, and new work (a submission; a publication) completes.
+  - All five failed first. The old test is renamed to what it shows: a dropped connection fails the step and leaves nothing half done.
+- **Scope, recorded:** `storage/postgres.py` gains `connection_lost_errors()`.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3288 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 2060.73s (0:34:20) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B5: D26's ten-second broker deadline, enforced)
 - **Codex M4 review B5:** nothing enforced the approved ten-second deadline; a broker call that didn't raise blocked the worker indefinitely, and a 10.2 s acknowledgement came back SUBMITTED.
 - **Fix:**

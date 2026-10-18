@@ -1,14 +1,16 @@
 """`python -m investment_engine.core run`: the Core Engine process (docs/tasks/M4-03.md).
 
 It publishes what an earlier run left unpublished before anything else (G4),
-then steps until stopped. It reads no secrets file. Output is plain ASCII and
+then steps until stopped; a lost database connection is rebuilt in the running
+loop, which republishes before it resumes (Codex M4 review B4). It reads no secrets file. Output is plain ASCII and
 never shows the DSN.
 """
 
 import argparse
+import contextlib
 import signal
 import sys
-import time
+from decimal import Decimal
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,26 +33,32 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("SIGINT", "SIGTERM", "SIGBREAK"):
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), lambda *_: stopping.append(True))
-    conn = open_operational_pg(config.operational_db_dsn())
+    clock, opened = LiveClock(), []
+
+    def build() -> CoreEngine:
+        """The engine on a new connection: at start-up, and again after a lost connection (Codex M4 review B4)."""
+        for old in opened:
+            with contextlib.suppress(Exception):  # already gone with the lost connection
+                old.close()
+        opened.clear()
+        opened.append(open_operational_pg(config.operational_db_dsn()))
+        db = PostgresDatabase(opened[0])
+        return CoreEngine(ControlStores.open(db, clock, instruments=SqliteInstrumentRepository(db)), clock=clock)
+
     try:
-        clock = LiveClock()
-        db = PostgresDatabase(conn)
-        engine = CoreEngine(ControlStores.open(db, clock, instruments=SqliteInstrumentRepository(db)), clock=clock)
-        recovered = engine.outbox.publish_pending()
+        engine = build()
         if args.once:
+            recovered = engine.outbox.publish_pending()
             report = engine.step()
             print(f"Core Engine: one step done; republished {recovered}, converted {report.converted}, "
                   f"published {report.published}.")
             return 0
         print("Core Engine running; stop with Ctrl+C.")
-        while not stopping:
-            engine.step()
-            deadline = time.monotonic() + float(args.poll)
-            while not stopping and time.monotonic() < deadline:
-                time.sleep(0.05)
+        engine.run(poll_seconds=Decimal(args.poll), stop=lambda: bool(stopping), reconnect=build)
         print("Core Engine stopped.")
     finally:
-        conn.close()
+        for conn in opened:
+            conn.close()
     return 0
 
 

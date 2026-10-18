@@ -111,7 +111,9 @@ def test_the_core_engine_killed_around_conversion_converts_and_publishes_once(en
 
 
 @pytest.mark.unit
-def test_a_dropped_connection_mid_run_reconnects_consistently(env):
+def test_a_dropped_connection_fails_the_step_and_leaves_nothing_half_done(env):
+    """The step itself fails cleanly; reconnection inside the running loops is
+    test_worker_resilience.py's (Codex M4 review B4: this test was named as a reconnect)."""
     order, view = env.convert(DAY)
     worker = env.worker(pre_open(order, view))
     worker.db.connection.close()  # the client-side drop (M4-08 rule 6); the server is never stopped

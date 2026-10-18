@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 from investment_engine.execution.broker_port import BrokerTimeout
 from investment_engine.market.availability import check_utc
+from investment_engine.oms.intent_store import StaleWrite
 from investment_engine.oms.order_states import FINAL, OrderState
 from investment_engine.oms.orders import CancelProgress
 
@@ -59,31 +60,38 @@ def request_client(orders, request) -> str:
 
 def process_cancels(*, orders, broker, clock, sendable=lambda: True) -> CancelReport:
     """`sendable()` is false while an earlier broker call is stalled (D26; Codex M4 review B5): requests whose order
-    is final still close, and the others wait, with no attempt recorded that wasn't made."""
+    is final still close, and the others wait, with no attempt recorded that wasn't made. A concurrent change to
+    one request or order (StaleWrite) leaves only that request for the next step (B4)."""
     now = check_utc(clock.now(), "now")
-    sent = closed = waiting = 0
+    counts = {"sent": 0, "closed": 0, "waiting": 0}
     for request, progress, version in orders.open_cancels():
-        order, status = orders.get(request.order_id)
-        if status.state in FINAL:
-            orders.cancel_progress(request.cancel_id, P.CLOSED, expected_version=version, at=now,
-                                   outcome=_OUTCOME[status.state])
-            closed += 1
-        elif not sendable():
-            waiting += 1
-        elif status.state in (S.SUBMITTED, S.PARTIALLY_FILLED):
-            db = orders._db
-            with db.transaction():
-                db.lock(f"account-control|{order.account_id}")
-                orders.transition(order.order_id, S.CANCEL_PENDING, expected_aggregate_version=status.aggregate_version,
-                                  at=now, reason=f"cancel requested ({request.cancel_id})")
-                version = orders.cancel_progress(request.cancel_id, P.SENDING, expected_version=version, at=now)
-            sent += _send(request, version, orders=orders, broker=broker, now=now)
-        elif status.state is S.CANCEL_PENDING and progress is P.SENDING:
+        try:
+            counts[_one(request, progress, version, orders=orders, broker=broker, now=now, sendable=sendable)] += 1
+        except StaleWrite:
+            counts["waiting"] += 1
+    return CancelReport(counts["sent"], counts["closed"], counts["waiting"])
+
+
+def _one(request, progress, version, *, orders, broker, now, sendable) -> str:
+    order, status = orders.get(request.order_id)
+    if status.state in FINAL:
+        orders.cancel_progress(request.cancel_id, P.CLOSED, expected_version=version, at=now,
+                               outcome=_OUTCOME[status.state])
+        return "closed"
+    if not sendable():
+        return "waiting"
+    if status.state in (S.SUBMITTED, S.PARTIALLY_FILLED):
+        db = orders._db
+        with db.transaction():
+            db.lock(f"account-control|{order.account_id}")
+            orders.transition(order.order_id, S.CANCEL_PENDING, expected_aggregate_version=status.aggregate_version,
+                              at=now, reason=f"cancel requested ({request.cancel_id})")
             version = orders.cancel_progress(request.cancel_id, P.SENDING, expected_version=version, at=now)
-            sent += _send(request, version, orders=orders, broker=broker, now=now)
-        else:  # NEW (the gate rejects it), SUBMITTING, UNKNOWN, or CANCEL_PENDING already SENT
-            waiting += 1
-    return CancelReport(sent, closed, waiting)
+        return "sent" if _send(request, version, orders=orders, broker=broker, now=now) else "waiting"
+    if status.state is S.CANCEL_PENDING and progress is P.SENDING:
+        version = orders.cancel_progress(request.cancel_id, P.SENDING, expected_version=version, at=now)
+        return "sent" if _send(request, version, orders=orders, broker=broker, now=now) else "waiting"
+    return "waiting"  # NEW (the gate rejects it), SUBMITTING, UNKNOWN, or CANCEL_PENDING already SENT
 
 
 __all__ = ["CancelReport", "process_cancels"]

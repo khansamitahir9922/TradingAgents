@@ -78,6 +78,14 @@ def apply_pg_schema(conn: "psycopg.Connection") -> int:
     return max(current, latest)
 
 
+def connection_lost_errors() -> tuple[type[BaseException], ...]:
+    """The driver's errors for a lost or unusable connection: the role loops rebuild their connections on these and
+    on nothing else (Codex M4 review B4). Only this package imports the driver."""
+    import psycopg
+
+    return (psycopg.OperationalError, psycopg.InterfaceError)
+
+
 def advisory_key(name: str) -> int:
     """A transaction advisory-lock key for `name`: SHA-256's first 8 bytes as a signed 64-bit integer."""
     return int.from_bytes(hashlib.sha256(name.encode("utf-8")).digest()[:8], "big", signed=True)

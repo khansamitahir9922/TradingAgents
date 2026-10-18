@@ -8,7 +8,16 @@ memory and never call each other; they communicate only through database rows
 of new risk:
 
     1 publish pending events   2 ingest broker messages   3 cancels
-    4 UNKNOWN lookups          5 new submissions
+    4 SUBMITTING and UNKNOWN lookups                       5 new submissions
+
+Uncertain orders are reconciled on every step, not only at start-up (Codex M4
+review B4): a SUBMITTING order (its broker call may or may not have happened)
+and an UNKNOWN one are looked up again each step until the broker's answer
+settles them, keeping their reservations meanwhile, and are never resent. A
+broker error or a concurrent change (StaleWrite) on one order, message or cancel
+request skips only that item for the step. A lost database connection ends the
+step; `run(..., reconnect=)` then rebuilds the connections and stores, recovers
+again and resumes.
 
 Submission has three phases (Law 14): the gate transaction commits SUBMITTING;
 the broker call happens outside every transaction; an outcome transaction
@@ -128,7 +137,8 @@ class ExecutionWorker:
             ingested = IngestReport(0, 0, 0)
         cancels = process_cancels(orders=self.orders, broker=self.port, clock=self.clock,
                                   sendable=lambda: not self.broker_stalled())
-        lookups = self.lookup_unknown()
+        *_, looked_up = self.reconcile_submitting()
+        lookups = self.lookup_unknown(skip=looked_up)
         submitted = rejected = unknown = 0
         if self.reads is not None and self.kill_switch is not None and not self.broker_stalled():
             for order, _ in self.orders.in_states(S.NEW):
@@ -184,16 +194,19 @@ class ExecutionWorker:
                                    reason=reason, broker_order_id=broker_id)
         return to.value
 
-    def lookup_unknown(self) -> int:
+    def lookup_unknown(self, *, skip=frozenset()) -> int:
         """Look up each UNKNOWN order once (D20): a report resolves it; no record leaves it UNKNOWN, recorded. A
-        lookup that times out leaves the order UNKNOWN for the next step. Returns the lookups answered."""
+        lookup that times out leaves the order UNKNOWN for the next step. Orders in `skip` were looked up a moment
+        ago, in the same pass. Returns the lookups answered."""
         now = check_utc(self.clock.now(), "now")
         count = 0
         for order, status in self.orders.in_states(S.UNKNOWN):
+            if order.order_id in skip:
+                continue
             try:
                 report = self.port.lookup(order.client_order_id, at=now)
-            except BrokerTimeout:
-                continue  # unanswered or stalled: still UNKNOWN, tried again next step
+            except Exception:  # unanswered, stalled or a broker error: still UNKNOWN, tried again next step (B4)
+                continue
             count += 1
             if report is None:
                 self.orders.record_anomaly(order.order_id, kind="lookup_no_record",
@@ -201,28 +214,91 @@ class ExecutionWorker:
                                            broker_ref=f"lookup:{now.isoformat()}")
                 continue
             if report.status in ("OPEN", "CANCEL_RECEIVED"):
-                with self.db.transaction():
-                    self.db.lock(f"account-control|{order.account_id}")
-                    _, status = self.orders.get(order.order_id)
-                    if status.state is S.UNKNOWN:
-                        self.orders.transition(order.order_id, S.SUBMITTED,
-                                               expected_aggregate_version=status.aggregate_version, at=now,
-                                               reason="the broker reports it open", broker_order_id=report.broker_order_id,
-                                               broker_ref=f"lookup:{now.isoformat()}")
+                try:
+                    with self.db.transaction():
+                        self.db.lock(f"account-control|{order.account_id}")
+                        _, status = self.orders.get(order.order_id)
+                        if status.state is S.UNKNOWN:
+                            self.orders.transition(order.order_id, S.SUBMITTED,
+                                                   expected_aggregate_version=status.aggregate_version, at=now,
+                                                   reason="the broker reports it open",
+                                                   broker_order_id=report.broker_order_id,
+                                                   broker_ref=f"lookup:{now.isoformat()}")
+                except StaleWrite:
+                    continue  # changed meanwhile (a message moved it): looked at again next step
             # FILLED, CANCELLED, EXPIRED, REJECTED: their messages resolve it at the next ingestion
         return count
 
-    def run(self, *, poll_seconds: Decimal, stop: Callable[[], bool]) -> None:
-        """Live mode: recover first (G4: republish, resolve SUBMITTING and UNKNOWN; M4-08), then step until
-        `stop()` is true."""
-        from investment_engine.execution.recovery import recover
+    def reconcile_submitting(self) -> tuple[int, int, int, frozenset]:
+        """Look up each SUBMITTING order: saved before its broker call, so the call may or may not have happened.
+        A report gives SUBMITTED (its messages are then ingested); no record gives UNKNOWN (D20). An error leaves it
+        SUBMITTING, reserved, for the next step. **Never resent** (Law 14). Returns (found, unknown, left, the
+        order ids looked up)."""
+        now = check_utc(self.clock.now(), "now")
+        found = unknown = left = 0
+        looked_up = set()
+        for order, _ in self.orders.in_states(S.SUBMITTING):
+            looked_up.add(order.order_id)
+            try:
+                report = self.port.lookup(order.client_order_id, at=now)
+            except Exception:  # can't tell yet: tried again next step (B4)
+                left += 1
+                continue
+            try:
+                with self.db.transaction():
+                    self.db.lock(f"account-control|{order.account_id}")
+                    _, status = self.orders.get(order.order_id)
+                    if status.state is not S.SUBMITTING:
+                        continue
+                    if report is None:
+                        self.orders.transition(order.order_id, S.UNKNOWN,
+                                               expected_aggregate_version=status.aggregate_version, at=now,
+                                               reason="recovered: the broker has no record; never resent (D20)",
+                                               broker_ref=f"recovery:{now.isoformat()}")
+                        unknown += 1
+                    else:
+                        self.orders.transition(order.order_id, S.SUBMITTED,
+                                               expected_aggregate_version=status.aggregate_version, at=now,
+                                               reason="recovered: the broker has the order",
+                                               broker_order_id=report.broker_order_id,
+                                               broker_ref=f"recovery:{now.isoformat()}")
+                        found += 1
+            except StaleWrite:
+                left += 1
+        return found, unknown, left, frozenset(looked_up)
 
-        recover(self)
+    def run(self, *, poll_seconds: Decimal, stop: Callable[[], bool],
+            reconnect: Callable[[], "ExecutionWorker"] | None = None) -> "ExecutionWorker":
+        """Live mode: recover first (G4: republish, resolve SUBMITTING and UNKNOWN; M4-08), then step until
+        `stop()` is true. If the database connection is lost and `reconnect` is given, it builds a new worker on
+        new connections; that worker recovers again, then the loop resumes (M4-08 acceptance; Codex M4 review B4).
+        Without `reconnect` the error is raised. Returns the worker in use when it stopped."""
+        from investment_engine.execution.recovery import recover
+        from investment_engine.storage.postgres import connection_lost_errors
+
+        lost = connection_lost_errors()
+        worker, stalled = self, None
         while not stop():
-            self.step()
-            deadline = time.monotonic() + float(poll_seconds)
-            while not stop() and time.monotonic() < deadline:
-                time.sleep(0.05)
+            try:
+                if worker is None:
+                    worker = reconnect()
+                    worker._stalled = stalled  # a call still running on the old broker blocks the new one too
+                recover(worker)
+                while not stop():
+                    worker.step()
+                    _wait(poll_seconds, stop)
+            except lost:
+                if reconnect is None:
+                    raise
+                stalled, worker = (worker._stalled if worker is not None else stalled), None
+                _wait(poll_seconds, stop)  # then rebuild and recover
+        return worker or self
+
+
+def _wait(seconds: Decimal, stop: Callable[[], bool]) -> None:
+    deadline = time.monotonic() + float(seconds)
+    while not stop() and time.monotonic() < deadline:
+        time.sleep(0.05)
 
 
 __all__ = ["ExecutionWorker", "StepReport"]

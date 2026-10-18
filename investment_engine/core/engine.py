@@ -8,7 +8,10 @@ RESEARCH accounts are converted at their replay times by the offline harness
 transaction; the Core Engine never touches the Execution Worker's transitions.
 """
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import Decimal
 
 from investment_engine.events.consumer import Consumer
 from investment_engine.events.outbox import Outbox
@@ -45,6 +48,37 @@ class CoreEngine:
         published = self.outbox.publish_pending()
         report = self.consumer.run_once(limit=1000)
         return CoreStepReport(converted, published, report.applied + report.unhandled)
+
+    def run(self, *, poll_seconds: Decimal, stop: Callable[[], bool],
+            reconnect: Callable[[], "CoreEngine"] | None = None) -> "CoreEngine":
+        """Live mode: publish what an earlier run left unpublished (G4), then step until `stop()` is true. If the
+        database connection is lost and `reconnect` is given, it builds an engine on new connections, which
+        republishes and resumes (M4-08; Codex M4 review B4); without it the error is raised. Returns the engine in
+        use when it stopped."""
+        from investment_engine.storage.postgres import connection_lost_errors
+
+        lost = connection_lost_errors()
+        engine = self
+        while not stop():
+            try:
+                if engine is None:
+                    engine = reconnect()
+                engine.outbox.publish_pending()
+                while not stop():
+                    engine.step()
+                    _wait(poll_seconds, stop)
+            except lost:
+                if reconnect is None:
+                    raise
+                engine = None
+                _wait(poll_seconds, stop)
+        return engine or self
+
+
+def _wait(seconds: Decimal, stop: Callable[[], bool]) -> None:
+    deadline = time.monotonic() + float(seconds)
+    while not stop() and time.monotonic() < deadline:
+        time.sleep(0.05)
 
 
 __all__ = ["CoreEngine", "CoreStepReport"]
