@@ -2,9 +2,9 @@
 
 `ALLOWED` is G2 exactly as frozen: nothing else is accepted, and the final
 states have no way out. It is the one shared definition every caller uses.
-M3 additionally refuses APPROVED -> CONVERTED, a legal G2 edge, because orders
-arrive only in M4; that guard has its own error, distinct from an illegal
-transition, and M4's spec removes it through a reviewed change.
+APPROVED -> CONVERTED, a legal G2 edge, is refused unless it is written together
+with its Order: only `oms.conversion` passes `converting=True` (M4-02 rule 6).
+That guard has its own error, distinct from an illegal transition.
 """
 
 from investment_engine.oms.intents import IntentState as S
@@ -22,12 +22,12 @@ class IllegalTransition(ValueError):
 
 
 class OrdersNotBuilt(ValueError):
-    """APPROVED -> CONVERTED is a G2 edge, but orders arrive in M4; nothing was written."""
+    """APPROVED -> CONVERTED is written only with its Order (M4-02); nothing was written."""
 
 
-def check(from_state: S, to_state: S) -> None:
+def check(from_state: S, to_state: S, *, converting: bool = False) -> None:
     from_state, to_state = S(from_state), S(to_state)
     if to_state not in ALLOWED.get(from_state, frozenset()):
         raise IllegalTransition(f"{from_state} -> {to_state} is not an intent transition (G2)")
-    if to_state is S.CONVERTED:
-        raise OrdersNotBuilt("APPROVED -> CONVERTED creates an Order; orders arrive in M4")
+    if to_state is S.CONVERTED and not converting:
+        raise OrdersNotBuilt("APPROVED -> CONVERTED is written only with its Order, by oms.conversion (M4-02)")

@@ -25,9 +25,11 @@ limits_app = typer.Typer(no_args_is_help=True, help="Versioned risk limits, poli
 restricted_app = typer.Typer(no_args_is_help=True, help="The restricted list; each change is a new policy version.")
 intents_app = typer.Typer(no_args_is_help=True, help="Order intents: approve, decline, expire (M3-13) and report (M3-14).")
 operators_app = typer.Typer(no_args_is_help=True, help="Local named operators and their roles (Admin only).")
+orders_app = typer.Typer(no_args_is_help=True, help="Orders: cancel requests (M4-02).")
 GROUPS: dict[str, typer.Typer] = {"accounts": accounts_app, "operators": operators_app,  # later tasks add theirs
                                   "limits": limits_app, "restricted": restricted_app,  # M3-06
-                                  "intents": intents_app}  # M3-13
+                                  "intents": intents_app,  # M3-13
+                                  "orders": orders_app}  # M4-02
 
 
 def register(app: typer.Typer) -> None:
@@ -495,4 +497,31 @@ def expire_intents(account: str | None = typer.Option(None, "--account"), at: st
         for e in expired:
             _say(f"EXPIRED intent {e.intent.intent_id} v{e.intent.version}")
         _say(f"{len(expired)} intent(s) expired")
+    _run_intents(go)
+
+
+# ---------------------------------------------------------------- orders: cancel requests (M4-02)
+
+
+@orders_app.command("cancel")
+def cancel_order(order_id: str, operator: str = typer.Option(..., "--operator"),
+                 reason: str = typer.Option(..., "--reason")) -> None:
+    """Request a cancel of one open order (Admin or Trader, D31). Accepted even while trading is halted; the
+    Execution Worker acts on it. No order state changes here."""
+    from investment_engine.events.outbox import Outbox
+    from investment_engine.oms.conversion import request_cancel
+    from investment_engine.oms.order_states import ProcessRole
+    from investment_engine.oms.order_store import OrderStore
+
+    def go(stores, clock):
+        orders = OrderStore(stores.db, role=ProcessRole.CORE, audit=stores.audit,
+                            outbox=Outbox(stores.db, writer=ProcessRole.CORE, clock=clock), clock=clock)
+        try:
+            request = request_cancel(order_id, operator_id=operator, reason=reason, command_at=clock.now(),
+                                     stores=stores, orders=orders)
+        except (KeyError, ValueError) as exc:
+            _say(f"Refused: {exc}. No cancel was requested.")
+            raise typer.Exit(1) from None
+        _say(f"CANCEL REQUESTED for {order_id} by {operator} ({request.cancel_id}): {reason}. The Execution Worker "
+             "sends it; the order's state is unchanged until the broker answers.")
     _run_intents(go)

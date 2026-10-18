@@ -246,6 +246,28 @@ class IntentStore:
                                           f"intent.transition:{intent_id}:{version}:{to.value}:{at.isoformat()}"))
         return self.get(intent_id, version)
 
+    def convert(self, intent_id: str, version: int, *, expected_aggregate_version: int, at: datetime, by: Actor,
+                reason: str, correlation_id: str = "") -> StoredIntent:
+        """APPROVED -> CONVERTED, for `oms.conversion` only, inside the transaction that creates the Order (M4-02)."""
+        if not self._db.in_transaction:
+            raise RuntimeError("a conversion is written in the same transaction as its Order (M4-02 rule 1)")
+        at, now = check_utc(at, "at"), check_utc(self._clock.now(), "now")
+        current = self.get(intent_id, version)
+        latest = self._db.fetchone("SELECT latest_version FROM intents WHERE intent_id = :id", {"id": intent_id})[0]
+        if version != latest:
+            raise intent_states.IllegalTransition(f"{intent_id} version {version} is not the latest ({latest})")
+        intent_states.check(current.state, IntentState.CONVERTED, converting=True)
+        self._move(intent_id, expected_aggregate_version)
+        self._db.execute("UPDATE intent_versions SET state = 'CONVERTED' WHERE intent_id = :id AND version = :version",
+                         {"id": intent_id, "version": version})
+        self._log(current.intent, current.state, IntentState.CONVERTED, at, now, by, reason)
+        self._audit.append(AuditEvent(by, "intent.converted", "intent", intent_id, current.state.value,
+                                      IntentState.CONVERTED.value, now,
+                                      self._business(current.intent.account_id, at), reason,
+                                      correlation_id or f"intent:{intent_id}:{now.isoformat()}",
+                                      f"intent.convert:{intent_id}:{version}"))
+        return self.get(intent_id, version)
+
     def supersede(self, intent_id: str, version: int, new: OrderIntent, *, expected_aggregate_version: int,
                   at: datetime, by: Actor, reason: str, correlation_id: str = "", **fields) -> StoredIntent:
         """Mark `version` SUPERSEDED and create `new` (version + 1, PROPOSED) in one compare-and-set write."""

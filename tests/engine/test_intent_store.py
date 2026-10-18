@@ -308,11 +308,14 @@ def test_a_fresh_process_decodes_intent_events_through_the_registry(env, pg_data
 @pytest.mark.unit
 def test_approval_evidence_and_history_change_only_through_audited_transitions(env):
     """Codex B3: a metadata-only mutator could rewrite an approved version's approver without a transition or audit
-    event. The store's only writers are create, transition and supersede, each audited."""
+    event. The store's only writers are create, transition and supersede, each audited; M4-02 adds convert, the
+    audited APPROVED -> CONVERTED written only inside the transaction that creates its Order."""
     _, store, _ = env
     readers = {"get", "versions", "history", "for_account", "due_for_expiry", "admitted_buys", "was_admitted"}
     public = {n for n, v in vars(IntentStore).items() if callable(v) and not n.startswith("_")}
-    assert public - readers == {"create", "transition", "supersede"}
+    assert public - readers == {"create", "transition", "supersede", "convert"}
+    with pytest.raises(RuntimeError, match="same transaction as its Order"):  # never on its own
+        store.convert("int-any", 1, expected_aggregate_version=1, at=NOW, by=CORE, reason="x")
     approved = walk(store, [S.AWAITING_APPROVAL])
     approved = store.transition(approved.intent.intent_id, 1, S.APPROVED,
                                 expected_aggregate_version=approved.aggregate_version, at=NOW, by=OWNER,

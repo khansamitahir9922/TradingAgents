@@ -150,6 +150,22 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-02: converting approved intents into orders, fingerprints and cancel requests)
+- **Built:**
+  - `oms/conversion.py`: `convert_approved` (per intent version, under the account-control lock, in one transaction: the intent marked CONVERTED, the order created, and `order.created` added; a structured `ConversionReport` with skipped reasons); `intent_content_id`; `request_cancel` (an active Admin or Trader at the command time, D31).
+  - `portfolio/fingerprint.py`: `economic_fingerprint` (cash, whole-share positions and reservations only), `fingerprint_of(snapshot)`, the `FingerprintProvider` port and `DeclaredFingerprints`.
+  - `oms/intent_states.check(..., converting=False)`: a bare APPROVED -> CONVERTED is still refused.
+  - `IntentStore.convert`: audited, and only inside the order's transaction.
+  - Admin CLI `orders cancel ID --operator OP --reason TEXT`.
+- **Deviation, justified:** `test_intent_store.py::test_approval_evidence_and_history_change_only_through_audited_transitions` lists the store's only writers. It now includes `convert`, with an assertion that `convert` refuses to run outside the order's transaction. That method is the "store method, if it needs one" M4-02's allowed files name. The test's point, that every writer is audited, holds.
+- **Tests (new):**
+  - `test_conversion.py`: fields copied exactly, references pinned, and the declared fingerprint equal at a later time; a crash at the event leaves nothing; an expired approval is reported; a second conversion run finds nothing; a two-Core race gives one order; a bare transition is refused; the worker can't convert.
+  - `test_cancel_requests.py`: Admin or Trader, no state or version change; Viewer and unknown operators refused; a reason is needed; the CLI command records a cancel and refuses a Viewer.
+  - Red: the modules didn't exist; the 21 new tests passed after.
+  - Acceptance with trading disabled is shown in M4-04 and M4-07, where the kill switch exists; `request_cancel` never reads it.
+- **Checks (Git Bash):** the targeted files, 138 passed with `test_intent_store.py` and `test_approvals.py`; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3043 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1040.49s (0:17:20) (only failure: the baseline cache-location test). M4-03's new files were in the tree, uncollected.
+
 ### 2026-10-18: Claude Code (M4-01: outbox, event log and idempotent consumers)
 - **Built:**
   - `events/outbox.py`: `add` only inside the caller's transaction. `publish_pending` selects rows `FOR UPDATE SKIP LOCKED`, inserts them into `event_log` with `ON CONFLICT (event_id) DO NOTHING`, marks them published and sends `NOTIFY`, all in one transaction.
