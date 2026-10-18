@@ -16,6 +16,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from investment_engine.oms.order_states import OrderState
+from investment_engine.risk.decisions import exact
 
 LABEL = "SIMULATED | RESEARCH | NOT PROMOTED | PROVISIONAL POSITIONS"
 
@@ -69,6 +70,7 @@ def _iso(value) -> str:
     return value.isoformat() if isinstance(value, datetime) else str(value)
 
 
+@exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
 def build_order_log(account_id: str, *, orders, intents, lineage, calendar, source: str, header_extra: dict,
                     stops=(), snapshots=None, at: datetime | None = None) -> OrderLog:
     rows, states, notional, fees, fee_versions, models = [], {}, Decimal(0), Decimal(0), set(), set()

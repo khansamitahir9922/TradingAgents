@@ -35,6 +35,7 @@ from investment_engine.oms.intents import Side
 from investment_engine.oms.order_states import OPEN
 from investment_engine.portfolio.fingerprint import Reservation, economic_fingerprint
 from investment_engine.portfolio.reference import Unavailable
+from investment_engine.risk.decisions import exact
 
 _CTX = Context(prec=34)
 
@@ -75,6 +76,7 @@ def _action_ref(a) -> str:
     return f"{a.source}|{a.instrument_id}|{a.ex_date.isoformat()}|{a.action_type.value}|r{a.revision}"
 
 
+@exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
 def project(account_id: str, *, at: datetime, starting, orders, knowledge, calendar, coverage, source: str,
             covers=None) -> Projection | Unavailable:
     """The projection at `at`, or Unavailable with the reason. `covers(coverage, source, instrument, first, last)`

@@ -150,6 +150,22 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B2: money and quantity arithmetic ignores the caller's Decimal context)
+- **Codex M4 review B2:** M4's fill totals, projection quantities and slippage used explicit contexts for some multiplications but the ambient context for the additions, subtractions, divisions and quantizations around them. With precision 1, two six-share fills stored `filled_qty = 10` (average 120 for executions at 100), and the projection held 10. With precision 3, a 5 bps BUY at 99 came out 99.00, not 99.05.
+- **Fix:** M3's own convention, `risk.decisions.exact`: one fresh, fully specified context (precision 34, ROUND_HALF_EVEN, fixed traps) for a whole calculation, with the caller's context untouched. It is applied to:
+  - `OrderStore.record_fill` (totals, average);
+  - `SimulatedBroker._price` and `_decide` (slippage, cap, fee);
+  - `provisional.project` (fills, splits and their quantization, dividends, reservations);
+  - the snapshot's `reserved_cash`, `available_cash`, `pending_buy_value`, `available_shares` and `build_snapshot`;
+  - `build_order_log` (notional, fees).
+  - Monetary rounding stays at its existing boundaries.
+- **Tests:** each runs under three hostile caller contexts (precision 1 with ROUND_DOWN; precision 3 with ROUND_CEILING; precision 6 with Inexact and Rounded trapped) and must give the default-context result:
+  - `test_order_store.py::test_fill_totals_and_average_ignore_the_callers_decimal_context` (12 shares, average 100.0050000000);
+  - `test_simulated_broker.py::test_slippage_and_fills_ignore_the_callers_decimal_context` (99.05, 7 shares, fee 0);
+  - `test_provisional_positions.py::test_the_projection_ignores_the_callers_decimal_context` (fills, a 3:2 split, a dividend receivable and an open BUY's reservation: equal to the default projection).
+  - Five of the nine cases failed first; all pass now, as do Codex's three probes and the M3 snapshot-compatibility tests (stored ids unchanged).
+- **Checks (Git Bash), on this commit's exact tree:** 1 failed (baseline cache-location test), 3270 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1639.95s; ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B10: a held aggregate never starves another)
 - **Codex M4 review B10:** `Consumer.run_once` limited the page of unprocessed rows *before* finding which aggregates were held. One aggregate whose handler kept failing, or that had a gap with more than a page of later versions, filled every page, so later aggregates were never considered. That broke M4-01 rules 3–4.
 - **Fix (`events/consumer.py`):** each round selects only *runnable* events: per aggregate, the one whose version comes next after the last it processed (`LEFT JOIN` on the consumer's processed maximum). An aggregate that fails during the run is held for the rest of it, and rounds continue until `limit` events have been attempted or nothing runnable is left. `held` is counted at the end: unprocessed events waiting for an earlier version. Transactions, the effect plus its mark, failure records and version order are unchanged.

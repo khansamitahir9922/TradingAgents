@@ -39,6 +39,7 @@ from investment_engine.market.corporate_actions import ActionType
 from investment_engine.policy.accounts import AccountKind, AccountRegistry, Role
 from investment_engine.portfolio.reference import Knowledge, Unavailable
 from investment_engine.quant.adjusted import BarRef
+from investment_engine.risk.decisions import exact
 from investment_engine.risk.limits import Halt
 from investment_engine.storage.sqlite import port
 
@@ -142,17 +143,21 @@ class PortfolioSnapshot:
                                if f.init and not (f.name in _M4_FIELDS and getattr(self, f.name) is None)})
 
     # ---- available amounts, after open-order reservations (D30); M3 snapshots have none
+    @exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
     def reserved_cash(self) -> Decimal:
         return sum((r.cash for r in self.reservations or ()), Decimal(0))
 
+    @exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
     def available_cash(self) -> Decimal:
         return self.cash - self.reserved_cash()
 
+    @exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
     def pending_buy_value(self, instrument_id: str | None = None) -> Decimal:
         """Open BUY remainders at their limits: they count against the position cap and gross exposure (D30)."""
         return sum((r.cash for r in self.reservations or () if r.side.value == "BUY"
                     and (instrument_id is None or r.instrument_id == instrument_id)), Decimal(0))
 
+    @exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
     def available_shares(self, instrument_id: str) -> Decimal:
         """Shares held minus those an open SELL already reserves; an unfilled SELL never frees cap room."""
         reserved = sum((r.remaining for r in self.reservations or () if r.side.value == "SELL"
@@ -182,6 +187,7 @@ def _covers(coverage, source: str, instrument_id: str, first: date, last: date) 
             and coverage.first <= first and last <= coverage.last)
 
 
+@exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
 def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, knowledge: Knowledge, calendar,
                    coverage, last_clear: Halt | None, history: Sequence[PortfolioSnapshot],
                    source: str, projection=None) -> PortfolioSnapshot | Unavailable:

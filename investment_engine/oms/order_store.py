@@ -56,6 +56,7 @@ from investment_engine.oms.orders import (
     OrderTransition,
 )
 from investment_engine.policy.accounts import AccountKind
+from investment_engine.risk.decisions import exact
 from investment_engine.storage.sqlite import port
 
 S = OrderState
@@ -313,6 +314,7 @@ class OrderStore:
             order, status = self.get(order_id)
             self._anomaly(order, status, kind, detail, at, now, broker_ref)
 
+    @exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
     def record_fill(self, fill: Fill, *, expected_aggregate_version: int, correlation_id: str = "") -> FillOutcome:
         """Apply one broker fill under the rule 4 matrix (Execution Worker only)."""
         self._require(ProcessRole.EXECUTION, "a fill")

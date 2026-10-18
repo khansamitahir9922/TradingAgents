@@ -49,6 +49,7 @@ from investment_engine.execution.broker_port import (
 from investment_engine.market.availability import check_utc
 from investment_engine.oms.intents import Side
 from investment_engine.oms.orders import Order
+from investment_engine.risk.decisions import exact
 from investment_engine.storage.sqlite import port
 
 MODEL_VERSION = "daily-fill-v1"
@@ -180,6 +181,7 @@ class SimulatedBroker:
                          {"m": message_id, "c": client_order_id, "k": kind, "d": delivered_at,
                           "f": None if fill is None else _fill_json(fill), "r": reason})
 
+    @exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
     def _price(self, side: Side, base: Decimal, limit: Decimal) -> tuple[Decimal, Decimal]:
         factor = self.fees.slippage_bps / Decimal(10000)
         moved = _PRICE.multiply(base, Decimal(1) + factor if side is Side.BUY else Decimal(1) - factor)
@@ -203,6 +205,7 @@ class SimulatedBroker:
             elif cutoff <= t:
                 self._missing(client, cutoff, received)
 
+    @exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
     def _decide(self, client, side, quantity, limit, session, decided_at, bar, received) -> None:
         if side is Side.BUY:
             at_open, touched = bar.open <= limit, bar.low <= limit

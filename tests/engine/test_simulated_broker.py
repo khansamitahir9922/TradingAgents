@@ -2,7 +2,7 @@
 
 import json
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_CEILING, ROUND_DOWN, Decimal, Inexact, Rounded, localcontext
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +23,17 @@ OPEN, CLOSE = SESSION.open, SESSION.close
 CUTOFF = CAL.next_session(DAY).open
 BEFORE = OPEN - timedelta(hours=2)
 FEES = FeeSchedule("fees-1", Decimal("0"), Decimal("5"))
+HOSTILE = [{"prec": 1, "rounding": ROUND_DOWN}, {"prec": 3, "rounding": ROUND_CEILING},
+           {"prec": 6, "trap": (Inexact, Rounded)}]  # caller contexts that must change nothing (B2)
+
+
+def hostile_context(context, hostile):
+    for key, value in hostile.items():
+        if key == "trap":
+            for signal in value:
+                context.traps[signal] = True
+        else:
+            setattr(context, key, value)
 
 
 def bar(o, h, low, revision=1):
@@ -244,3 +255,17 @@ def test_the_contract_suite(db, case):
     from investment_engine.execution import broker_contract
 
     getattr(broker_contract, case)(lambda: broker(db), order, BEFORE)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("hostile", HOSTILE, ids=["prec1-down", "prec3-ceiling", "prec6-inexact-trapped"])
+def test_slippage_and_fills_ignore_the_callers_decimal_context(db, hostile):
+    """B2 (Codex M4 review): with precision 3, the 5 bps BUY at 99 came out 99.00 instead of 99.05."""
+    b = broker(db, (CLOSE + timedelta(minutes=10), bar("99.00", "101", "98")))
+    with localcontext() as context:
+        hostile_context(context, hostile)
+        assert b._price(Side.BUY, Decimal("99.00"), Decimal("100.00"))[1] == Decimal("99.05")
+        assert b.submit(order(qty="7"), at=BEFORE).accepted
+        fill, provenance = fill_of(b, CUTOFF)
+    assert (fill.price, fill.quantity, fill.fee) == (Decimal("99.05"), Decimal(7), Decimal(0))
+    assert provenance["slippage_bps"] == "5"

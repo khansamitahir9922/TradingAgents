@@ -7,7 +7,7 @@ import sys
 import threading
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_CEILING, ROUND_DOWN, Decimal, Inexact, Rounded, localcontext
 from pathlib import Path
 
 import pytest
@@ -39,6 +39,17 @@ NOW = datetime(2026, 10, 16, 12, tzinfo=UTC)
 OWNER = Actor(ActorKind.OPERATOR, "owner", "ADMIN", "LOQ")
 CORE_ACTOR = Actor(ActorKind.PROCESS, "core-engine", None, None)
 PASS = GateDecision("x", 1, True, (CheckResult("kill_switch", True, "enabled"),), NOW, "{}")
+HOSTILE = [{"prec": 1, "rounding": ROUND_DOWN}, {"prec": 3, "rounding": ROUND_CEILING},
+           {"prec": 6, "trap": (Inexact, Rounded)}]  # caller contexts that must change nothing (B2)
+
+
+def hostile_context(context, hostile):
+    for key, value in hostile.items():
+        if key == "trap":
+            for signal in value:
+                context.traps[signal] = True
+        else:
+            setattr(context, key, value)
 
 
 class Env:
@@ -394,3 +405,18 @@ def test_a_fresh_process_decodes_order_audit_events(env, pg_database):
                          cwd=root, env={**os.environ, "IE_PROBE_DSN": pg_database, "PYTHONPATH": str(root)})
     assert out.returncode == 0, out.stderr.splitlines()[-1:]
     assert json.loads(out.stdout) == ["Order", order.order_id, "10"]
+
+
+@pytest.mark.postgres
+@pytest.mark.unit
+@pytest.mark.parametrize("hostile", HOSTILE, ids=["prec1-down", "prec3-ceiling", "prec6-inexact-trapped"])
+def test_fill_totals_and_average_ignore_the_callers_decimal_context(env, hostile):
+    """B2 (Codex M4 review): with precision 1, two 6-share fills stored filled_qty 10 and an average of 120."""
+    order = env.created(quantity="20")
+    env.walk(order, S.SUBMITTING, S.SUBMITTED)
+    with localcontext() as context:
+        hostile_context(context, hostile)
+        assert env.fill(order, "6", "f1", "100.00") is FillOutcome.RECORDED
+        assert env.fill(order, "6", "f2", "100.01") is FillOutcome.RECORDED
+    status = env.worker.get(order.order_id)[1]
+    assert (status.filled_qty, status.avg_price) == (Decimal(12), Decimal("100.0050000000"))

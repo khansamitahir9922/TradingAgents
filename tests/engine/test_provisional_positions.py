@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_CEILING, ROUND_DOWN, Decimal, Inexact, Rounded, localcontext
 from types import SimpleNamespace
 
 import pytest
@@ -22,6 +22,17 @@ CAL = load_us_equities_calendar()
 NVDA = "EQ_US_NVDA"
 START = datetime(2024, 1, 2, tzinfo=UTC)
 D1, D2, D3 = date(2024, 6, 6), date(2024, 6, 7), date(2024, 6, 10)  # the split's ex-date is D3 (a Monday)
+HOSTILE = [{"prec": 1, "rounding": ROUND_DOWN}, {"prec": 3, "rounding": ROUND_CEILING},
+           {"prec": 6, "trap": (Inexact, Rounded)}]  # caller contexts that must change nothing (B2)
+
+
+def hostile_context(context, hostile):
+    for key, value in hostile.items():
+        if key == "trap":
+            for signal in value:
+                context.traps[signal] = True
+        else:
+            setattr(context, key, value)
 
 
 def t_open(d):
@@ -299,3 +310,24 @@ def test_the_gates_fingerprint_changes_with_a_fill_or_a_new_order_and_not_with_t
     orders.history[other.order_id].append((t_close(D1) + timedelta(hours=6), S.FILLED, Decimal(10)))
     orders.fill(other, "10", "100", t_close(D1) + timedelta(hours=6))
     assert provider.at("R1", t_close(D1) + timedelta(hours=7), excluding_order=gated.order_id) != later  # a fill
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("hostile", HOSTILE, ids=["prec1-down", "prec3-ceiling", "prec6-inexact-trapped"])
+def test_the_projection_ignores_the_callers_decimal_context(hostile):
+    """B2 (Codex M4 review): with precision 1, two 6-share fills projected 10 shares, not 12. Fills, a split, a
+    dividend receivable and an open BUY's reservation must all come out as in the default context."""
+    orders = Orders()
+    filled = orders.add(1, qty="12", history=((None, S.NEW, "0"), (t_open(D2), S.FILLED, "12")))
+    orders.fill(filled, "6", "100.01", t_open(D2), fill_id="one")
+    orders.fill(filled, "6", "100.03", t_open(D2), fill_id="two")
+    orders.add(2, qty="7", limit="99.99", created=t_open(date(2024, 6, 11)) + timedelta(hours=1))  # after both
+    actions = Knowledge([action(ActionType.SPLIT, D3, ratio="1.5"), action(ActionType.DIVIDEND, date(2024, 6, 11),
+                                                                            amount="0.0333")])
+    at = t_close(date(2024, 6, 11))
+    expected = proj(orders, at, knowledge=actions, start=starting(cash="100000.07", positions=("10",)))
+    assert expected.held(NVDA) == Decimal(33) and expected.receivables == Decimal("1.0989")
+    with localcontext() as context:
+        hostile_context(context, hostile)
+        projected = proj(orders, at, knowledge=actions, start=starting(cash="100000.07", positions=("10",)))
+    assert projected == expected
