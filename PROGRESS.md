@@ -150,6 +150,15 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B10: a held aggregate never starves another)
+- **Codex M4 review B10:** `Consumer.run_once` limited the page of unprocessed rows *before* finding which aggregates were held. One aggregate whose handler kept failing, or that had a gap with more than a page of later versions, filled every page, so later aggregates were never considered. That broke M4-01 rules 3–4.
+- **Fix (`events/consumer.py`):** each round selects only *runnable* events: per aggregate, the one whose version comes next after the last it processed (`LEFT JOIN` on the consumer's processed maximum). An aggregate that fails during the run is held for the rest of it, and rounds continue until `limit` events have been attempted or nothing runnable is left. `held` is counted at the end: unprocessed events waiting for an earlier version. Transactions, the effect plus its mark, failure records and version order are unchanged.
+- **Tests (`test_consumers.py`):**
+  - a failing aggregate of 100 versions plus another aggregate's version 1, at `limit=100`, three runs: the other is applied, with failed 1 and held 99. After the fix all 100 apply in order, each once;
+  - a gap (version 1 missing) with 101 later versions: the other aggregate still runs. Once version 1 arrives, bounded runs (60, then 42) apply everything in order.
+  - Both failed first; the earlier six still pass; Codex's probe passes.
+- **Checks (Git Bash), on this commit's exact tree:** 1 failed (baseline cache-location test), 3261 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1560.45s; ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B13: fresh processes decode M4 snapshots)
 - **Codex M4 review B13:** M4 stores `Adjustment` (`portfolio/provisional.py`) and `Reservation` (`portfolio/fingerprint.py`) inside snapshots, but neither module was in the fresh-reader registry. A new process that hadn't imported the producer failed with `Cannot complete command: 'Adjustment'`.
 - **Fix:** `audit/registry.py` lists both modules, as each M4 task that adds a stored type should have. Stored content and ids are unchanged.

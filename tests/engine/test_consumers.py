@@ -114,3 +114,31 @@ def test_the_envelope_id_is_derived_and_stable():
     assert envelope("a", 2).event_id != envelope("a", 1).event_id
     with pytest.raises(ValueError):
         envelope(version=0)
+
+
+@pytest.mark.postgres
+@pytest.mark.unit
+def test_a_failing_aggregate_larger_than_a_page_never_starves_another(env):
+    """B10 (Codex M4 review): a held aggregate filled every page, so later aggregates were never considered."""
+    publish(env, *[envelope("a", n) for n in range(1, 101)], envelope("b", 1))
+    broken = consumer(env, fail=lambda e: e.aggregate_id == "a")
+    for _ in range(3):
+        report = broken.run_once(limit=100)
+    assert effects(env) == [("b", 1)] and (report.failed, report.held) == (1, 99)
+    fixed = consumer(env)
+    while fixed.run_once(limit=100).applied:
+        pass
+    assert effects(env) == [("a", n) for n in range(1, 101)] + [("b", 1)]  # in order, each once
+
+
+@pytest.mark.postgres
+@pytest.mark.unit
+def test_a_gap_with_more_than_a_page_behind_it_never_starves_another(env):
+    publish(env, *[envelope("a", n) for n in range(2, 103)], envelope("b", 1))  # a1 not yet published
+    c = consumer(env)
+    report = c.run_once(limit=100)
+    assert effects(env) == [("b", 1)] and (report.applied, report.held) == (1, 101)
+    publish(env, envelope("a", 1))
+    assert c.run_once(limit=60).applied == 60  # bounded work, in version order
+    assert c.run_once(limit=100).applied == 42
+    assert effects(env) == [("a", n) for n in range(1, 103)] + [("b", 1)]
