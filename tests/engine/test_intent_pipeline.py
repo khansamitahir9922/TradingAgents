@@ -129,11 +129,12 @@ class Env:
         if start:
             s.snapshots.declare_start(account_id, by=OWNER, reason="D14", effective_at=when)
 
-    def propose(self, account_id, view, *, at=None, stores=None, knowledge=None, coverage=None):
+    def propose(self, account_id, view, *, at=None, stores=None, knowledge=None, coverage=None, declared_only=False):
         when = None if at is LIVE else (at or view.generated_at)
         return propose(account_id, view, at=when, stores=stores or self.stores,
                        knowledge=knowledge or self.knowledge, calendar=CAL, coverage=coverage,
-                       calendar_version="cal-1", code_version="test", correlation_id="test")
+                       calendar_version="cal-1", code_version="test", correlation_id="test",
+                       declared_only=declared_only)
 
     def count(self, table, where="", params=None):
         return self.stores.db.fetchone(f"SELECT COUNT(*) FROM {table} {where}", params or {})[0]

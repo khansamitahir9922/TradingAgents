@@ -48,11 +48,16 @@ def cli(pg_database, tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def cli_and_env(pg_database, tmp_path, monkeypatch):
+    yield from cli_with(pg_database, tmp_path, monkeypatch, backfilled_bars, with_env=True)
+
+
+@pytest.fixture
 def cli_with_a_correction(pg_database, tmp_path, monkeypatch):
     yield from cli_with(pg_database, tmp_path, monkeypatch, recorded_bars_with_a_correction_at_the_sell_view)
 
 
-def cli_with(pg_database, tmp_path, monkeypatch, bars):
+def cli_with(pg_database, tmp_path, monkeypatch, bars, with_env=False):
     from investment_engine import admin_cli, cli, intents_cli
 
     env = Env(pg_database, tmp_path / "market", reader=bars(tmp_path / "market"))
@@ -67,7 +72,7 @@ def cli_with(pg_database, tmp_path, monkeypatch, bars):
     monkeypatch.setenv("INVESTMENT_ENGINE_DATA_DIR", str(tmp_path))
     for module in (admin_cli, intents_cli):
         monkeypatch.setattr(module, "LiveClock", lambda: ReplayClock(NOW))
-    yield cli, tmp_path
+    yield (cli, tmp_path, env) if with_env else (cli, tmp_path)
     env.close()
 
 
@@ -172,3 +177,77 @@ def test_simulate_feeds_the_whole_local_history_and_says_where_its_knowledge_beg
                SESSIONS[63].isoformat())
     assert done.exit_code == 0, done.output
     assert starts and starts[0] <= START and seen == [starts[0]]  # from before the declared start, and it says so
+
+
+# ---------------------------------------------------------------- ordinary proposals use the order store (B6)
+
+
+def proposal(env, view_day):
+    """The stored proposal for R2's view of `view_day`."""
+    from tests.engine.test_intent_pipeline import t_of
+
+    (record,) = [r for r in env.stores.proposals.for_account("R2") if r.at == t_of(view_day)]
+    return record
+
+
+@pytest.mark.unit
+def test_intents_propose_after_a_fill_sizes_the_sell_on_what_was_filled(cli_and_env):
+    """B6 (Codex M4 review): `intents propose` kept M3's declared snapshot after M4 fills existed, so a BEARISH view
+    after a filled BUY said "nothing held"."""
+    from tests.engine.test_conversion import order_store
+    from tests.engine.test_intent_pipeline import t_of
+
+    app, _, env = cli_and_env
+    done = run(app, "intents", "simulate", "--account", "R2", "--from", SESSIONS[59].isoformat(), "--to",
+               SESSIONS[61].isoformat())  # only the BUY view of SESSIONS[60]
+    assert done.exit_code == 0 and "1 orders" in done.output, done.output
+    ((buy, status),) = order_store(env).for_account("R2")
+    assert status.state.value == "FILLED"
+    proposed = run(app, "intents", "propose", "--account", "R2", "--at", t_of(SESSIONS[62]).isoformat())
+    assert proposed.exit_code == 0, proposed.output
+    record = proposal(env, SESSIONS[62])
+    assert record.intent_id is not None, record.reason
+    intent = env.stores.intents.get(record.intent_id).intent
+    assert (intent.side.value, intent.quantity) == ("SELL", buy.quantity)
+
+
+@pytest.mark.unit
+def test_a_second_buy_while_the_first_is_pending_counts_the_pending_exposure(cli_and_env):
+    from investment_engine.events.outbox import Outbox
+    from investment_engine.oms.conversion import convert_approved
+    from investment_engine.oms.order_states import ProcessRole
+    from investment_engine.oms.order_store import OrderStore
+    from tests.engine.test_intent_pipeline import t_of
+
+    app, _, env = cli_and_env
+    first = run(app, "intents", "propose", "--account", "R2", "--at", t_of(SESSIONS[60]).isoformat())
+    assert first.exit_code == 0 and proposal(env, SESSIONS[60]).intent_id is not None, first.output
+    # Converted at replay time, as the harness's Core role does (the projection is point in time: an order recorded
+    # later than a proposal is unknown to it). NEW: not yet filled.
+    core = env.connect(ReplayClock(t_of(SESSIONS[60])))
+    orders = OrderStore(core.db, role=ProcessRole.CORE, audit=core.audit,
+                        outbox=Outbox(core.db, writer=ProcessRole.CORE, clock=core.clock), clock=core.clock)
+    (pending,) = convert_approved("R2", at=t_of(SESSIONS[60]), stores=core, orders=orders).converted
+    view_for(env.stores, env.reader, SESSIONS[61], "BULLISH", tag="second-buy")
+    second = run(app, "intents", "propose", "--account", "R2", "--at", t_of(SESSIONS[61]).isoformat())
+    assert second.exit_code == 0, second.output
+    record = proposal(env, SESSIONS[61])
+    # The pending BUY's remainder x limit holds the cap's room: what is left buys less than one share. Without the
+    # pending order the same proposal was APPROVED (the red run of this test).
+    assert record.outcome.value == "NO_INTENT" and "below one share (room" in record.reason, record.reason
+    assert pending.quantity > 0
+
+
+@pytest.mark.unit
+def test_a_proposal_without_the_order_store_fails_closed_once_the_account_has_orders(cli_and_env):
+    from investment_engine.oms.pipeline import propose
+    from tests.engine.test_intent_pipeline import CAL as PIPELINE_CAL, t_of
+
+    app, _, env = cli_and_env
+    assert run(app, "intents", "simulate", "--account", "R2", "--from", SESSIONS[59].isoformat(), "--to",
+               SESSIONS[61].isoformat()).exit_code == 0
+    view = view_for(env.stores, env.reader, SESSIONS[63], "BEARISH", tag="no-order-store")
+    record = propose("R2", view, at=t_of(SESSIONS[63]), stores=env.stores, knowledge=env.knowledge,
+                     calendar=PIPELINE_CAL, coverage=None, calendar_version="cal-1", code_version="test",
+                     correlation_id="no-order-store")
+    assert record.outcome.value == "PREREQUISITE_MISSING" and "order history" in record.missing, record.reason

@@ -70,7 +70,7 @@ def env(pg_database, tmp_path):
 
 def convert(env, day):
     view = view_for(env.stores, env.reader, day, tag=str(day))
-    record = env.propose("R2", view)
+    record = env.propose("R2", view, declared_only=True)  # independent orders on one account (B6; worker_env.py)
     report = convert_approved("R2", at=view.generated_at, stores=env.stores, orders=order_store(env))
     (order,) = report.converted
     return order, view, record
@@ -208,7 +208,7 @@ def test_a_fill_on_another_order_and_the_gate(env, writer_first):
 def test_a_new_conversion_and_the_gate(env, writer_first):
     order, view, _ = convert(env, DAY)
     later = view_for(env.stores, env.reader, SESSIONS[70], tag="later")
-    env.propose("R2", later)
+    env.propose("R2", later, declared_only=True)
 
     def writer(stores):
         report = convert_approved("R2", at=later.generated_at, stores=stores, orders=order_store(env, stores))

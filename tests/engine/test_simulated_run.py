@@ -265,8 +265,10 @@ def test_a_fresh_process_reads_snapshots_with_adjustments_and_reservations(pg_da
 
 
 def other_accounts_work(r):
-    """OTHER, on its own replay timeline: an order already resting at the simulator for SESSIONS[50], submitted at
-    OTHER's time, and a NEW order for A's target session that OTHER's own worker hasn't gated yet."""
+    """OTHER, on its own replay timeline: one order for SESSIONS[50], NEW in the order store (OTHER's own worker
+    hasn't stepped yet) and already resting at an OTHER-scoped simulator, submitted at OTHER's time. An unscoped
+    run for R2 would gate it (GATE_REJECTED: its session has passed) and decide it at the simulator; Codex's probe
+    covers a NEW order filled on R2's clock."""
     from investment_engine.execution.simulated_broker import SimulatedBroker, load_fee_schedule
     from investment_engine.oms.conversion import convert_approved
     from tests.engine.test_conversion import order_store
@@ -274,17 +276,13 @@ def other_accounts_work(r):
 
     r.env.account("OTHER", level=2)
     orders = order_store(r.env, role=ProcessRole.CORE)
-    made = []
-    for day, tag in ((SESSIONS[49], "other-resting"), (A, "other-new")):
-        view = view_for(r.env.stores, r.env.reader, day, tag=tag)
-        r.env.propose("OTHER", view)
-        (order,) = convert_approved("OTHER", at=view.generated_at, stores=r.env.stores, orders=orders).converted
-        made.append((order, view))
-    resting, _ = made[0]
+    view = view_for(r.env.stores, r.env.reader, SESSIONS[49], tag="other")
+    r.env.propose("OTHER", view)
+    (order,) = convert_approved("OTHER", at=view.generated_at, stores=r.env.stores, orders=orders).converted
     broker = SimulatedBroker(r.env.stores.db, knowledge=StoreKnowledge(r.env.reader, CAL), calendar=CAL,
                              source="yfinance", fees=load_fee_schedule(), account_id="OTHER")
-    assert broker.submit(resting, at=made[0][1].generated_at + timedelta(minutes=1)).accepted
-    return orders, resting, made[1][0]
+    assert broker.submit(order, at=view.generated_at + timedelta(minutes=1)).accepted
+    return orders, order, order
 
 
 def sim_state(r, order):

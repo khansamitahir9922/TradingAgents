@@ -150,6 +150,22 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B6: every proposal path sizes on fills and open orders)
+- **Codex M4 review B6:** only the simulator passed the order store, so `intents propose` (range, `--at` and PAPER) kept M3's declared snapshot after M4 fills existed. Reproduced: a BEARISH view after a filled BUY said "nothing held".
+- **Fix:**
+  - **Fail closed.** `propose` without an order store, on an account that has orders, is PREREQUISITE_MISSING ("order history"), never a silent pre-M4 portfolio.
+  - **Every path wired.** `intents propose` passes the order store on every path. RESEARCH also passes the established action coverage, the whole-history feed and `known_from` (B7). PAPER passes no coverage, so a holding makes the projection unavailable (D22: no PAPER trading in M4).
+  - **Fixture option.** `declared_only=True` explicitly asks for the declared snapshot. It exists for test fixtures that hold several independent orders on one account (`WorkerEnv.convert`, the gate-concurrency setup). A new layering test pins that no module of the package sets it.
+- **Tests:**
+  - `test_order_log.py`: after a simulated, filled BUY, `intents propose --at` gives a SELL of exactly the filled quantity. A second BUY while the first is pending (converted at replay time, NEW) is NO_INTENT, "below one share (room 61.6000 at 121.20)": the pending remainder holds the cap, where the red run was APPROVED. `propose` without the order store fails closed once orders exist.
+  - `test_layering.py`: no package module asks for the declared-only portfolio.
+  - Codex's probe calls `propose` without the order store and expects a SELL. The review's own fix makes exactly that call fail closed, so the probe's expectation no longer applies; the CLI paths are tested instead.
+- **Scope, recorded:**
+  - `oms/pipeline.py` (M4-09's change to it);
+  - the M3 test `test_intents_cli.py`, whose direct-call comparison now gives the direct call the CLI's M4 inputs;
+  - the test helpers `test_intent_pipeline.py` (`Env.propose(declared_only=)`), `worker_env.py`, `test_gate_concurrency.py` and `test_simulated_run.py` (OTHER's setup follows its own timeline).
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3308 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1747.48s (0:29:07) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B7: actions at the declared-start boundary and since it)
 - **Codex M4 review B7:**
   - The projection skipped every action dated on the start's local date: ten shares declared an hour before a 10-for-1 split's open stayed ten.

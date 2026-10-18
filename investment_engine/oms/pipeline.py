@@ -214,10 +214,15 @@ def _session_bounds(calendar, session):
 
 
 def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: ControlStores, knowledge, calendar,
-            coverage, calendar_version: str, code_version: str, correlation_id: str, orders=None) -> ProposalRecord:
+            coverage, calendar_version: str, code_version: str, correlation_id: str, orders=None,
+            declared_only: bool = False) -> ProposalRecord:
     """Propose one view for one account. RESEARCH: `at` is the replay time. PAPER: `at=None`, the live time.
     With `orders` (an OrderStore), the snapshot is the provisional projection: the declared start plus recorded
-    fills, splits, dividends and open-order reservations (M4-09); without it, exactly M3's declared snapshot."""
+    fills, splits, dividends and open-order reservations (M4-09); without it, exactly M3's declared snapshot, but
+    only for an account with no orders: once it has any, a proposal without the order store is a missing
+    prerequisite, never a silent pre-M4 portfolio (Law 20; Codex M4 review B6). Setting `declared_only` asks for
+    the declared snapshot explicitly: a test fixture's option only (each order sized as if alone), which no module
+    of the package sets (tests/engine/test_layering.py)."""
     view_lineage_id = view.evidence_refs[0] if view.evidence_refs else ""
     try:
         account = stores.accounts.account(account_id)
@@ -253,9 +258,15 @@ def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: C
             return existing  # idempotent: the same account and view were already proposed
         _expire(account_id, at, stores)
         record = _propose(account_id, view, at, stores, knowledge, calendar, coverage, calendar_version, code_version,
-                          correlation_id, view_lineage_id, view_lineage, orders)
+                          correlation_id, view_lineage_id, view_lineage, orders, declared_only)
         stores.proposals.append(record)
     return record
+
+
+def _has_orders(stores: ControlStores, account_id: str) -> bool:
+    if stores.db.backend != "postgresql":
+        return False  # orders exist only in the PostgreSQL Operational Database (M4-00)
+    return stores.db.fetchone("SELECT 1 FROM orders WHERE account_id = :a LIMIT 1", {"a": account_id}) is not None
 
 
 def _view_mismatch(view: MarketView, view_lineage_id: str, stored) -> str:
@@ -278,8 +289,13 @@ def _missing(account_id, view_lineage_id, at, missing: list[tuple[str, str]]) ->
 
 
 def _propose(account_id, view, at, stores: ControlStores, knowledge, calendar, coverage, calendar_version,
-             code_version, correlation_id, view_lineage_id, view_lineage, orders=None) -> ProposalRecord:
+             code_version, correlation_id, view_lineage_id, view_lineage, orders=None,
+             declared_only: bool = False) -> ProposalRecord:
     missing: list[tuple[str, str]] = []
+    if orders is None and not declared_only and _has_orders(stores, account_id):
+        missing.append(("order history", f"{account_id} has orders, so its portfolio is the order store's "
+                                         "provisional projection; a proposal without it would size on the declared "
+                                         "start alone (M4-09)"))
     try:
         autonomy = stores.accounts.autonomy_at(account_id, at)
     except LookupError as exc:

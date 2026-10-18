@@ -178,3 +178,12 @@ def test_an_attribute_imported_from_an_allowed_module_is_allowed_but_not_from_an
     (package / "simulation" / "run.py").write_text(
         "from investment_engine.execution.reads import StoreGateReads\n", encoding="utf-8")
     assert any("the harness may import only" in o for o in execution_boundary_offenders(package))
+
+
+@pytest.mark.unit
+def test_no_module_of_the_package_asks_for_the_declared_only_portfolio():
+    """B6 (Codex M4 review): once an account has orders, a proposal is sized on the order store's projection. The
+    declared-only option exists for test fixtures; no production path may pass it."""
+    users = sorted(path.relative_to(PACKAGE).as_posix() for path in PACKAGE.rglob("*.py")
+                   if "declared_only=True" in path.read_text(encoding="utf-8"))
+    assert users == []

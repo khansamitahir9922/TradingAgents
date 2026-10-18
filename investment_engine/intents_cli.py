@@ -177,18 +177,27 @@ def propose_intents(account: str = typer.Option(..., "--account"), at: str | Non
 
         from investment_engine.cli import _timestamp
         from investment_engine.decision.pipeline import ReplayKnowledgeReader
+        from investment_engine.events.outbox import Outbox
         from investment_engine.market.calendar.us_equities import load_us_equities_calendar
         from investment_engine.market.candles import Timeframe
+        from investment_engine.market.corporate_actions import ActionType
         from investment_engine.market.replay import ReplayFeed
+        from investment_engine.oms.order_states import ProcessRole
+        from investment_engine.oms.order_store import OrderStore
         from investment_engine.oms.pipeline import propose, propose_over_replay
         from investment_engine.policy.accounts import AccountKind
-        from investment_engine.portfolio.reference import StoreKnowledge
+        from investment_engine.portfolio.reference import ReplayKnowledge, StoreKnowledge
+        from investment_engine.quant.adjusted import establish_coverage
 
         clock, calendar = LiveClock(), load_us_equities_calendar()
         stores = _stores(db, clock)
         kind = stores.accounts.account(account).kind
         reader = _market()
         calendar_version, code_version = _versions()
+        # Every proposal is sized on the order store's provisional projection: fills and open orders count, as in
+        # the simulated run (M4-09; Codex M4 review B6). Read only: proposing writes no order.
+        orders = OrderStore(db, role=ProcessRole.CORE, audit=stores.audit,
+                            outbox=Outbox(db, writer=ProcessRole.CORE, clock=clock), clock=clock)
         if kind is AccountKind.PAPER:
             if at or from_day or to_day:
                 raise ValueError("a PAPER account proposes at the live time only; --at/--from/--to are refused")
@@ -196,9 +205,12 @@ def propose_intents(account: str = typer.Option(..., "--account"), at: str | Non
             views = _views_between(db, instrument, now - timedelta(days=4), now)
             if not views:
                 raise ValueError("no stored view of the last few days to propose")
+            # No action coverage is established for live time, so a holding makes the projection unavailable: fail
+            # closed (Law 9; D22: no PAPER trading in M4).
             record = propose(account, views[-1], at=None, stores=stores, knowledge=StoreKnowledge(reader, calendar),
                              calendar=calendar, coverage=None, calendar_version=calendar_version,
-                             code_version=code_version, correlation_id=f"cli:{account}:{now.isoformat()}")
+                             code_version=code_version, correlation_id=f"cli:{account}:{now.isoformat()}",
+                             orders=orders)
             records = [record]  # PAPER acts at the live clock's time; no time is supplied
         else:
             if at:
@@ -213,17 +225,27 @@ def propose_intents(account: str = typer.Option(..., "--account"), at: str | Non
                 views = [v for v in views if v.generated_at <= first][-1:]
             if not views:
                 raise ValueError("no stored views in that range; run 'views replay' first")
-            start = views[0].generated_at - timedelta(days=60)
+            # The whole local history, so every action since the declared start is known (B7).
+            start = datetime(1970, 1, 1, tzinfo=UTC)
             # --at T acts at T: the view is proposed after a delay of T minus its time, with everything the feed
             # delivered through T (Codex M3 review B5). A range proposes each view at its own time.
             delay = first - views[0].generated_at if at else timedelta(0)
             end = (first if at else max(v.generated_at for v in views)) + timedelta(microseconds=1)
             feed = ReplayFeed(reader, ReplayClock(start), sources=[SOURCE], instrument_ids=[instrument],
                               timeframes=[Timeframe.D1], start=start, end=end)
+            evidence, cov_first, cov_last, reason = _coverage(end)
+            coverage = establish_coverage(evidence, source=SOURCE, instrument_id=instrument,
+                                          types=(ActionType.SPLIT, ActionType.DIVIDEND), first=cov_first,
+                                          last=cov_last, as_of=end, reason=reason)
+
+            def make_knowledge(knowledge_reader, **kwargs):
+                return ReplayKnowledge(knowledge_reader, known_from=start, **kwargs)
+
             records = propose_over_replay(account, views, events=feed, stores=stores,
                                           knowledge_reader=ReplayKnowledgeReader(), calendar=calendar,
-                                          coverage=None, calendar_version=calendar_version,
-                                          code_version=code_version, proposal_delay=delay)
+                                          coverage=coverage, calendar_version=calendar_version,
+                                          code_version=code_version, proposal_delay=delay,
+                                          make_knowledge=make_knowledge, orders=orders)
         _header(stores, account, records[-1].at if records else clock.now())
         for record in records:
             _proposal_line(record, stores)

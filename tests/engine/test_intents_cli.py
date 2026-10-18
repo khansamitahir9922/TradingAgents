@@ -248,11 +248,16 @@ def test_research_setup_and_replay_through_the_cli_only(tmp_path, monkeypatch):
 def test_cli_proposals_match_propose_over_replay_called_directly(tmp_path, monkeypatch):
     from investment_engine import intents_cli
     from investment_engine.decision.pipeline import ReplayKnowledgeReader
+    from investment_engine.events.outbox import Outbox
     from investment_engine.lineage.records import LineageStore
     from investment_engine.market.candles import Timeframe
+    from investment_engine.market.corporate_actions import ActionType
     from investment_engine.market.replay import ReplayFeed
     from investment_engine.market.store.reader import MarketDataReader
+    from investment_engine.oms.order_states import ProcessRole
+    from investment_engine.oms.order_store import OrderStore
     from investment_engine.oms.pipeline import ControlStores, propose_over_replay
+    from investment_engine.quant.adjusted import establish_coverage
     from investment_engine.storage.database import PostgresDatabase
     from investment_engine.storage.postgres import open_operational_pg
     from investment_engine.storage.sqlite import SqliteInstrumentRepository
@@ -281,10 +286,19 @@ def test_cli_proposals_match_propose_over_replay_called_directly(tmp_path, monke
                                   end=CAL.session(DAYS[-1]).close + timedelta(hours=1))
                 calendar_version, code_version = intents_cli._versions()
                 stores = ControlStores.open(db, ReplayClock(NOW), instruments=SqliteInstrumentRepository(db))
+                # The CLI's other inputs, as M4 gives them (Codex M4 review B6): the order store and the
+                # established action coverage as of its feed's end.
+                orders = OrderStore(db, role=ProcessRole.CORE, audit=stores.audit,
+                                    outbox=Outbox(db, writer=ProcessRole.CORE, clock=stores.clock), clock=stores.clock)
+                end = max(v.generated_at for v in views) + timedelta(microseconds=1)
+                evidence, first, last, reason = intents_cli._coverage(end)
+                coverage = establish_coverage(evidence, source="yfinance", instrument_id="EQ_US_NVDA",
+                                              types=(ActionType.SPLIT, ActionType.DIVIDEND), first=first, last=last,
+                                              as_of=end, reason=reason)
                 results.append(propose_over_replay("R1", views, events=feed, stores=stores,
                                                    knowledge_reader=ReplayKnowledgeReader(), calendar=CAL,
-                                                   coverage=None, calendar_version=calendar_version,
-                                                   code_version=code_version))
+                                                   coverage=coverage, calendar_version=calendar_version,
+                                                   code_version=code_version, orders=orders))
             finally:
                 db.connection.close()
     cli_records, direct_records = results

@@ -29,12 +29,15 @@ class WorkerEnv(Env):
     def approved_view(self, day, tag=""):
         """Propose at Level 2 (APPROVED) without converting: the Core Engine's job in the process tests."""
         view = view_for(self.stores, self.reader, day, tag=tag or str(day))
-        self.propose("R2", view)
+        self.propose("R2", view, declared_only=True)
         return view
 
     def convert(self, day, tag=""):
+        """An approved, converted order. Each is sized on the declared start alone (`declared_only`), so tests of
+        the worker's mechanics can hold several independent orders on one account; sizing on fills and open orders
+        is tested on the real paths (test_order_log.py, test_simulated_run.py; Codex M4 review B6)."""
         view = view_for(self.stores, self.reader, day, tag=tag or str(day))
-        self.propose("R2", view)
+        self.propose("R2", view, declared_only=True)
         (order,) = convert_approved("R2", at=view.generated_at, stores=self.stores, orders=order_store(self)).converted
         return order, view
 
