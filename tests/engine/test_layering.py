@@ -152,3 +152,13 @@ def test_the_harness_may_import_its_four_named_execution_modules(tmp_path):
         "from investment_engine.execution import worker, factory, broker_port, simulated_broker\n"
         "import investment_engine.execution.worker\n", encoding="utf-8")
     assert execution_boundary_offenders(package) == []
+
+
+@pytest.mark.unit
+def test_only_the_admin_cli_imports_the_kill_switch_writer():
+    """ADR-006 sections 2 and 3: the Admin CLI is the flag's only writer; the worker gets the reader only."""
+    writers = sorted(
+        path.relative_to(PACKAGE).as_posix() for path in PACKAGE.rglob("*.py")
+        if any(m == "investment_engine.killswitch.admin" for m in _modules(path, PACKAGE))
+        and path.relative_to(PACKAGE).as_posix() != "killswitch/admin.py")
+    assert writers == ["admin_cli.py"]

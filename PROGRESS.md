@@ -150,6 +150,22 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-04: the kill switch: flag, journal, Admin CLI and fail-closed reader)
+- **Built:**
+  - `killswitch/flag.py`: the checksummed canonical-JSON flag, `encode_flag` and `decode_flag`, and `KillSwitchReader.read()`, which never raises. Missing, unreadable, malformed, wrong-schema, non-boolean and bad-checksum flags are each disabled, with a distinct problem.
+  - `killswitch/admin.py`: an OS lock (msvcrt or fcntl, bounded at 10 s); resolution of outstanding intents against the current flag before every publication (APPLIED (recovered), NOT_APPLIED, or UNRESOLVED when unestablished, and never NOT_APPLIED from a later flag); INTENT, then publish, then APPLIED; the failure table (a halt always publishes and reports what is incomplete; a resume is refused before publication and reported applied after it); a truncated tail ignored; `sync_audit`; `audit_event` (deterministic, the change's own time, so immediate and later audits are the same event).
+  - Admin CLI `kill-switch status|halt|resume|sync-audit`.
+  - Layering: only `admin_cli.py` imports the writer.
+  - The audit registry lists `killswitch.flag`.
+- **Roles (PRD UC-06):** halt and resume are Admin-only, verified in the database. With the database unreachable, a halt applies marked "identity unverified", and a resume is refused.
+- **Two details fixed during the task:** (1) APPLIED lines carry the change's details, so a halt whose INTENT append failed still has a complete record; (2) a missing flag with no APPLIED line ever is resolved NOT_APPLIED, because `os.replace` is atomic, so no file means no publication. Any other unreadable flag stays UNRESOLVED. A resume is also refused, once, when its own resolution step finds unresolved history.
+- **Tests (new):**
+  - `test_kill_switch.py` (20): fail-closed reads; halt and resume; unverified halt; two writers in separate processes (20 changes, distinct sequences); crash after INTENT; 7-then-8; INTENT and APPLIED failures for halt and resume; flag-write failure; an unrecordable resolution (resume refused, halt published, later UNRESOLVED); an unreadable flag; a truncated tail; idempotent and deterministic audit.
+  - `test_admin_cli_kill_switch.py` (5): Admin halt and resume, each audited once; Trader, Viewer and unknown operators refused; database down (unverified halt, resume refused, status shows it), then `sync-audit` records it once.
+  - Red: the modules didn't exist.
+- **Checks (Git Bash):** the targeted files, 25 passed, plus layering 16; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3089 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1035.76s (0:17:15) (only failure: the baseline cache-location test). M4-05 and M4-06 new files were in the tree, uncollected.
+
 ### 2026-10-18: Claude Code (M4-03: Execution Worker process skeleton, broker port and credential separation)
 - **Built:**
   - `execution/broker_port.py`: the port, with `SubmitResult`, `CancelResult` (CANCELLED | PENDING | TOO_LATE | UNKNOWN_ORDER, plus `received_at`), `BrokerOrderReport`, `BrokerFill`, `BrokerMessage` and `BrokerTimeout`.

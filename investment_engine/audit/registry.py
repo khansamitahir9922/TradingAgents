@@ -20,4 +20,5 @@ MODULES: tuple[str, ...] = (
     "investment_engine.oms.order_states",  # M4-00
     "investment_engine.oms.orders",  # M4-00
     "investment_engine.events.envelope",  # M4-00
+    "investment_engine.killswitch.flag",  # M4-04
 )

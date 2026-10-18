@@ -4,7 +4,7 @@ Every change names the acting local operator (`--operator`) and a reason, and
 is authorized at the real command time from a LiveClock. Commands for a
 RESEARCH account act at an explicit replay time (`--effective-at`); PAPER
 accounts refuse one (Codex re-review R2). Output is plain ASCII and never shows
-connection details. Nothing here submits orders or touches the kill switch.
+connection details. Nothing here submits orders. The kill-switch commands (M4-04) are the flag's only writer.
 
 investment_engine.cli calls register(app) once; each task adds its groups to
 GROUPS here. This module imports cli's helpers only inside commands, so there
@@ -26,10 +26,12 @@ restricted_app = typer.Typer(no_args_is_help=True, help="The restricted list; ea
 intents_app = typer.Typer(no_args_is_help=True, help="Order intents: approve, decline, expire (M3-13) and report (M3-14).")
 operators_app = typer.Typer(no_args_is_help=True, help="Local named operators and their roles (Admin only).")
 orders_app = typer.Typer(no_args_is_help=True, help="Orders: cancel requests (M4-02).")
+killswitch_app = typer.Typer(no_args_is_help=True, help="The kill switch: halt, resume, status, sync-audit (Admin only; ADR-006).")
 GROUPS: dict[str, typer.Typer] = {"accounts": accounts_app, "operators": operators_app,  # later tasks add theirs
                                   "limits": limits_app, "restricted": restricted_app,  # M3-06
                                   "intents": intents_app,  # M3-13
-                                  "orders": orders_app}  # M4-02
+                                  "orders": orders_app,  # M4-02
+                                  "kill-switch": killswitch_app}  # M4-04
 
 
 def register(app: typer.Typer) -> None:
@@ -525,3 +527,141 @@ def cancel_order(order_id: str, operator: str = typer.Option(..., "--operator"),
         _say(f"CANCEL REQUESTED for {order_id} by {operator} ({request.cancel_id}): {reason}. The Execution Worker "
              "sends it; the order's state is unchanged until the broker answers.")
     _run_intents(go)
+
+
+# ---------------------------------------------------------------- the kill switch (M4-04; ADR-006; D27, D28)
+
+
+def _kill_switch():
+    from investment_engine import config
+    from investment_engine.killswitch.admin import KillSwitchAdmin
+
+    return KillSwitchAdmin(config.control_dir(), clock=LiveClock())
+
+
+def _admin_check(operator: str):
+    """(connection, db) when the operator is a verified active Admin; None when the database can't be reached
+    (the identity can't be verified); NotAuthorized when it can be reached and the operator isn't an Admin."""
+    from investment_engine.audit.events import AuditStore
+    from investment_engine.cli import _open_db
+    from investment_engine.policy.accounts import AccountRegistry, NotAuthorized, Role
+
+    try:
+        conn, db = _open_db(read_only=False)
+    except Exception:  # unreachable or not configured: the identity can't be checked
+        return None
+    try:
+        registry = AccountRegistry(db, AuditStore(db), LiveClock())
+        try:
+            found = registry.operator(operator, LiveClock().now())
+        except KeyError:
+            raise NotAuthorized(f"{operator} is not a registered operator") from None
+        if not found.active or found.role is not Role.ADMIN:
+            raise NotAuthorized(f"{operator} is not an active Admin; only an Admin halts or resumes (PRD UC-06)")
+        return conn, db
+    except BaseException:
+        conn.close()
+        raise
+
+
+def _audit_journal(ks, db) -> int:
+    from investment_engine.audit.events import AuditStore
+    from investment_engine.killswitch.admin import audit_event
+
+    store, written = AuditStore(db), []
+
+    def record(sequence, phase, data):
+        with db.transaction():
+            store.append(audit_event(sequence, phase, data))
+        written.append(sequence)
+
+    ks.sync_audit(record)
+    return len(written)
+
+
+def _change(op: str, operator: str, reason: str) -> None:
+    from investment_engine.killswitch.admin import KillSwitchRefused
+    from investment_engine.policy.accounts import NotAuthorized
+
+    try:
+        checked = _admin_check(operator)
+    except NotAuthorized as exc:
+        _say(f"Refused: {exc}. Nothing was changed.")
+        raise typer.Exit(1) from None
+    ks = _kill_switch()
+    try:
+        result = getattr(ks, op)(operator=operator, verified=checked is not None, reason=reason)
+    except KillSwitchRefused as exc:
+        if checked is not None:
+            checked[0].close()
+        _say(f"Refused: {exc}")
+        raise typer.Exit(1) from None
+    state = "TRADING DISABLED (halted)" if op == "halt" else "TRADING ENABLED"
+    _say(f"{state}: sequence {result.sequence}, by {operator}"
+         f"{'' if checked is not None else ' (identity unverified: database unavailable)'}. Journal: {result.journal}. "
+         f"History: {result.history}.")
+    if checked is None:
+        _say("Audit: pending (database unavailable). Run `kill-switch sync-audit` when it is back.")
+        return
+    try:
+        _audit_journal(ks, checked[1])
+        _say("Audit: recorded.")
+    except Exception as exc:  # the change stands; only its audit is late
+        _say(f"Audit: pending ({type(exc).__name__}). Run `kill-switch sync-audit`.")
+    finally:
+        checked[0].close()
+
+
+@killswitch_app.command("halt")
+def kill_switch_halt(operator: str = typer.Option(..., "--operator"), reason: str = typer.Option(..., "--reason")) -> None:
+    """Stop new submissions (Admin). Works with the database down, marked unverified. Cancels still go through."""
+    _change("halt", operator, reason)
+
+
+@killswitch_app.command("resume")
+def kill_switch_resume(operator: str = typer.Option(..., "--operator"),
+                       reason: str = typer.Option(..., "--reason")) -> None:
+    """Allow new submissions again (a verified Admin; refused when the database is unavailable)."""
+    _change("resume", operator, reason)
+
+
+@killswitch_app.command("status")
+def kill_switch_status() -> None:
+    """Show the flag as the Execution Worker's gate reads it. Anything unreadable is shown as disabled."""
+    ks = _kill_switch()
+    reading = ks.read()
+    if reading.enabled:
+        _say(f"TRADING ENABLED: sequence {reading.state.sequence}, by {reading.state.changed_by} at "
+             f"{reading.state.changed_at.isoformat()}: {reading.state.reason}")
+    elif reading.state is not None:
+        unverified = "" if reading.state.verified else " (identity unverified)"
+        _say(f"TRADING DISABLED (halted): sequence {reading.state.sequence}, by {reading.state.changed_by}"
+             f"{unverified} at {reading.state.changed_at.isoformat()}: {reading.state.reason}")
+    else:
+        _say(f"TRADING DISABLED: {reading.problem}")
+    resolved = {e.sequence for e in ks.entries() if e.phase in ("APPLIED", "NOT_APPLIED", "UNRESOLVED")}
+    open_intents = sorted({e.sequence for e in ks.entries() if e.phase == "INTENT"} - resolved)
+    unresolved = sorted({e.sequence for e in ks.entries() if e.phase == "UNRESOLVED"})
+    if open_intents:
+        _say(f"Unfinished changes (resolved at the next change or sync-audit): {open_intents}")
+    if unresolved:
+        _say(f"UNRESOLVED changes (history couldn't be established): {unresolved}")
+    for warning in ks.warnings:
+        _say(f"Warning: {warning}")
+
+
+@killswitch_app.command("sync-audit")
+def kill_switch_sync_audit() -> None:
+    """Record every journalled kill-switch change missing from the audit store (idempotent)."""
+    from investment_engine.cli import _open_db
+
+    try:
+        conn, db = _open_db(read_only=False)
+    except Exception as exc:
+        _say(f"Cannot sync: the database is unavailable ({type(exc).__name__}).")
+        raise typer.Exit(1) from None
+    try:
+        count = _audit_journal(_kill_switch(), db)
+        _say(f"Audit synced: {count} journalled outcomes checked; any missing were recorded.")
+    finally:
+        conn.close()
