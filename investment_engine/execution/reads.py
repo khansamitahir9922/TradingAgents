@@ -2,8 +2,11 @@
 
 Each read that can't be made becomes `Missing` with its reason, never a
 default (Law 9). The provider never decides anything; `check_gate` does.
-Promotion for PAPER accounts reads "PROMOTION NOT ASSESSED" until M4-10
-supplies assessments, so a PAPER order can't pass the gate in M4 (D22).
+Promotion for PAPER accounts reads a fixed "not assessed" status: the execution
+package imports no evaluation module (M4-03 layering), and no PAPER account can
+be ACCEPTED in M4 anyway (D22). The proposal-time policy check reports the
+recorded assessment (M4-10). A later milestone that lets PAPER trade must inject
+the status through this provider's `promotion` callable.
 """
 
 from datetime import datetime, timedelta

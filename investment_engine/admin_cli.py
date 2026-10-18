@@ -26,12 +26,16 @@ restricted_app = typer.Typer(no_args_is_help=True, help="The restricted list; ea
 intents_app = typer.Typer(no_args_is_help=True, help="Order intents: approve, decline, expire (M3-13) and report (M3-14).")
 operators_app = typer.Typer(no_args_is_help=True, help="Local named operators and their roles (Admin only).")
 orders_app = typer.Typer(no_args_is_help=True, help="Orders: cancel requests (M4-02).")
+promotion_app = typer.Typer(no_args_is_help=True, help="Promotion thresholds and walk-forward assessments (OPEN-09; M4-10).")
+thresholds_app = typer.Typer(no_args_is_help=True, help="Versioned promotion thresholds (Admin).")
+promotion_app.add_typer(thresholds_app, name="thresholds")
 killswitch_app = typer.Typer(no_args_is_help=True, help="The kill switch: halt, resume, status, sync-audit (Admin only; ADR-006).")
 GROUPS: dict[str, typer.Typer] = {"accounts": accounts_app, "operators": operators_app,  # later tasks add theirs
                                   "limits": limits_app, "restricted": restricted_app,  # M3-06
                                   "intents": intents_app,  # M3-13
                                   "orders": orders_app,  # M4-02
-                                  "kill-switch": killswitch_app}  # M4-04
+                                  "kill-switch": killswitch_app,  # M4-04
+                                  "promotion": promotion_app}  # M4-10
 
 
 def register(app: typer.Typer) -> None:
@@ -665,3 +669,110 @@ def kill_switch_sync_audit() -> None:
         _say(f"Audit synced: {count} journalled outcomes checked; any missing were recorded.")
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------- promotion (M4-10; OPEN-09, D21, D22)
+
+
+def _promotion(command) -> None:
+    """Open the database; `command(db, clock)`; refusals printed plainly."""
+    from investment_engine.cli import _fail, _open_db
+    from investment_engine.policy.accounts import NotAuthorized
+
+    conn = None
+    try:
+        conn, db = _open_db(read_only=False)
+        command(db, LiveClock())
+    except NotAuthorized as exc:
+        _say(f"Refused: {exc}. Nothing was changed.")
+        raise typer.Exit(1) from None
+    except (KeyError, LookupError, ValueError) as exc:
+        _say(f"Cannot complete command: {exc}")
+        raise typer.Exit(1) from None
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        _fail(exc)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _admin_actor(db, clock, operator: str):
+    from investment_engine.audit.events import Actor, ActorKind, AuditStore
+    from investment_engine.policy.accounts import AccountRegistry, NotAuthorized, Role
+
+    try:
+        found = AccountRegistry(db, AuditStore(db), clock).operator(operator, clock.now())
+    except KeyError:
+        raise NotAuthorized(f"{operator} is not a registered operator") from None
+    if not found.active or found.role is not Role.ADMIN:
+        raise NotAuthorized(f"{operator} is not an active Admin")
+    return Actor(ActorKind.OPERATOR, operator, "ADMIN", _os_user())
+
+
+@thresholds_app.command("publish")
+def promotion_thresholds_publish(operator: str = typer.Option(..., "--operator"),
+                                 reason: str = typer.Option(..., "--reason")) -> None:
+    """Publish the shipped D21 thresholds as a new version (Admin). Earlier assessments keep their version."""
+    from investment_engine.audit.events import AuditStore
+    from investment_engine.evaluation.promotion import PromotionStore, load_proposed_thresholds
+
+    def go(db, clock):
+        by = _admin_actor(db, clock, operator)
+        thresholds = PromotionStore(db, AuditStore(db)).publish(load_proposed_thresholds(), by=by, reason=reason,
+                                                                at=clock.now())
+        _say(f"PUBLISHED {thresholds.version}: Sharpe >= {thresholds.min_sharpe}, trades >= {thresholds.min_trades} "
+             f"(across folds), positive folds >= {thresholds.min_positive_fold_share}, drawdown no worse than "
+             f"buy-and-hold, costs >= {thresholds.min_cost_bps_per_side} bps per side.")
+    _promotion(go)
+
+
+@thresholds_app.command("show")
+def promotion_thresholds_show() -> None:
+    """Show the current published thresholds, if any."""
+    from investment_engine.audit.events import AuditStore
+    from investment_engine.evaluation.promotion import PromotionStore
+
+    def go(db, clock):
+        current = PromotionStore(db, AuditStore(db)).current()
+        _say("No thresholds published: every assessment is NOT ASSESSED." if current is None else
+             f"{current.version}: Sharpe >= {current.min_sharpe}; trades >= {current.min_trades}; positive folds >= "
+             f"{current.min_positive_fold_share}; costs >= {current.min_cost_bps_per_side} bps per side.")
+    _promotion(go)
+
+
+@promotion_app.command("assess")
+def promotion_assess(record_id: str = typer.Option(..., "--record"),
+                     operator: str = typer.Option(..., "--operator")) -> None:
+    """Assess one stored walk-forward evaluation record against the current thresholds (Admin). A record, not a
+    permission: PAPER also needs shadow evidence (D22), which doesn't exist in M4."""
+    from investment_engine.audit.events import AuditStore
+    from investment_engine.cli import shipped_calendars
+    from investment_engine.evaluation.promotion import (
+        PromotionStore,
+        assess,
+        paper_promotion_status,
+    )
+    from investment_engine.evaluation.run_store import EvaluationRunStore
+    from investment_engine.lineage.records import LineageStore
+    from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+
+    def go(db, clock):
+        by = _admin_actor(db, clock, operator)
+        store = PromotionStore(db, AuditStore(db))
+        thresholds = store.current()
+        if thresholds is None:
+            raise LookupError("no promotion thresholds are published; run `promotion thresholds publish` first")
+        calendars = {v: load_us_equities_calendar() for v in shipped_calendars()}
+        record = EvaluationRunStore(db, calendars=calendars).get(record_id)
+        result = store.record(assess(record, lineage_store=LineageStore(db), thresholds=thresholds,
+                                     as_of=clock.now()), by=by)
+        _say(f"{result.status} ({result.assessment_id}) against {result.thresholds_version}; recipe "
+             f"{result.recipe_id or 'not established'}")
+        for c in result.criteria:
+            _say(f"  {'PASS' if c.passed else 'FAIL'} {c.name}: {c.value} (needs {c.threshold})")
+        for r in result.reasons:
+            _say(f"  reason: {r}")
+        _say(f"PAPER promotion: {paper_promotion_status(result)}")
+    _promotion(go)

@@ -355,9 +355,20 @@ def _propose(account_id, view, at, stores: ControlStores, knowledge, calendar, c
     account = stores.accounts.account(account_id)
     adv = adv_refs = admitted = already = None
     adv_missing = ""
+    promotion = None
+    if account.kind is AccountKind.PAPER:  # M4-10: the recorded assessment for this view's recipe, if any
+        from investment_engine.evaluation.promotion import (
+            PromotionStore,
+            paper_promotion_status,
+            recipe_of,
+        )
+
+        promotion = paper_promotion_status(PromotionStore(stores.db, stores.audit).for_recipe(
+            recipe_of(view_lineage), source=view_lineage.snapshot.source, instrument_id=intent.instrument_id))
     while True:
         policy = check_policy(intent, account=account, autonomy=autonomy, rules=rules, instrument=instrument,
-                              snapshot=snapshot, view_lineage=view_lineage, calendar=calendar, at=at)
+                              snapshot=snapshot, view_lineage=view_lineage, calendar=calendar, at=at,
+                              promotion=promotion)
 
         def lineage(final_state, risk_decision, *, read=None, used=(), _intent=intent, _policy=policy):
             """This version's record: only what ran for it (a policy rejection read no count and no volumes)."""

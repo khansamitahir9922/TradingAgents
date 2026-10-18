@@ -4,7 +4,9 @@ Every check runs and is reported, in a fixed order, each with a plain reason;
 the decision passes only if all pass:
 1. autonomy: a Level 0 (advisory) account proposes no intents;
 2. promotion (D15, Law 19): a PAPER account needs an accepted promotion for its
-   strategy versions; none exists before OPEN-09, so every PAPER intent fails.
+   recipe. M4-10 passes the assessment's status in (`promotion`); without one the
+   M3 text stands. Nothing is ACCEPTED in M4 (D22: no shadow evidence), so every
+   PAPER intent fails, saying which part is missing.
    A RESEARCH account passes: it is replay only and can never trade;
 3. instrument: ACTIVE and inside its active dates on the target session;
 4. restricted: not on the rules version's restricted list (D8);
@@ -31,7 +33,8 @@ from investment_engine.policy.rules import PolicyRules
 
 
 def check_policy(intent: OrderIntent, *, account: Account, autonomy: AutonomySetting, rules: PolicyRules,
-                 instrument, snapshot, view_lineage, calendar, at: datetime) -> PolicyDecision:
+                 instrument, snapshot, view_lineage, calendar, at: datetime,
+                 promotion: str | None = None) -> PolicyDecision:
     at = check_utc(at, "at")
     if not (intent.account_id == account.account_id == autonomy.account_id == snapshot.account_id):
         raise ValueError("the intent, account, autonomy setting and snapshot must be the same account's")
@@ -49,8 +52,11 @@ def check_policy(intent: OrderIntent, *, account: Account, autonomy: AutonomySet
 
     versions = ", ".join(f"{k}={v}" for k, v in sorted(dict(view_lineage.strategy_versions).items())) or "none"
     if account.kind is AccountKind.PAPER:
-        checks.append(CheckResult("promotion", False, f"PROMOTION NOT ASSESSED: strategy versions {versions} "
-                                                      "have no accepted promotion (OPEN-09)"))
+        if promotion is None:
+            checks.append(CheckResult("promotion", False, f"PROMOTION NOT ASSESSED: strategy versions {versions} "
+                                                          "have no accepted promotion (OPEN-09)"))
+        else:
+            checks.append(CheckResult("promotion", promotion == "ACCEPTED", promotion))
     else:
         checks.append(CheckResult("promotion", True, "research account: replay only; can never trade"))
 

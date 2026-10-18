@@ -150,6 +150,28 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-10: promotion assessment against the OPEN-09 thresholds)
+- **Built:**
+  - `evaluation/promotion.py`: `assess(record, lineage_store, thresholds, as_of)`. The evidence target is one EvaluationRecord, and the **recipe identity** is derived from the runs' decision lineage (`policy_version`, `strategy_versions`, `feature_versions`, `config`, `health_thresholds`; session fields excluded). Missing, empty or mixed lineage, an instrument or provider mismatch, incomplete folds, unavailable stitched values, or costs below the minimum give REFUSED with reasons.
+  - **The formulas:** a daily-series Sharpe over the concatenated out-of-sample folds (each fold from its initial cash, x sqrt(252)); chained drawdown against buy-and-hold chained the same way; trades in total across folds; the share of positive folds.
+  - Deterministic assessment ids (as_of recorded, not hashed). `paper_promotion_status` never returns ACCEPTED in M4 (D22).
+  - `PromotionStore` (schema `0014_promotion.sql`, append-only, audited): versioned thresholds, recorded assessments, latest per recipe, source and instrument. `proposed_thresholds.json` holds D21 (package data).
+  - `policy/checks.py`: `promotion` input; without it the M3 text stands. `oms/pipeline.py` passes the recorded status for PAPER accounts.
+  - Admin CLI `promotion thresholds publish|show` and `promotion assess --record ID` (Admin only).
+- **Deviation, justified:** M4-10's plan had `execution/reads.py` look up assessments, but M4-03's accepted layering rule forbids `execution` importing `evaluation`. The rule stands: the gate's PAPER promotion read stays a fixed "not assessed" status, which is safe because nothing can be ACCEPTED in M4 (D22). The proposal-time policy check reports the real status. A future milestone that lets PAPER trade must inject the status through the provider's `promotion` callable. Recorded in `reads.py`'s docstring.
+- **What the stored M2 test record assesses as:** REFUSED, "lineage lin-a is missing". That record's decision lineage isn't stored in the test database. It is computed, never assumed.
+- **Tests (new, `test_promotion.py`, 17):**
+  - three folds pass, with the Sharpe from the daily series (hand-computed) and 30 trades across folds of 10 each;
+  - each criterion failing;
+  - seven refusal reasons;
+  - recipe identity (other parameters give another recipe; a later view of the same recipe matches);
+  - PAPER blocked even when an assessment passes;
+  - deterministic ids;
+  - PostgreSQL: threshold versions with earlier assessments keeping theirs; the CLI publishing and assessing a stored record honestly.
+  - Red: the module didn't exist. The M3 policy and pipeline suites pass unchanged.
+- **Checks (Git Bash):** the targeted files, 17 passed, plus policy and pipeline; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3225 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1087.65s (0:18:07) (only failure: the baseline cache-location test). M4-11's new files were in the tree, uncollected.
+
 ### 2026-10-18: Claude Code (M4-09: provisional positions, open-order exposure and corporate actions)
 - **Built:**
   - `portfolio/provisional.py`: `project()`, a chronological replay of the declared start, fills at `executed_at` and actions at their ex-date open, with actions before fills at equal times. It uses only what was known at `at`: fills recorded by then, action revisions known by then, and `OrderStore.as_of` states. A SPLIT multiplies held shares (a fraction gives Unavailable). A DIVIDEND credits a receivable, with entitlement at the previous close. Unsupported actions, other currencies, missing coverage, and any unresolved order crossing an action (`created_at < e <= at`) give Unavailable. Reservations for open orders: BUY remainder x limit (no fee reserved, since commission is 0 in M4), SELL shares, UNKNOWN in full.
