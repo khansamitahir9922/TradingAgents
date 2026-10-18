@@ -150,6 +150,27 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-12: two-process fault injection)
+- **Built (tests only):**
+  - `tests/engine/test_fault_injection.py`: Part J's list with the Core Engine and the Execution Worker as real OS processes (the M4-08 harness), each from a fresh database, asserting store state:
+    1. the worker killed mid-submission (before `submit`: UNKNOWN and no broker order; after: one broker order, then FILLED), and mid-cancel;
+    2. the Core killed after approval (converts once on restart);
+    3. a broker timeout (UNKNOWN, then the lookup resolves it, never resent);
+    4. a dropped client connection (the step fails, nothing half-done, a restart succeeds);
+    5 and 7. duplicate fills and repeated delivery (one fill);
+    6. CANCELLED before a delayed fill (accounting only);
+    8. a stale feed: no bar for the session, so EXPIRED at the cutoff with no fill;
+    9. a revision of the decision bar before submission (the gate fails on `view`);
+    10. an approval expiring before submission;
+    11. a concurrent cancel request (a Core child) and fill (a worker child): FILLED or CANCELLED, at most one fill, every request closed;
+    12. the kill switch flipped between approval and submission (GATE_REJECTED, nothing at the broker).
+  - Not applicable: missing research (M6). Not run: a PostgreSQL server restart (the owner's shared server), replaced by the dropped connection, as in M4-08 rule 6.
+  - `process_harness.py` gains behaviours (a lost submit answer, a dropped connection), a `cancel` child role and `start()` for concurrent children. `worker_env.py` gains a `reader` option.
+- **Red evidence (broken builds, reverted):** recovery disabled failed scenario 1 (before submit). A gate ignoring newer revisions failed scenario 9.
+- **Time:** the file takes 69 s, inside the 3-minute budget.
+- **Checks (Git Bash):** the fault file, 13 passed; ruff passed at the committed tree; whitespace clean; no `postgres` test skipped.
+  - full suite: 3 failed, 3242 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1246.69s (0:20:46). Failures: the baseline cache-location test, plus `test_layering.py::test_only_the_worker_reaches_the_broker_port_and_its_secrets` and `test_order_invariants.py::test_no_process_other_than_the_execution_worker_can_load_broker_credentials`. **Diagnosis:** both scan the live source tree, which during this run held M4-13's uncommitted harness (`simulation/run.py`). Its `from ...execution.factory import build_broker, build_gate_reads` was read by M4-03's rule as importing modules named `factory.build_broker`, a flaw in the rule that M4-13 fixes. With the M4-13 files moved out, the layering file, that invariant and the fault file passed (30), and ruff passed. So the committed M4-12 tree is clean. M4-13's full check covers the whole tree again.
+
 ### 2026-10-18: Claude Code (M4-11: Part J invariant tests)
 - **Built (tests only):**
   - `tests/engine/order_sequences.py`: seeded generators. Broker message streams include partial fills, CANCELLED before a delayed fill, identical and conflicting duplicate fills, reordering and repeated delivery. Flow plans include kill-switch flips, submit timeouts, cancels and the market's answer.

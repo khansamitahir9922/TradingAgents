@@ -15,8 +15,8 @@ from tests.engine.test_intent_pipeline import CAL, NOW, Env, view_for
 
 
 class WorkerEnv(Env):
-    def __init__(self, dsn, root, flag_dir):
-        super().__init__(dsn, root)
+    def __init__(self, dsn, root, flag_dir, reader=None):
+        super().__init__(dsn, root, reader=reader)
         self.account("R2", level=2)
         self.flag = flag_dir / "trading_enabled.json"
         self.flag.parent.mkdir(parents=True, exist_ok=True)
