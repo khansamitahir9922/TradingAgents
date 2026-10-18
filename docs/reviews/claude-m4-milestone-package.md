@@ -5,7 +5,7 @@ For Codex, and for the owner's review of the whole milestone: one review coverin
 ## Scope and branch
 
 - **Branch** `m4/milestone`, worktree `C:/Users/LOQ/TradingAgents-m4`. It was created from `docs/m4-specs` at `c59a863`, where Codex accepted the specs (`docs/reviews/codex-m4-spec-accepted-c59a863.md`). `main` is `4c56ac1` (M3 complete, not pushed).
-- **Review range:** `c59a863..<closing commit>`, where the closing commit is the one that adds this file, named in the hand-off. Every commit has its own tests, checks and PROGRESS entry, so each can be reviewed alone.
+- **Review range:** `c59a863..<follow-up>`, the documents-only commit after `c2f6e42`, named in the hand-off. Every commit has its own tests, checks and PROGRESS entry, so each can be reviewed alone.
 - **Architecture:** v1.0 frozen and unchanged. **No ADR is proposed.**
   - **Processes:** the two from Part E, the Core Engine and the Execution Worker (`python -m investment_engine.core`, `python -m investment_engine.execution`). They exchange work only through database rows: NEW orders, cancel requests, and the outbox → event log.
   - **The kill switch** follows ADR-006.
@@ -33,7 +33,8 @@ For Codex, and for the owner's review of the whole milestone: one review coverin
 | `653e4fb` | M4-09 follow-up | Whole shares after a split stored as `4.000000000000` (found by the full NVDA run). |
 | `35f784a` | M4-10 follow-up | Self-review: the promotion metrics cross into float through `to_float64`, which refuses NaN. |
 | `50a5a79` | M4-03 follow-up | The process tests decode UTF-8, which fixes 2 PowerShell-only failures. |
-| (closing) | Milestone close | This package and PROGRESS; documents only. |
+| `c2f6e42` | Milestone close | This package; documents only. Committed with the PowerShell result still a placeholder (a script slip). |
+| (follow-up) | Milestone close | Fills the placeholder and adds the PROGRESS entry; documents only. |
 
 ## Batch checks
 
@@ -42,7 +43,7 @@ For Codex, and for the owner's review of the whole milestone: one review coverin
   - **First run, at `653e4fb`:** 4 failed, 3254 passed, 7 skipped, 3 deselected, 23 warnings, 99 subtests passed, in 1736.04 s.
     - Two failures are the recorded PowerShell baseline: `test_cli_commands.py::test_every_command_is_registered_when_run_as_a_module` (cp1252) and `test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`.
     - **Two were new:** `test_execution_process.py::test_no_other_process_reads_the_workers_secrets[admin-cli-intents]` and `[admin-cli-orders]`. They had the same cp1252 cause, in M4-03's new test, so they were fixed in `50a5a79` rather than added to the baseline.
-  - **Final run, at `50a5a79`:** RESULT_PS.
+  - **Final run, at `50a5a79`:** **2 failed, 3257 passed**, 7 skipped, 3 deselected, 21 warnings, 99 subtests passed, in 1669.59 s. Both failures are the recorded PowerShell baseline (the cp1252 CLI test and the cache-location test). **No new failures.**.
 - **`ruff check .`:** passed. `git diff --check`: clean.
 - **Clean install:** two fresh `py -3.11` venvs, then `pip install .` and `pip install ".[engine]"`; the CI import passes in both.
   - Installed-code smoke (`-I`, from outside the repository, after a `--force-reinstall --no-deps` of the final tree): passed. **Base:** 6 M4 modules (order states and orders, envelope, kill-switch flag, order log, intents CLI) load from site-packages, and psycopg is absent. **Engine:** 22 M4 modules load from site-packages; `schema_pg` `0001`–`0014`, `risk/proposed_limits.json`, `execution/fees.json` and `evaluation/proposed_thresholds.json` are packaged; `build_broker("simulated", PAPER)` is refused; psycopg is 3.3.6; the CLI registers `intents simulate|order-log` and `kill-switch halt|resume`.
