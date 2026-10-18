@@ -86,9 +86,11 @@ def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, 
     consumer = Consumer(core_db, name="order-log", handles={}, clock=core_clock)  # marks what the Core has seen
 
     # The broker has its own connection, never the worker's: a call outliving the D26 deadline can't share it (B5).
-    broker = build_broker("simulated", account_kind=AccountKind.RESEARCH, db=open_db(), knowledge=knowledge,
-                          calendar=calendar, source=source)
-    worker = ExecutionWorker(worker_db, clock=worker_clock, broker=broker, kill_switch=KillSwitchReader(flag_path))
+    # Scoped to this account, the broker and the worker never touch another account's work (B9).
+    broker = build_broker("simulated", account_kind=AccountKind.RESEARCH, db=open_db(), account_id=account_id,
+                          knowledge=knowledge, calendar=calendar, source=source)
+    worker = ExecutionWorker(worker_db, clock=worker_clock, broker=broker, kill_switch=KillSwitchReader(flag_path),
+                             accounts=frozenset({account_id}))
     worker_stores = ControlStores.open(worker_db, worker_clock, instruments=SqliteInstrumentRepository(worker_db))
     worker.reads = build_gate_reads(worker_stores, worker.orders, knowledge=knowledge, calendar=calendar,
                                     fingerprints=ProvisionalFingerprints(worker_stores.snapshots, worker.orders,

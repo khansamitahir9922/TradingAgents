@@ -92,15 +92,21 @@ class _BoundedPort:
 class ExecutionWorker:
     def __init__(self, db, *, clock, broker, kill_switch=None, reads=None,
                  serves: frozenset[AccountKind] = frozenset({AccountKind.RESEARCH}),
-                 deadline_seconds: float = BROKER_DEADLINE_SECONDS) -> None:
+                 deadline_seconds: float = BROKER_DEADLINE_SECONDS, accounts: frozenset[str] | None = None) -> None:
+        """`accounts` limits every kind of work to those accounts (None: all): submissions, ingestion, SUBMITTING
+        and UNKNOWN reconciliation, and cancels (Codex M4 review B9)."""
         self.db, self.clock, self.broker = db, clock, broker
         self.kill_switch, self.reads, self.serves = kill_switch, reads, serves
+        self.accounts = None if accounts is None else frozenset(accounts)
         self.deadline_seconds = deadline_seconds
         self._stalled: threading.Thread | None = None
         self.port = _BoundedPort(self)
         self.outbox = Outbox(db, writer=ProcessRole.EXECUTION, clock=clock)
         self.orders = OrderStore(db, role=ProcessRole.EXECUTION, audit=AuditStore(db), outbox=self.outbox,
                                  clock=clock)
+
+    def in_scope(self, order) -> bool:
+        return self.accounts is None or order.account_id in self.accounts
 
     def broker_stalled(self) -> bool:
         """True while a timed-out broker call is still running."""
@@ -132,18 +138,18 @@ class ExecutionWorker:
     def step(self) -> StepReport:
         published = self.outbox.publish_pending()
         try:
-            ingested = ingest(broker=self.port, orders=self.orders, clock=self.clock)
+            ingested = ingest(broker=self.port, orders=self.orders, clock=self.clock, in_scope=self.in_scope)
         except BrokerTimeout:  # no messages read this step; the next one reads them
             ingested = IngestReport(0, 0, 0)
         cancels = process_cancels(orders=self.orders, broker=self.port, clock=self.clock,
-                                  sendable=lambda: not self.broker_stalled())
+                                  sendable=lambda: not self.broker_stalled(), in_scope=self.in_scope)
         *_, looked_up = self.reconcile_submitting()
         lookups = self.lookup_unknown(skip=looked_up)
         submitted = rejected = unknown = 0
         if self.reads is not None and self.kill_switch is not None and not self.broker_stalled():
             for order, _ in self.orders.in_states(S.NEW):
-                if order.account_kind not in self.serves:
-                    continue  # this broker never serves that account kind (D23); the order waits, unsent
+                if order.account_kind not in self.serves or not self.in_scope(order):
+                    continue  # not this worker's (D23; B9): the order waits, unsent
                 if self.broker_stalled():
                     break  # a submit just timed out: the rest wait, NEW, for the next step
                 outcome = self.submit(order.order_id)
@@ -201,7 +207,7 @@ class ExecutionWorker:
         now = check_utc(self.clock.now(), "now")
         count = 0
         for order, status in self.orders.in_states(S.UNKNOWN):
-            if order.order_id in skip:
+            if order.order_id in skip or not self.in_scope(order):
                 continue
             try:
                 report = self.port.lookup(order.client_order_id, at=now)
@@ -238,6 +244,8 @@ class ExecutionWorker:
         found = unknown = left = 0
         looked_up = set()
         for order, _ in self.orders.in_states(S.SUBMITTING):
+            if not self.in_scope(order):
+                continue
             looked_up.add(order.order_id)
             try:
                 report = self.port.lookup(order.client_order_id, at=now)

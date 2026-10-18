@@ -26,12 +26,14 @@ def check_available(kind: str, *, account_kind: AccountKind) -> None:
 
 
 def build_broker(kind: str, *, account_kind: AccountKind, **deps):
-    """`simulated` needs db, knowledge and calendar (and optionally source); it holds no credentials."""
+    """`simulated` needs db, knowledge and calendar (optionally source, and account_id to serve one account
+    only, B9); it holds no credentials."""
     check_available(kind, account_kind=account_kind)
     from investment_engine.execution.simulated_broker import SimulatedBroker, load_fee_schedule
 
     return SimulatedBroker(deps["db"], knowledge=deps["knowledge"], calendar=deps["calendar"],
-                           source=deps.get("source", "yfinance"), fees=load_fee_schedule())
+                           source=deps.get("source", "yfinance"), fees=load_fee_schedule(),
+                           account_id=deps.get("account_id"))
 
 
 def build_gate_reads(stores, orders, *, knowledge, calendar, fingerprints):

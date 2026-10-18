@@ -58,13 +58,15 @@ def request_client(orders, request) -> str:
     return orders.get(request.order_id)[0].client_order_id
 
 
-def process_cancels(*, orders, broker, clock, sendable=lambda: True) -> CancelReport:
+def process_cancels(*, orders, broker, clock, sendable=lambda: True, in_scope=lambda order: True) -> CancelReport:
     """`sendable()` is false while an earlier broker call is stalled (D26; Codex M4 review B5): requests whose order
     is final still close, and the others wait, with no attempt recorded that wasn't made. A concurrent change to
     one request or order (StaleWrite) leaves only that request for the next step (B4)."""
     now = check_utc(clock.now(), "now")
     counts = {"sent": 0, "closed": 0, "waiting": 0}
     for request, progress, version in orders.open_cancels():
+        if not in_scope(orders.get(request.order_id)[0]):
+            continue  # another worker's request (B9)
         try:
             counts[_one(request, progress, version, orders=orders, broker=broker, now=now, sendable=sendable)] += 1
         except StaleWrite:

@@ -110,11 +110,19 @@ def apply_message(message: BrokerMessage, *, orders, clock) -> str:
         return anomaly("unknown_message", f"unknown message kind {message.kind}")
 
 
-def ingest(*, broker, orders, clock) -> IngestReport:
-    """Read every message the broker has delivered by now and apply each once."""
+def ingest(*, broker, orders, clock, in_scope=lambda order: True) -> IngestReport:
+    """Read every message the broker has delivered by now and apply each once. A message for an order outside the
+    worker's scope is left for that order's own worker (B9)."""
     now = check_utc(clock.now(), "now")
     counts = {"applied": 0, "skipped": 0, "anomaly": 0}
     for message in broker.messages(after=None, at=now):
+        try:
+            order, _ = orders.by_client_id(message.client_order_id)
+        except KeyError:
+            order = None  # not one of ours: apply_message skips it
+        if order is not None and not in_scope(order):
+            counts["skipped"] += 1
+            continue
         try:
             counts[apply_message(message, orders=orders, clock=clock)] += 1
         except StaleWrite:  # the order changed meanwhile: the message is read again next step (B4)

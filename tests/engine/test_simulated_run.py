@@ -80,7 +80,7 @@ class Run:
         return PostgresDatabase(self.opened[-1])
 
     def run(self, account="R2", views=None):
-        return simulate(account, views=views or self.views, open_db=self.open_db,
+        return simulate(account, views=self.views if views is None else views, open_db=self.open_db,
                         knowledge=StoreKnowledge(self.env.reader, CAL), calendar=CAL, coverage=COVERAGE,
                         flag_path=self.flag, source="yfinance", calendar_version="cal-1", code_version="test")
 
@@ -262,3 +262,73 @@ def test_a_fresh_process_reads_snapshots_with_adjustments_and_reservations(pg_da
             "corporate-action adjustments"]
     finally:
         r.close()
+
+
+def other_accounts_work(r):
+    """OTHER, on its own replay timeline: an order already resting at the simulator for SESSIONS[50], submitted at
+    OTHER's time, and a NEW order for A's target session that OTHER's own worker hasn't gated yet."""
+    from investment_engine.execution.simulated_broker import SimulatedBroker, load_fee_schedule
+    from investment_engine.oms.conversion import convert_approved
+    from tests.engine.test_conversion import order_store
+    from tests.engine.test_intent_pipeline import view_for
+
+    r.env.account("OTHER", level=2)
+    orders = order_store(r.env, role=ProcessRole.CORE)
+    made = []
+    for day, tag in ((SESSIONS[49], "other-resting"), (A, "other-new")):
+        view = view_for(r.env.stores, r.env.reader, day, tag=tag)
+        r.env.propose("OTHER", view)
+        (order,) = convert_approved("OTHER", at=view.generated_at, stores=r.env.stores, orders=orders).converted
+        made.append((order, view))
+    resting, _ = made[0]
+    broker = SimulatedBroker(r.env.stores.db, knowledge=StoreKnowledge(r.env.reader, CAL), calendar=CAL,
+                             source="yfinance", fees=load_fee_schedule(), account_id="OTHER")
+    assert broker.submit(resting, at=made[0][1].generated_at + timedelta(minutes=1)).accepted
+    return orders, resting, made[1][0]
+
+
+def sim_state(r, order):
+    db = r.env.stores.db
+    status = db.fetchone("SELECT status FROM sim_broker.orders WHERE client_order_id = :c", {"c": order.client_order_id})
+    kinds = [k for (k,) in db.fetchall("SELECT kind FROM sim_broker.messages WHERE client_order_id = :c ORDER BY kind",
+                                       {"c": order.client_order_id})]
+    return (status[0] if status else None), kinds
+
+
+@pytest.mark.unit
+def test_a_run_never_executes_or_decides_another_accounts_work(run):
+    """B9 (Codex M4 review): the harness's worker scanned every RESEARCH account, and the simulator decided every
+    open order on the selected run's clock, so another account's order was filled and the run never said so."""
+    orders, resting, new = other_accounts_work(run)
+    before = [(o.order_id, s.state, s.aggregate_version) for o, s in orders.for_account("OTHER")]
+    assert sim_state(run, resting) == ("OPEN", ["ACK"])
+    report = run.run()
+    assert report.orders == 4  # R2's own work went ahead
+    after = [(o.order_id, s.state, s.aggregate_version) for o, s in orders.for_account("OTHER")]
+    assert after == before and {i: st for i, st, _ in after}[new.order_id] is S.NEW
+    assert sim_state(run, resting) == ("OPEN", ["ACK"])  # never decided on R2's clock
+
+
+@pytest.mark.unit
+def test_a_refused_run_changes_nothing_for_another_account(run):
+    orders, resting, new = other_accounts_work(run)
+    before = [(o.order_id, s.state, s.aggregate_version) for o, s in orders.for_account("OTHER")]
+    with pytest.raises(SimulationRefused, match="no stored views"):
+        run.run(views=[])
+    run.env.account("P1", level=2, kind=AccountKind.PAPER)
+    with pytest.raises(SimulationRefused, match="RESEARCH"):
+        run.run(account="P1")
+    assert [(o.order_id, s.state, s.aggregate_version) for o, s in orders.for_account("OTHER")] == before
+    assert sim_state(run, resting) == ("OPEN", ["ACK"])
+
+
+@pytest.mark.unit
+def test_a_scoped_simulator_refuses_another_accounts_order(run):
+    from investment_engine.execution.simulated_broker import SimulatedBroker, load_fee_schedule
+
+    _, _, new = other_accounts_work(run)
+    broker = SimulatedBroker(run.env.stores.db, knowledge=StoreKnowledge(run.env.reader, CAL), calendar=CAL,
+                             source="yfinance", fees=load_fee_schedule(), account_id="R2")
+    result = broker.submit(new, at=run.views[0].generated_at + timedelta(minutes=1))
+    assert not result.accepted and "R2" in result.reason
+    assert broker.lookup(new.client_order_id, at=run.views[0].generated_at + timedelta(minutes=2)) is None

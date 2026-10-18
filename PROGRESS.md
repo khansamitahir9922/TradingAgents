@@ -150,6 +150,20 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B9: a simulation touches only its own account)
+- **Codex M4 review B9:** the harness's worker scanned every RESEARCH account, and the shared simulator decided every open order on the selected run's clock. Reproduced: another account's NEW order was FILLED by a run for R2, and the run didn't say so.
+- **Fix:**
+  - **Migration `0015_sim_broker_account.sql` (new; scope extension):** `sim_broker.orders.account_id`. The simulator, like a real broker connection, can be scoped to one account (`SimulatedBroker(account_id=)`, passed by the factory). It then accepts, decides, reports and looks up that account's orders only. Retained schemas are not edited.
+  - **Worker scope:** `ExecutionWorker(accounts=)` limits submissions, ingestion, SUBMITTING and UNKNOWN reconciliation, and cancels.
+  - **The harness** scopes both to the selected account. The deployed worker stays unscoped, as before.
+- **Tests (`test_simulated_run.py`):**
+  - an OTHER account's order resting at an OTHER-scoped simulator and a NEW order of OTHER stay exactly as they were (state, version, simulator status and messages) through a full R2 run;
+  - a refused run (no views; a PAPER account) changes nothing for OTHER;
+  - an R2-scoped simulator refuses OTHER's order and has no record of it.
+  - Codex's probe passes.
+  - The test helper `Run.run` now defaults views only on `None`, so `views=[]` really is empty.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3291 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1696.90s (0:28:16) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B4: uncertain orders retried every step; reconnecting role loops)
 - **Codex M4 review B4:**
   - SUBMITTING orders were looked up only at start-up, so one failed lookup left an order SUBMITTING and reserved until a restart.
