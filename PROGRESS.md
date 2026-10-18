@@ -150,6 +150,19 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B3: equal-time sequence kept, in the broker and in each proposal)
+- **Codex M4 review B3:**
+  - `first_known_closed` dropped the feed sequence and re-selected the latest revision at a bare timestamp, so a correction delivered at the same instant changed the simulator's decision bar depending on when it was first asked.
+  - `simulate` preloaded the whole feed and gave every proposal one knowledge object, with no per-view boundary (Law 5).
+- **Fix:**
+  - **First CLOSED in order.** `portfolio/reference.py` walks revisions in (knowledge time, sequence) order (revision order in the store) and returns the first point at which the latest known revision is CLOSED. A later arrival, even at the same instant, never replaces it.
+  - **Per-view boundary.** `simulate(..., proposal_knowledge=)` gives each proposal its view's own boundary: `through_sequence` at the sequence of the view's decision bar (M3's own `_decision_bar` lookup, as `propose_over_replay` uses), and `complete_through` at the proposal time. The broker and the gate keep the full, independently advancing knowledge.
+- **Tests:**
+  - `test_raw_reference.py`: an equal-time correction after CLOSED (Codex's probe: early and late answers equal); a later correction with delayed polling; FORMING then CLOSED then a correction at one instant; delivery latency; the store's equal-time tie broken by revision order. Three failed first.
+  - `test_order_log.py`: the integrated CLI. A correction received at exactly the SELL view's time is unseen by the proposal (APPROVED on the view's revision) and seen by the gate (GATE_REJECTED on `view`). It failed first: the proposal saw it and was PREREQUISITE_MISSING.
+- **Debt, recorded:** the CLI imports `oms.pipeline._decision_bar`, a private function, so both replay paths share one lookup. As with the replay-reader access debt, a public form belongs to a later reviewed change.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3297 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1729.47s (0:28:49) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B9: a simulation touches only its own account)
 - **Codex M4 review B9:** the harness's worker scanned every RESEARCH account, and the shared simulator decided every open order on the selected run's clock. Reproduced: another account's NEW order was FILLED by a run for R2, and the run didn't say so.
 - **Fix:**

@@ -272,3 +272,72 @@ def test_replay_first_known_counts_delivery_latency(store, latency):
     assert (at, bar.revision) == (delivered, 1)  # available earlier, but known only when delivered
     if latency:
         assert knowledge.first_known_closed("yfinance", NVDA, DAY, not_after=first.available_from) is None
+
+
+# ---------------------------------------------------------------- the first CLOSED revision keeps its order (B3)
+
+
+def _revision(revision, price, *, state=BarState.CLOSED, available=None):
+    obs = observation(close=price, received=available or T, state=state)
+    values = vars(obs).copy()
+    values.pop("backfill_available_from")
+    from investment_engine.market.candles import Candle
+
+    return Candle(**values, import_id=f"revision-{revision}", revision=revision, available_from=available or T,
+                  availability_basis=AvailabilityBasis.OBSERVED)
+
+
+def _replay(*deliveries):
+    """[(revision, delivered_at, sequence)] accepted by a fresh M2 reader, in sequence order."""
+    reader = ReplayKnowledgeReader()
+    for candle, delivered, sequence in sorted(deliveries, key=lambda d: d[2]):
+        kind = "BAR_CLOSED" if sequence == 1 else "CANDLE_REVISED"
+        reader.accept(ReplayEvent(kind, "yfinance", candle.available_from, delivered, delivered, sequence, candle))
+    return reader
+
+
+def _first(reader, not_after):
+    return ReplayKnowledge(reader, calendar=CAL).first_known_closed("yfinance", NVDA, DAY, not_after=not_after)
+
+
+@pytest.mark.unit
+def test_an_equal_time_correction_never_replaces_the_first_closed_revision():
+    """B3 (Codex M4 review): the latest revision at a bare timestamp was re-selected, so a correction delivered at
+    the same instant but later in sequence changed the answer, depending on when the broker first asked."""
+    first, correction = _revision(1, "120.0000"), _revision(2, "80.0000")
+    early = _first(_replay((first, T, 1)), T)
+    late = _first(_replay((first, T, 1), (correction, T, 2)), T)
+    assert early == late == (T, first)
+
+
+@pytest.mark.unit
+def test_a_later_correction_and_delayed_polling_keep_the_first_closed_revision():
+    first, correction = _revision(1, "120.0000"), _revision(2, "80.0000", available=T + timedelta(hours=1))
+    reader = _replay((first, T, 1), (correction, T + timedelta(hours=1), 2))
+    assert _first(reader, T + timedelta(hours=3)) == (T, first)  # polled late, decided as first known
+
+
+@pytest.mark.unit
+def test_forming_then_closed_at_the_same_instant_is_closed_at_its_own_place_in_sequence():
+    forming, closed = _revision(1, "119.0000", state=BarState.FORMING), _revision(2, "120.0000")
+    correction = _revision(3, "80.0000")
+    reader = _replay((forming, T, 1), (closed, T, 2), (correction, T, 3))
+    assert _first(reader, T) == (T, closed)
+
+
+@pytest.mark.unit
+def test_with_delivery_latency_the_first_closed_revision_is_known_at_its_delivery():
+    first = _revision(1, "120.0000")
+    later = T + timedelta(seconds=30)
+    reader = _replay((first, later, 1))
+    assert _first(reader, T) is None and _first(reader, later) == (later, first)
+
+
+@pytest.mark.unit
+def test_the_store_breaks_equal_time_ties_by_revision_order(tmp_path):
+    writer = MarketDataWriter(tmp_path / "market")
+    writer.write_candles([observation(close="120.0000", received=T)], import_id="one")
+    writer.write_candles([observation(close="80.0000", received=T)], import_id="two")  # same instant, revision 2
+    found = StoreKnowledge(MarketDataReader(tmp_path / "market"), CAL).first_known_closed(
+        "yfinance", NVDA, DAY, not_after=T + timedelta(hours=1))
+    assert found is not None and found[1].revision == 1 and found[1].close == Decimal("120.0000")

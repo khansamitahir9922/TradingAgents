@@ -379,12 +379,23 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
         knowledge = None
         if views:
             start, end = views[0].generated_at - timedelta(days=60), last + timedelta(days=21)
-            knowledge_reader = ReplayKnowledgeReader()
+            knowledge_reader, sequences = ReplayKnowledgeReader(), {}
             for event in ReplayFeed(reader, ReplayClock(start), sources=[SOURCE], instrument_ids=[instrument],
                                     timeframes=[Timeframe.D1], start=start, end=end):
                 knowledge_reader.accept(event)
+                p = event.payload
+                sequences[(p.source, p.instrument_id, getattr(p, "start_time", None), p.revision)] = event.sequence
             # Every event delivered before `end` is accepted; each is known only from its own delivery.
             knowledge = ReplayKnowledge(knowledge_reader, calendar=calendar, complete_through=end)
+
+        def proposal_knowledge(view, stores):
+            """The proposal's knowledge stops at its view's own decision bar within that instant, exactly as M3's
+            replay path bounds it (`propose_over_replay`, the same `_decision_bar` lookup; Codex M4 review B3)."""
+            from investment_engine.oms.pipeline import _decision_bar
+
+            bar = _decision_bar(stores, view)
+            return ReplayKnowledge(knowledge_reader, through_sequence=sequences.get(bar) if bar else None,
+                                   calendar=calendar, complete_through=view.generated_at)
         evidence, cov_first, cov_last, reason = _coverage(last)
         coverage = establish_coverage(evidence, source=SOURCE, instrument_id=instrument,
                                       types=(ActionType.SPLIT, ActionType.DIVIDEND), first=cov_first, last=cov_last,
@@ -399,7 +410,8 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
         try:
             report = simulate(account, views=views, open_db=open_db, knowledge=knowledge,
                               calendar=calendar, coverage=coverage, flag_path=config.control_dir() / FLAG_FILE,
-                              source=SOURCE, calendar_version=calendar_version, code_version=code_version)
+                              source=SOURCE, calendar_version=calendar_version, code_version=code_version,
+                              proposal_knowledge=proposal_knowledge if views else None)
         except SimulationRefused as exc:
             _say(f"Refused: {exc}. Nothing was run.")
             raise typer.Exit(1) from None

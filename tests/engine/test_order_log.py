@@ -29,11 +29,33 @@ def backfilled_bars(root):
     return MarketDataReader(root)
 
 
+def recorded_bars_with_a_correction_at_the_sell_view(root):
+    """Bars recorded as they happened (each received a minute after its close), and a correction of SESSIONS[62]'s
+    bar received at exactly the time of the view made from that bar."""
+    from tests.engine.test_intent_pipeline import t_of
+
+    writer = MarketDataWriter(root)
+    writer.write_candles([replace(observation(d, close="120.0000"), volume=Decimal("1000000")) for d in SESSIONS],
+                         import_id="bars")
+    writer.write_candles([replace(observation(SESSIONS[62], close="119.0000", received=t_of(SESSIONS[62])),
+                                  volume=Decimal("1000000"))], import_id="correction-at-the-view-time")
+    return MarketDataReader(root)
+
+
 @pytest.fixture
 def cli(pg_database, tmp_path, monkeypatch):
+    yield from cli_with(pg_database, tmp_path, monkeypatch, backfilled_bars)
+
+
+@pytest.fixture
+def cli_with_a_correction(pg_database, tmp_path, monkeypatch):
+    yield from cli_with(pg_database, tmp_path, monkeypatch, recorded_bars_with_a_correction_at_the_sell_view)
+
+
+def cli_with(pg_database, tmp_path, monkeypatch, bars):
     from investment_engine import admin_cli, cli, intents_cli
 
-    env = Env(pg_database, tmp_path / "market", reader=backfilled_bars(tmp_path / "market"))
+    env = Env(pg_database, tmp_path / "market", reader=bars(tmp_path / "market"))
     env.account("R2", level=2)
     env.account("P1", level=2, kind=AccountKind.PAPER)
     for n, (day, direction) in enumerate(((SESSIONS[60], "BULLISH"), (SESSIONS[62], "BEARISH"))):
@@ -92,3 +114,33 @@ def test_an_account_without_orders_says_so_and_never_prints_none(cli):
     assert log.exit_code == 0, log.output
     assert "range: none (no orders)" in log.output and "by final state: none (no orders)" in log.output
     assert "None" not in log.output
+
+
+@pytest.mark.unit
+def test_a_proposal_never_sees_an_equal_time_event_its_view_did_not(cli_with_a_correction, pg_database):
+    """B3 (Codex M4 review): `simulate` preloaded the whole feed with no per-view sequence boundary, so a correction
+    delivered at exactly a view's time, after the view's own bar, reached that proposal (Law 5). Each proposal
+    now has its view's boundary, as M3's replay path does; the gate, a moment later, does see the correction."""
+    from investment_engine.audit.events import AuditStore
+    from investment_engine.oms.order_states import OrderState, ProcessRole
+    from investment_engine.oms.order_store import OrderStore
+    from investment_engine.storage.database import PostgresDatabase
+    from investment_engine.storage.postgres import open_operational_pg
+    from tests.engine.recording_outbox import RecordingOutbox
+    app, _ = cli_with_a_correction
+    sell_day = SESSIONS[62]
+    done = run(app, "intents", "simulate", "--account", "R2", "--from", SESSIONS[59].isoformat(), "--to",
+               SESSIONS[63].isoformat())
+    assert done.exit_code == 0 and "2 orders" in done.output, done.output
+    conn = open_operational_pg(pg_database)
+    try:
+        db = PostgresDatabase(conn)
+        orders = OrderStore(db, role=ProcessRole.CORE, audit=AuditStore(db), outbox=RecordingOutbox(db),
+                            clock=ReplayClock(NOW))
+        rows = {o.target_session: (o, st) for o, st in orders.for_account("R2")}
+        sell, status = rows[CAL.next_session(sell_day).date]
+        assert status.state is OrderState.GATE_REJECTED  # proposed on the view's revision; the gate saw the newer one
+        (gate,) = orders.gate_decisions(sell.order_id)
+        assert [c.name for c in gate.checks if not c.passed] == ["view"]
+    finally:
+        conn.close()

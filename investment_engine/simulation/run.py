@@ -65,8 +65,11 @@ def stored_views(db, instrument_id: str, first: datetime, last: datetime) -> lis
 
 
 def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, flag_path, source: str,
-             calendar_version: str, code_version: str) -> SimulationReport:
-    """`open_db()` returns a fresh PostgresDatabase: one connection per role."""
+             calendar_version: str, code_version: str, proposal_knowledge=None) -> SimulationReport:
+    """`open_db()` returns a fresh PostgresDatabase: one connection per role. `knowledge` is the broker's and the
+    gate's, which may run ahead. `proposal_knowledge(view, stores)`, when given, is each proposal's: bounded at the
+    sequence of that view's own decision bar, so an event delivered at exactly the view's time but after its bar is
+    never seen by the proposal (Law 5; Codex M4 review B3), as in M3's replay path."""
     if not views:
         raise SimulationRefused("no stored views in that range; run 'views replay' first")
     start = views[0].generated_at
@@ -110,7 +113,8 @@ def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, 
         if stops:
             outcomes["NOT_PROPOSED (stopped)"] = outcomes.get("NOT_PROPOSED (stopped)", 0) + 1
             continue
-        record = propose(account_id, view, at=t, stores=core, knowledge=knowledge, calendar=calendar,
+        seen = knowledge if proposal_knowledge is None else proposal_knowledge(view, core)
+        record = propose(account_id, view, at=t, stores=core, knowledge=seen, calendar=calendar,
                          coverage=coverage, calendar_version=calendar_version, code_version=code_version,
                          correlation_id=f"sim:{account_id}:{t.isoformat()}", orders=core_orders)
         outcomes[record.outcome.value] = outcomes.get(record.outcome.value, 0) + 1

@@ -58,14 +58,19 @@ class Knowledge(Protocol):
         ...
 
 
-def _first_known(knowledge, times, source, instrument_id, session, not_after, calendar):
-    """Walk the candidate knowledge times in order; the first at which a CLOSED revision is the latest known."""
-    for t in sorted(set(times)):
+def _first_closed(arrivals, not_after):
+    """`arrivals` are (knowledge time, order within that time, revision). Walk them in that order, keeping the
+    highest revision known so far, and return the first point at which it is CLOSED, with that revision. A revision
+    that arrives later, even at the same instant, never replaces it: its place in the sequence is kept (Codex M4
+    review B3; the spec acceptance's implementation interpretation)."""
+    latest = None
+    for t, _, candle in sorted(arrivals, key=lambda a: (a[0], a[1])):
         if t > not_after:
             break
-        bar = knowledge.latest_closed(source, instrument_id, session, at=t, calendar=calendar)
-        if bar is not None:
-            return t, bar
+        if latest is None or candle.revision > latest.revision:
+            latest = candle
+        if latest.state is BarState.CLOSED:
+            return t, latest
     return None
 
 
@@ -110,8 +115,8 @@ class StoreKnowledge:
         cal = calendar or self._calendar or load_us_equities_calendar()
         opening = cal.session(session).open
         history = self._reader.candle_revision_history(source, instrument_id, Timeframe.D1, opening, opening + _TICK)
-        times = [max(c.available_from, c.received_at) for c in history]
-        return _first_known(self, times, source, instrument_id, session, not_after, cal)
+        # Within one instant the store's revisions arrived in revision order.
+        return _first_closed([(max(c.available_from, c.received_at), c.revision, c) for c in history], not_after)
 
     def actions_between(self, source: str, instrument_id: str, first: date, last: date, *, at: datetime) -> list:
         """Corporate actions with ex-dates in [first, last] known at T (available and received by T)."""
@@ -165,8 +170,9 @@ class ReplayKnowledge:
         cal = calendar or self._calendar or load_us_equities_calendar()
         opening = cal.session(session).open
         revisions = self._reader._candles.get((source, instrument_id, Timeframe.D1, opening), {})  # read-only use
-        times = [max(p.available_from, delivered) for p, delivered, _ in revisions.values()]
-        return _first_known(self, times, source, instrument_id, session, not_after, cal)
+        # Within one instant, events arrived in feed sequence.
+        return _first_closed([(max(p.available_from, delivered), sequence, p)
+                              for p, delivered, sequence in revisions.values()], not_after)
 
     def actions_between(self, source: str, instrument_id: str, first: date, last: date, *, at: datetime) -> list:
         query_at = at
