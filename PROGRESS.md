@@ -150,6 +150,22 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B5: D26's ten-second broker deadline, enforced)
+- **Codex M4 review B5:** nothing enforced the approved ten-second deadline; a broker call that didn't raise blocked the worker indefinitely, and a 10.2 s acknowledgement came back SUBMITTED.
+- **Fix:**
+  - `broker_port.BROKER_DEADLINE_SECONDS = 10` (D26) and `BrokerBusy`.
+  - Every worker broker call goes through `worker.port`, which runs the call on its own thread and waits at most `deadline_seconds`. Methods are looked up at call time, so a substituted method is bounded too.
+  - **On a timeout:** a submit becomes UNKNOWN and its late answer is discarded (a lookup reconciles it; never resent); a cancel stays SENDING and is retried; a lookup or message read is skipped for the step.
+  - **While the stalled call runs:** no other broker call is made, and nothing new is gated (the order stays NEW). Cancels wait without recording attempts that weren't made (`process_cancels(sendable=)`), and requests on final orders still close.
+  - **Own connection:** the simulated broker has its own database connection in the deployed worker and in the harness, so a stalled call never shares the worker's.
+- **Tests (`test_broker_deadline.py`, new):**
+  - the real ten-second deadline (Codex's probe: a 10.2 s answer gives UNKNOWN, after about 10 s);
+  - a stalled submit: UNKNOWN, other calls blocked, the next order NEW until the call returns, then submitted; the first never resent, and reconciled by lookup;
+  - a stalled cancel stays SENDING, with no phantom attempt, and is retried;
+  - a stalled message read is skipped and the step stays bounded;
+  - a stalled lookup leaves UNKNOWN and is tried again.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3283 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 2132.09s (0:35:32) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B1: the gate decides at the time it holds its locks)
 - **Codex M4 review B1:** `submit()` read the clock before the gate waited for its account and order locks, and the gate used that old time for its fresh reads, its expiry and session checks, and the broker call. Reproduced: starting a microsecond before the open, with the clock passing the open during the lock wait, the order was SUBMITTED and the broker saw the pre-open time.
 - **Fix:**

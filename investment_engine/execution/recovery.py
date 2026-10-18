@@ -34,7 +34,7 @@ def recover(worker) -> RecoveryReport:
     found = unknown = left = 0
     for order, _ in worker.orders.in_states(S.SUBMITTING):
         try:
-            report = worker.broker.lookup(order.client_order_id, at=now)
+            report = worker.port.lookup(order.client_order_id, at=now)  # under the D26 deadline
         except Exception:  # can't tell yet: leave it SUBMITTING and try again next time
             left += 1
             continue

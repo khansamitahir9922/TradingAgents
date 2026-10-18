@@ -85,7 +85,8 @@ def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, 
         raise SimulationRefused(f"{account_id} already has orders from a run; use a fresh account")
     consumer = Consumer(core_db, name="order-log", handles={}, clock=core_clock)  # marks what the Core has seen
 
-    broker = build_broker("simulated", account_kind=AccountKind.RESEARCH, db=worker_db, knowledge=knowledge,
+    # The broker has its own connection, never the worker's: a call outliving the D26 deadline can't share it (B5).
+    broker = build_broker("simulated", account_kind=AccountKind.RESEARCH, db=open_db(), knowledge=knowledge,
                           calendar=calendar, source=source)
     worker = ExecutionWorker(worker_db, clock=worker_clock, broker=broker, kill_switch=KillSwitchReader(flag_path))
     worker_stores = ControlStores.open(worker_db, worker_clock, instruments=SqliteInstrumentRepository(worker_db))

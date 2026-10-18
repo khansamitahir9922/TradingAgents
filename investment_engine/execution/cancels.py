@@ -57,7 +57,9 @@ def request_client(orders, request) -> str:
     return orders.get(request.order_id)[0].client_order_id
 
 
-def process_cancels(*, orders, broker, clock) -> CancelReport:
+def process_cancels(*, orders, broker, clock, sendable=lambda: True) -> CancelReport:
+    """`sendable()` is false while an earlier broker call is stalled (D26; Codex M4 review B5): requests whose order
+    is final still close, and the others wait, with no attempt recorded that wasn't made."""
     now = check_utc(clock.now(), "now")
     sent = closed = waiting = 0
     for request, progress, version in orders.open_cancels():
@@ -66,6 +68,8 @@ def process_cancels(*, orders, broker, clock) -> CancelReport:
             orders.cancel_progress(request.cancel_id, P.CLOSED, expected_version=version, at=now,
                                    outcome=_OUTCOME[status.state])
             closed += 1
+        elif not sendable():
+            waiting += 1
         elif status.state in (S.SUBMITTED, S.PARTIALLY_FILLED):
             db = orders._db
             with db.transaction():

@@ -53,6 +53,9 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), stop)
     conn = open_operational_pg(config.operational_db_dsn())
+    # The broker gets its own connection: a broker call that outlives the D26 deadline must never share the
+    # worker's (Codex M4 review B5).
+    broker_conn = open_operational_pg(config.operational_db_dsn())
     try:
         clock = LiveClock()
         db = PostgresDatabase(conn)
@@ -62,7 +65,8 @@ def main(argv: list[str] | None = None) -> int:
 
         calendar = load_us_equities_calendar()
         knowledge = StoreKnowledge(MarketDataReader(config.market_store_dir()), calendar)
-        broker = build_broker(args.broker, account_kind=AccountKind.RESEARCH, db=db, clock=clock, secrets=secrets,
+        broker = build_broker(args.broker, account_kind=AccountKind.RESEARCH, db=PostgresDatabase(broker_conn),
+                              clock=clock, secrets=secrets,
                               knowledge=knowledge, calendar=calendar)
         from investment_engine.execution.reads import StoreGateReads
         from investment_engine.killswitch.flag import FLAG_FILE, KillSwitchReader
@@ -91,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Execution Worker stopped.")
     finally:
         conn.close()
+        broker_conn.close()
     return 0
 
 

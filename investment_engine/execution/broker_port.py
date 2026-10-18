@@ -14,9 +14,15 @@ from typing import Protocol
 
 from investment_engine.oms.orders import Order
 
+BROKER_DEADLINE_SECONDS = 10  # D26: a broker call that hasn't answered by then has an unknown outcome
+
 
 class BrokerTimeout(Exception):
     """The broker didn't answer in time; the outcome is unknown."""
+
+
+class BrokerBusy(BrokerTimeout):
+    """An earlier call to this broker hasn't returned; nothing else is sent until it does (Codex M4 review B5)."""
 
 
 @dataclass(frozen=True)
@@ -73,5 +79,5 @@ class BrokerPort(Protocol):
     def messages(self, *, after: str | None, at: datetime) -> list[BrokerMessage]: ...
 
 
-__all__ = ["BrokerFill", "BrokerMessage", "BrokerOrderReport", "BrokerPort", "BrokerTimeout", "CancelResult",
+__all__ = ["BrokerFill", "BrokerMessage", "BrokerOrderReport", "BrokerPort", "BrokerTimeout", "BrokerBusy", "BROKER_DEADLINE_SECONDS", "CancelResult",
            "SubmitResult"]
