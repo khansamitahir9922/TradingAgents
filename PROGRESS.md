@@ -150,6 +150,19 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-05: the Pre-Execution Gate)
+- **Built:**
+  - `execution/gate.py`: the pure `check_gate`, whose eight checks (kill switch, intent version, approval, view, controls, positions, session, cancel) always run and are recorded; typed `GateInputs` with `Missing` kept apart from False; `SessionWindow`; and `gate_order`, the gate transaction (the account-control lock, then the order row `FOR UPDATE`, then fresh reads; the decision and its edge written by compare-and-set).
+  - `execution/reads.py`: `StoreGateReads` reads every input fresh. Any read failure becomes `Missing` with its reason. PAPER promotion reads "PROMOTION NOT ASSESSED (OPEN-09)" until M4-10.
+- **Session rule (D25):** submission strictly after the decision bar's close and strictly before the target session's open.
+- **Tests (new):**
+  - `test_gate.py` (37, pure): all eight recorded; each check failing alone (14 cases); every field Missing failing as "unavailable"; each kill-switch problem; exclusive boundaries, with one microsecond before passing; a halt blocking a buy but never a sell; PAPER needing an accepted promotion; byte-identical determinism.
+  - `test_gate_concurrency.py` (8, PostgreSQL): a real converted order passes and moves to SUBMITTING with eight checks stored. Forced interleavings, both orders, for three writers (a limits publish, a fill on another order, a new conversion): writer first gives a rejection on exactly `controls` or `positions`; gate first passes, and the writer waits. Plus 20 free races with a limits publish, each a pass or a `controls`-only rejection.
+  - The fill and reservation writers there take the account-control lock, as M4-07 and M4-02 do. A stand-in fingerprint provider covers what M4-09 implements.
+  - Red: the modules didn't exist.
+- **Checks (Git Bash):** the targeted files, 45 passed; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3134 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1074.22s (0:17:54) (only failure: the baseline cache-location test). M4-06's simulator files were in the tree; its test file was held outside the tree for this run.
+
 ### 2026-10-18: Claude Code (M4-04: the kill switch: flag, journal, Admin CLI and fail-closed reader)
 - **Built:**
   - `killswitch/flag.py`: the checksummed canonical-JSON flag, `encode_flag` and `decode_flag`, and `KillSwitchReader.read()`, which never raises. Missing, unreadable, malformed, wrong-schema, non-boolean and bad-checksum flags are each disabled, with a distinct problem.
