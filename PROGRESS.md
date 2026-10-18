@@ -150,6 +150,27 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B8: kill-switch recovery never guesses NOT_APPLIED)
+- **Codex M4 review B8:**
+  - A missing flag with no APPLIED line was treated as proof that nothing was ever published. An atomic replace proves the replace was indivisible, not that the published file couldn't be lost later.
+  - UNRESOLVED counted as a resolution, so only uncertainty found in the *same* run blocked a resume.
+  - Reproduced: a resume whose APPLIED line was lost, then its flag, was recorded NOT_APPLIED; and after a malformed flag, a retry enabled trading.
+- **Fix (`killswitch/admin.py`):**
+  - A missing flag, like an unreadable one, is **UNRESOLVED**. NOT_APPLIED stays only where it is proven: a readable flag with a lower sequence (sequences only grow), or a flag write that this process *saw* fail. That case is journalled NOT_APPLIED at once, the one moment that proves it.
+  - UNRESOLVED is recorded once and is not a resolution: the intent is checked again on every run and becomes APPLIED if the flag later shows its sequence.
+  - A resume is refused while any intent is UNRESOLVED, on every retry; the message says retrying is not an acknowledgement. A halt is never blocked.
+- **Spec alignment:** M4-04 step 1 and the failure table now say "missing or unreadable → UNRESOLVED" and "a write seen to fail → NOT_APPLIED at once" (the spec already said unreadable → UNRESOLVED and re-checks every intent lacking APPLIED or NOT_APPLIED).
+- **Owner decision needed:** after an unprovable crash, a resume stays blocked until an Admin acknowledgement procedure exists. Codex asked for any such procedure to be specified and reviewed, not improvised. A halt still works, so the system fails closed.
+- **Tests (`test_kill_switch.py`):**
+  - a crash after INTENT with no flag stays UNRESOLVED, and two resumes are refused;
+  - an older readable flag proves NOT_APPLIED;
+  - a lost APPLIED line, then a lost flag, is never NOT_APPLIED;
+  - unresolved history after a malformed flag survives a retry, and a halt still works;
+  - an unresolved intent resolves once the flag shows it;
+  - an observed flag write failure is NOT_APPLIED at once, and a resume then works.
+  - Five failed first. The kill-switch file and the Admin CLI file pass 31; Codex's two probes pass.
+- **Checks (Git Bash), on this commit's exact tree:** 1 failed (baseline cache-location test), 3274 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1672.81s; ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B2: money and quantity arithmetic ignores the caller's Decimal context)
 - **Codex M4 review B2:** M4's fill totals, projection quantities and slippage used explicit contexts for some multiplications but the ambient context for the additions, subtractions, divisions and quantizations around them. With precision 1, two six-share fills stored `filled_qty = 10` (average 120 for executions at 100), and the projection held 10. With precision 3, a 5 bps BUY at 99 came out 99.00, not 99.05.
 - **Fix:** M3's own convention, `risk.decisions.exact`: one fresh, fully specified context (precision 34, ROUND_HALF_EVEN, fixed traps) for a whole calculation, with the caller's context untouched. It is applied to:

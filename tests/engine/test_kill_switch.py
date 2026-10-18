@@ -127,13 +127,71 @@ def _fail_on(monkeypatch, ks, *, phase=None, publish=False, error=OSError):
 
 
 @pytest.mark.unit
-def test_a_crash_after_intent_before_publishing_is_resolved_not_applied(ks, monkeypatch):
+def test_a_crash_after_intent_with_no_flag_stays_unresolved_and_a_resume_stays_refused(ks, monkeypatch):
+    """B8 (Codex M4 review): a missing flag never proves that nothing was published; the file could have been lost
+    after a publication. The outcome can't be established, so it stays UNRESOLVED; a halt still works."""
     _fail_on(monkeypatch, ks, publish=True, error=KeyboardInterrupt)
     with pytest.raises(KeyboardInterrupt):
         ks.halt(operator="owner", verified=True, reason="stop")
     monkeypatch.undo()
     ks.halt(operator="owner", verified=True, reason="stop again")
-    assert phases(ks) == [(1, "INTENT"), (1, "NOT_APPLIED"), (2, "INTENT"), (2, "APPLIED")]
+    assert phases(ks) == [(1, "INTENT"), (1, "UNRESOLVED"), (2, "INTENT"), (2, "APPLIED")]
+    for _ in range(2):  # a retry is not an acknowledgement
+        with pytest.raises(KillSwitchRefused, match="UNRESOLVED"):
+            ks.resume(operator="owner", verified=True, reason="go")
+    assert [p for s, p in phases(ks) if s == 1] == ["INTENT", "UNRESOLVED"]  # recorded once, still outstanding
+    assert ks.read().enabled is False
+
+
+@pytest.mark.unit
+def test_a_crash_after_intent_with_an_older_readable_flag_is_resolved_not_applied(ks, monkeypatch):
+    ks.halt(operator="owner", verified=True, reason="first")
+    _fail_on(monkeypatch, ks, publish=True, error=KeyboardInterrupt)
+    with pytest.raises(KeyboardInterrupt):
+        ks.resume(operator="owner", verified=True, reason="crashes before publishing")
+    monkeypatch.undo()
+    ks.resume(operator="owner", verified=True, reason="go")  # the flag still shows 1 < 2: proven not applied
+    assert phases(ks)[2:] == [(2, "INTENT"), (2, "NOT_APPLIED"), (3, "INTENT"), (3, "APPLIED")]
+    assert ks.read().enabled is True
+
+
+@pytest.mark.unit
+def test_a_lost_applied_line_then_a_lost_flag_is_never_guessed_not_applied(ks):
+    """B8: a resume published, its APPLIED line lost, then the flag lost: recovery must not write NOT_APPLIED."""
+    ks.resume(operator="owner", verified=True, reason="published")
+    first = ks.journal_path.read_text(encoding="utf-8").splitlines()[0]
+    ks.journal_path.write_text(first + "\n", encoding="utf-8")
+    ks.flag_path.unlink()
+    with pytest.raises(KillSwitchRefused, match="UNRESOLVED"):
+        ks.resume(operator="owner", verified=True, reason="must not guess")
+    assert [p for s, p in phases(ks) if s == 1] == ["INTENT", "UNRESOLVED"]
+
+
+@pytest.mark.unit
+def test_unresolved_history_after_a_malformed_flag_cannot_be_bypassed_by_a_retry(ks):
+    ks.resume(operator="owner", verified=True, reason="published")
+    first = ks.journal_path.read_text(encoding="utf-8").splitlines()[0]
+    ks.journal_path.write_text(first + "\n", encoding="utf-8")
+    ks.flag_path.write_text("malformed", encoding="utf-8")
+    for _ in range(2):
+        with pytest.raises(KillSwitchRefused, match="UNRESOLVED"):
+            ks.resume(operator="owner", verified=True, reason="retry")
+    ks.halt(operator="owner", verified=True, reason="a halt still works")
+    assert ks.read().enabled is False and ks.read().state.sequence == 2
+
+
+@pytest.mark.unit
+def test_an_unresolved_intent_is_resolved_once_the_flag_proves_it(ks):
+    ks.resume(operator="owner", verified=True, reason="published")
+    first = ks.journal_path.read_text(encoding="utf-8").splitlines()[0]
+    ks.journal_path.write_text(first + "\n", encoding="utf-8")
+    good = ks.flag_path.read_text(encoding="utf-8")
+    ks.flag_path.write_text("malformed", encoding="utf-8")
+    with pytest.raises(KillSwitchRefused, match="UNRESOLVED"):
+        ks.resume(operator="owner", verified=True, reason="unreadable now")
+    ks.flag_path.write_text(good, encoding="utf-8")  # the flag is readable again and shows sequence 1
+    ks.resume(operator="owner", verified=True, reason="established now")
+    assert [p for s, p in phases(ks) if s == 1] == ["INTENT", "UNRESOLVED", "APPLIED"]
 
 
 @pytest.mark.unit
@@ -192,6 +250,10 @@ def test_a_flag_write_failure_applies_nothing(ks, monkeypatch):
         ks.halt(operator="owner", verified=True, reason="x")
     monkeypatch.undo()
     assert ks.read().problem == "missing"
+    # The process saw the write fail, which proves nothing was published: NOT_APPLIED at once, never a guess later.
+    assert phases(ks) == [(1, "INTENT"), (1, "NOT_APPLIED")]
+    ks.resume(operator="owner", verified=True, reason="go")
+    assert ks.read().enabled is True
 
 
 @pytest.mark.unit

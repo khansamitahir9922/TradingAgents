@@ -10,12 +10,18 @@ Replacing the flag file is the **publication point**: once `os.replace`
 returns, the change has happened, because a worker may already have read it.
 Under the lock, in order:
 
-1. resolve outstanding intents against the current flag, before anything is
-   overwritten: APPLIED (recovered), NOT_APPLIED, or UNRESOLVED when that
-   can't be established (an unreadable flag, or a later sequence published by
-   an emergency halt). A readable flag whose sequence was never journalled is
-   recorded as APPLIED (recovered; intent not journalled). History is never
-   invented;
+1. resolve outstanding intents (every INTENT without an APPLIED or
+   NOT_APPLIED line) against the current flag, before anything is
+   overwritten: APPLIED (recovered) when the flag shows that sequence;
+   NOT_APPLIED only when a readable flag shows a lower one (sequences only
+   grow, so it was never published); otherwise UNRESOLVED: a missing or
+   unreadable flag, or a later sequence published by an emergency halt. A
+   missing flag is never proof that nothing was published: the file could
+   have been lost after it (Codex M4 review B8). UNRESOLVED is not a
+   resolution: the intent is checked again every time, recorded once, and
+   becomes APPLIED if the flag later proves it. A readable flag whose sequence
+   was never journalled is recorded as APPLIED (recovered; intent not
+   journalled). History is never invented;
 2. allocate the next sequence: 1 + the highest in the flag or any complete
    journal line;
 3. append INTENT;  4. publish the flag;  5. append APPLIED;
@@ -24,8 +30,11 @@ Under the lock, in order:
 Failure rules (rule 5): a halt is always published if the flag can be written,
 whatever happened to the journal, and the result says what is incomplete; a
 resume is refused if anything before publication fails, and reported as
-applied (never refused) if journalling fails after it. A journal line never
-proves the flag changed; only the flag's own sequence does.
+applied (never refused) if journalling fails after it. A flag write that this
+process saw fail is journalled NOT_APPLIED at once: the one moment that
+proves it. A resume is refused while any earlier change is UNRESOLVED, on
+every retry; a halt is never blocked. A journal line never proves the flag
+changed; only the flag's own sequence does.
 
 Only an active Admin may change the flag (PRD section 4, UC-06). The caller
 verifies that in the database. If the database is unreachable, a halt is
@@ -33,6 +42,7 @@ still applied, marked "identity unverified": a fail-safe stop, not a granted
 right. A resume always needs verification.
 """
 
+import contextlib
 import json
 import os
 import sys
@@ -55,6 +65,7 @@ from investment_engine.market.availability import check_utc
 
 LOCK_WAIT_SECONDS = 10
 RESOLUTIONS = ("APPLIED", "NOT_APPLIED", "UNRESOLVED")
+FINAL = ("APPLIED", "NOT_APPLIED")  # UNRESOLVED is recorded, but the intent stays outstanding (B8)
 
 
 class KillSwitchRefused(RuntimeError):
@@ -162,17 +173,15 @@ class KillSwitchAdmin:
         """Resolve outstanding intents against the current flag; returns (what couldn't be recorded, how many
         were found UNRESOLVED now)."""
         entries = self.entries()
-        resolved = {e.sequence for e in entries if e.phase in RESOLUTIONS}
+        resolved = {e.sequence for e in entries if e.phase in FINAL}
         intents = sorted({e.sequence for e in entries if e.phase == "INTENT"} - resolved)
+        already_unresolved = {e.sequence for e in entries if e.phase == "UNRESOLVED"}
         reading = self.read()
         flag_seq = reading.state.sequence if reading.state is not None else None
         problems = []
         lines = []
-        never_published = reading.problem == "missing" and not any(e.phase == "APPLIED" for e in entries)
         for seq in intents:
-            if flag_seq is None and never_published:  # os.replace is atomic: no file, no publication ever
-                lines.append({"seq": seq, "phase": "NOT_APPLIED", "why": "no flag was ever published"})
-            elif flag_seq is None:
+            if flag_seq is None:  # missing or unreadable: never evidence that nothing was published
                 lines.append({"seq": seq, "phase": "UNRESOLVED", "why": f"flag unreadable ({reading.problem})"})
             elif flag_seq == seq:
                 lines.append({"seq": seq, "phase": "APPLIED", "recovered": True})
@@ -187,6 +196,8 @@ class KillSwitchAdmin:
                                     "changed_by": reading.state.changed_by, "verified": reading.state.verified,
                                     "reason": reading.state.reason, "changed_at": reading.state.changed_at.isoformat()}})
         for line in lines:
+            if line["phase"] == "UNRESOLVED" and line["seq"] in already_unresolved:
+                continue  # recorded once; it stays outstanding and counts against a resume
             try:
                 self._append({**line, "resolved_at": now.isoformat()})
             except OSError as exc:
@@ -204,9 +215,10 @@ class KillSwitchAdmin:
         with self.lock():
             problems, unresolved = self._resolve(now)
             if enable and (problems or unresolved):
-                why = "; ".join(problems) or f"{unresolved} earlier change(s) recorded as UNRESOLVED"
-                raise KillSwitchRefused(f"earlier changes couldn't be established ({why}); a resume is refused. "
-                                        "Review the journal and the flag, then try again")
+                why = "; ".join(problems) or f"{unresolved} earlier change(s) UNRESOLVED"
+                raise KillSwitchRefused(f"earlier changes couldn't be established ({why}); a resume is refused, "
+                                        "and stays refused until the flag establishes them. A halt still works. "
+                                        "Retrying is not an acknowledgement")
             reading = self.read()
             sequences = [e.sequence for e in self.entries()]
             if reading.state is not None:
@@ -226,6 +238,11 @@ class KillSwitchAdmin:
             try:
                 self._publish(state)
             except OSError as exc:
+                # Observed here, so proven: nothing was published (B8). If this line can't be written either, the
+                # next step 1 finds the intent outstanding.
+                with contextlib.suppress(OSError):
+                    self._append({"seq": sequence, "phase": "NOT_APPLIED", "why": f"the flag write failed "
+                                  f"({type(exc).__name__})", "resolved_at": now.isoformat()})
                 raise KillSwitchRefused(f"the flag couldn't be written ({type(exc).__name__}); nothing was "
                                         "applied") from None
             try:
