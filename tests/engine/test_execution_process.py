@@ -25,7 +25,10 @@ NOW = datetime(2026, 10, 18, 12, tzinfo=UTC)
 
 
 def environment(tmp_path, dsn=None):
-    env = {**os.environ, "PYTHONPATH": str(ROOT), "INVESTMENT_ENGINE_DATA_DIR": str(tmp_path / "data")}
+    # The child writes UTF-8 and the parent decodes UTF-8: under PowerShell the default is cp1252, and the CLI's
+    # help text holds box-drawing characters (the M4 batch PowerShell run found it).
+    env = {**os.environ, "PYTHONPATH": str(ROOT), "INVESTMENT_ENGINE_DATA_DIR": str(tmp_path / "data"),
+           "PYTHONIOENCODING": "utf-8"}
     if dsn is not None:
         env["INVESTMENT_ENGINE_PG_DSN"] = dsn
     return env
@@ -50,11 +53,11 @@ def test_the_factory_is_an_allowlist_the_simulator_serves_research_only():
 @pytest.mark.unit
 def test_the_worker_refuses_to_start_without_an_adapter(tmp_path):
     out = subprocess.run([sys.executable, "-m", "investment_engine.execution", "run", "--broker", "paper"],
-                         capture_output=True, text=True, timeout=120, cwd=ROOT, env=environment(tmp_path))
+                         capture_output=True, encoding="utf-8", errors="replace", timeout=120, cwd=ROOT, env=environment(tmp_path))
     assert out.returncode == 2
     assert "Execution Worker not started: no broker adapter 'paper' is available yet" in out.stdout
     missing = subprocess.run([sys.executable, "-m", "investment_engine.execution", "run"], capture_output=True,
-                             text=True, timeout=120, cwd=ROOT, env=environment(tmp_path))
+                             encoding="utf-8", errors="replace", timeout=120, cwd=ROOT, env=environment(tmp_path))
     assert missing.returncode == 2 and "--broker" in missing.stderr
 
 
@@ -118,7 +121,7 @@ def test_no_other_process_reads_the_workers_secrets(tmp_path, pg_database, modul
     secrets = tmp_path / "data" / "secrets" / "execution_worker.env"
     secrets.parent.mkdir(parents=True)
     secrets.write_text(f"BROKER_KEY={CANARY}\n", encoding="utf-8")
-    out = subprocess.run([sys.executable, "-c", PROBE, str(secrets), module, *args], capture_output=True, text=True,
+    out = subprocess.run([sys.executable, "-c", PROBE, str(secrets), module, *args], capture_output=True, encoding="utf-8", errors="replace",
                          timeout=120, cwd=ROOT, env=environment(tmp_path, pg_database))
     text = out.stdout + out.stderr
     assert "SECRETS-UNTOUCHED" in out.stdout, text[-1500:]
@@ -130,7 +133,7 @@ def test_no_other_process_reads_the_workers_secrets(tmp_path, pg_database, modul
 def test_the_core_engine_runs_one_step_and_republishes_first(tmp_path, pg_database):
     schema(pg_database)
     out = subprocess.run([sys.executable, "-m", "investment_engine.core", "run", "--once"], capture_output=True,
-                         text=True, timeout=120, cwd=ROOT, env=environment(tmp_path, pg_database))
+                         encoding="utf-8", errors="replace", timeout=120, cwd=ROOT, env=environment(tmp_path, pg_database))
     assert out.returncode == 0, out.stderr[-1500:]
     assert "Core Engine: one step done; republished 0, converted 0, published 0." in out.stdout
 
@@ -138,7 +141,7 @@ def test_the_core_engine_runs_one_step_and_republishes_first(tmp_path, pg_databa
 def _start_core(tmp_path, dsn):
     flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
     process = subprocess.Popen([sys.executable, "-u", "-m", "investment_engine.core", "run", "--poll", "0.2"],
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=ROOT,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8", errors="replace", cwd=ROOT,
                                env=environment(tmp_path, dsn), creationflags=flags)
     deadline = time.monotonic() + 60
     line = process.stdout.readline()
@@ -169,7 +172,7 @@ def test_the_probe_does_see_the_worker_read_its_secrets(tmp_path):
     secrets.parent.mkdir(parents=True)
     secrets.write_text(f"BROKER_KEY={CANARY}\n", encoding="utf-8")
     out = subprocess.run([sys.executable, "-c", PROBE, str(secrets), "investment_engine.execution", "run", "--broker",
-                          "paper"], capture_output=True, text=True, timeout=120, cwd=ROOT,
+                          "paper"], capture_output=True, encoding="utf-8", errors="replace", timeout=120, cwd=ROOT,
                          env=environment(tmp_path))
     assert "SECRETS-OPENED" in out.stdout, out.stdout + out.stderr
     assert CANARY not in out.stdout + out.stderr  # read, never printed

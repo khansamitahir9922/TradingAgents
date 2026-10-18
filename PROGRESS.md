@@ -150,6 +150,11 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-03 follow-up: the process tests decode UTF-8 under PowerShell)
+- **Found by the M4 batch PowerShell run:** `test_execution_process.py::test_no_other_process_reads_the_workers_secrets[admin-cli-intents]` and `[admin-cli-orders]` failed in PowerShell only, with `TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'`. The `--help` output of those groups holds box-drawing characters. With `text=True` the parent decoded them as cp1252, the reader thread failed, and `stdout` was `None`. This is the same cause as the recorded PowerShell baseline failure `test_cli_commands.py::test_every_command_is_registered_when_run_as_a_module`, but in a new M4 test, so it counts as new and is fixed here rather than added to the baseline. Git Bash wasn't affected.
+- **Fix (test only):** the children get `PYTHONIOENCODING=utf-8`, and every `subprocess` call in the file decodes `encoding="utf-8", errors="replace"`. The probe still sees every byte the child writes. **PowerShell:** the file, 11 passed, including the positive control (a reader of the canary file is caught).
+- **Checks (Git Bash):** the same full-suite run as the M4-10 follow-up's (the tree held both): 1 failed (baseline cache-location test), 3258 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1285.08s (0:21:25). ruff passed; whitespace clean. The PowerShell rerun of the whole suite follows at the milestone close.
+
 ### 2026-10-18: Claude Code (M4-10 follow-up, self-review: one float boundary)
 - **Found in the milestone self-review:** `evaluation/promotion.py` converted equity values with bare `float()`, so a non-finite Decimal (NaN) would have flowed into the drawdown and Sharpe silently. M2's evaluation crosses into float once, through `money.to_float64`, which refuses NaN and infinity.
 - **Fix:** `_daily_returns` uses `to_float64`. **Test:** `test_promotion.py::test_a_non_finite_equity_value_is_refused_not_carried_into_the_metrics`. It failed first (no error raised) and passes now. The promotion file: 18 passed.
