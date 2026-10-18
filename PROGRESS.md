@@ -150,6 +150,33 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-03: Execution Worker process skeleton, broker port and credential separation)
+- **Built:**
+  - `execution/broker_port.py`: the port, with `SubmitResult`, `CancelResult` (CANCELLED | PENDING | TOO_LATE | UNKNOWN_ORDER, plus `received_at`), `BrokerOrderReport`, `BrokerFill`, `BrokerMessage` and `BrokerTimeout`.
+  - `execution/secrets.py`: KEY=VALUE lines; values never in errors.
+  - `execution/factory.py`: an allowlist with no adapters yet; `check_available` runs before anything opens.
+  - `execution/worker.py`: `ExecutionWorker` with `step()` and `run(poll_seconds, stop)`.
+  - `execution/__main__.py`: `run --broker KIND [--once]`; reads the secrets file; refuses to start without an adapter, before opening the database; SIGINT, SIGTERM or SIGBREAK stop it.
+  - `core/engine.py`, `core/__main__.py`: the Core Engine loop, which republishes on start, then converts PAPER accounts at live time (none can be approved in M4, D22) and publishes.
+  - `config.worker_secrets_path()` and `control_dir()`.
+- **Layering (`test_layering.py`):** the execution boundary, with full module names and relative imports resolved:
+  - nothing outside `execution/` imports it, except `simulation/` with only its four named modules;
+  - only `execution/__main__.py` imports `execution.secrets`;
+  - `execution` imports no analysis or harness module;
+  - only `intents_cli.py` imports `simulation`.
+  - A failing fixture for each rule, plus the harness's allowed imports.
+- **Tests (new, `test_execution_process.py`):**
+  - no adapter of any kind; the worker refusing to start (exit 2, with the reason) and a missing `--broker`;
+  - a worker with the test double stepping over an empty store;
+  - the secrets file parser never echoing a value;
+  - **the canary:** `core run --once`, the Admin CLI and the intents CLI each start with a canary secrets file present, never open it and never print it, with a **positive control** showing the probe does see the worker's own read;
+  - `core run --once` output;
+  - a graceful CTRL_BREAK stop on Windows (SIGTERM elsewhere) and a hard `Popen.kill()`.
+  - `tests/engine/broker_doubles.py` is the scriptable test double later tasks extend.
+  - Red: the modules didn't exist.
+- **Checks (Git Bash):** the targeted files, 26 passed; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3063 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1164.38s (0:19:24) (only failure: the baseline cache-location test). M4-04's new files were in the tree, uncollected.
+
 ### 2026-10-18: Claude Code (M4-02: converting approved intents into orders, fingerprints and cancel requests)
 - **Built:**
   - `oms/conversion.py`: `convert_approved` (per intent version, under the account-control lock, in one transaction: the intent marked CONVERTED, the order created, and `order.created` added; a structured `ConversionReport` with skipped reasons); `intent_content_id`; `request_cancel` (an active Admin or Trader at the command time, D31).

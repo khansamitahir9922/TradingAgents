@@ -44,3 +44,13 @@ def operational_db_dsn() -> str:
 def market_store_dir() -> Path:
     """The Market-Data Store (Parquet; architecture Part E)."""
     return data_dir() / "market"
+
+
+def worker_secrets_path() -> Path:
+    """The Execution Worker's secrets file, read only by its entry point (ADR-002 section 5; D32)."""
+    return data_dir() / "secrets" / "execution_worker.env"
+
+
+def control_dir() -> Path:
+    """Where the kill-switch flag, its journal and its lock live, outside the database (ADR-006; D27)."""
+    return data_dir() / "control"
