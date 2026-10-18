@@ -56,6 +56,7 @@ def _money(value: object, name: str) -> Decimal:
 
 class SnapshotSource(StrEnum):
     DECLARED_STARTING_STATE = "DECLARED_STARTING_STATE"  # M3: no ledger yet
+    PROVISIONAL = "PROVISIONAL"  # M4: the declared start plus recorded fills (D29); not a ledger
     LEDGER = "LEDGER"  # reserved for M5; refused in M3
 
 
@@ -118,6 +119,12 @@ class PortfolioSnapshot:
     peak_equity: Decimal  # highest equity in [baseline_at, as_of], this one included
     starting_state_ref: str
     snapshot_id: str = field(init=False)  # "psn-" + SHA-256 of the canonical content
+    # Added in M4 (D29, D30, D34). Omitted from the canonical content when None, so every M3 snapshot keeps exactly
+    # its content and id (M4-09 rule 6).
+    reservations: tuple | None = None  # open-order Reservations (portfolio.fingerprint)
+    receivables: Decimal | None = None  # dividends earned, in equity, not spendable
+    adjustments: tuple | None = None  # the splits and dividends applied (portfolio.provisional.Adjustment)
+    history_hash: str | None = None  # the fills and order states the projection used
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source", SnapshotSource(self.source))
@@ -131,8 +138,29 @@ class PortfolioSnapshot:
         return next((p.quantity for p in self.positions if p.instrument_id == instrument_id), Decimal(0))
 
     def content(self) -> str:
-        return canonical_json({f.name: getattr(self, f.name) for f in dataclasses.fields(self) if f.init})
+        return canonical_json({f.name: getattr(self, f.name) for f in dataclasses.fields(self)
+                               if f.init and not (f.name in _M4_FIELDS and getattr(self, f.name) is None)})
 
+    # ---- available amounts, after open-order reservations (D30); M3 snapshots have none
+    def reserved_cash(self) -> Decimal:
+        return sum((r.cash for r in self.reservations or ()), Decimal(0))
+
+    def available_cash(self) -> Decimal:
+        return self.cash - self.reserved_cash()
+
+    def pending_buy_value(self, instrument_id: str | None = None) -> Decimal:
+        """Open BUY remainders at their limits: they count against the position cap and gross exposure (D30)."""
+        return sum((r.cash for r in self.reservations or () if r.side.value == "BUY"
+                    and (instrument_id is None or r.instrument_id == instrument_id)), Decimal(0))
+
+    def available_shares(self, instrument_id: str) -> Decimal:
+        """Shares held minus those an open SELL already reserves; an unfilled SELL never frees cap room."""
+        reserved = sum((r.remaining for r in self.reservations or () if r.side.value == "SELL"
+                        and r.instrument_id == instrument_id), Decimal(0))
+        return self.held(instrument_id) - reserved
+
+
+_M4_FIELDS = ("reservations", "receivables", "adjustments", "history_hash")
 
 for _cls in (SnapshotSource, StartingState, PositionValue, PortfolioSnapshot):
     register(_cls)
@@ -156,7 +184,7 @@ def _covers(coverage, source: str, instrument_id: str, first: date, last: date) 
 
 def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, knowledge: Knowledge, calendar,
                    coverage, last_clear: Halt | None, history: Sequence[PortfolioSnapshot],
-                   source: str) -> PortfolioSnapshot | Unavailable:
+                   source: str, projection=None) -> PortfolioSnapshot | Unavailable:
     """The declared snapshot at `at`. Its peak is the highest equity since the drawdown epoch: the latest clear
     (`last_clear`, with its recorded equity as a floor) or else the declared start (D3)."""
     at = check_utc(at, "at")
@@ -167,7 +195,12 @@ def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, kn
                            f"{at.isoformat()}")
     ctx = Context(prec=34)
     positions = []
-    if starting.positions:
+    if projection is not None:  # M4-09: the provisional projection's positions, valued in compatible units
+        valued = _value_projection(projection, knowledge=knowledge, calendar=calendar, at=at, source=source, ctx=ctx)
+        if isinstance(valued, Unavailable):
+            return valued
+        positions = valued
+    elif starting.positions:
         from zoneinfo import ZoneInfo
 
         session = _expected_session(calendar, at)
@@ -188,7 +221,8 @@ def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, kn
             ref = BarRef(bar.source, bar.instrument_id, bar.timeframe, bar.start_time, bar.revision, bar.import_id,
                          bar.available_from, bar.availability_basis)
             positions.append(PositionValue(instrument_id, quantity, bar.close, ref, ctx.multiply(quantity, bar.close)))
-    equity = starting.cash
+    cash = starting.cash if projection is None else projection.cash
+    equity = cash if projection is None else ctx.add(cash, projection.receivables)
     for p in positions:
         equity = ctx.add(equity, p.value)
     baseline_at, floor = starting.effective_at, None
@@ -201,8 +235,33 @@ def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, kn
                              if h.account_id == account_id and baseline_at <= h.as_of <= at]
     if floor is not None:
         candidates.append(floor)
-    return PortfolioSnapshot(account_id, at, SnapshotSource.DECLARED_STARTING_STATE, starting.currency,
-                             starting.cash, tuple(positions), equity, baseline_at, max(candidates), starting.state_id)
+    if projection is None:
+        return PortfolioSnapshot(account_id, at, SnapshotSource.DECLARED_STARTING_STATE, starting.currency,
+                                 starting.cash, tuple(positions), equity, baseline_at, max(candidates), starting.state_id)
+    return PortfolioSnapshot(account_id, at, SnapshotSource.PROVISIONAL, starting.currency, cash, tuple(positions),
+                             equity, baseline_at, max(candidates), starting.state_id,
+                             reservations=projection.reservations, receivables=projection.receivables,
+                             adjustments=projection.adjustments, history_hash=projection.history_hash)
+
+
+def _value_projection(projection, *, knowledge, calendar, at, source, ctx):
+    """Value each projected holding at its raw close, only in units compatible with the projected quantity: a close
+    from before an action that has taken effect is in the old units, so valuation waits (V3)."""
+    session = _expected_session(calendar, at)
+    positions = []
+    for instrument_id, quantity in projection.positions:
+        bar = knowledge.latest_closed(source, instrument_id, session, at=at, calendar=calendar)
+        if bar is None:
+            return Unavailable(f"bar for {session} ({source} {instrument_id} D1) not known at {at.isoformat()}")
+        crossed = [a for a in projection.adjustments if a.instrument_id == instrument_id
+                   and bar.start_time < a.effective_at <= at]
+        if crossed:
+            return Unavailable(f"valuation of {instrument_id} awaits a close after its {crossed[0].kind.lower()} "
+                               f"effective {crossed[0].effective_at.isoformat()}; the last close is in the old units")
+        ref = BarRef(bar.source, bar.instrument_id, bar.timeframe, bar.start_time, bar.revision, bar.import_id,
+                     bar.available_from, bar.availability_basis)
+        positions.append(PositionValue(instrument_id, quantity, bar.close, ref, ctx.multiply(quantity, bar.close)))
+    return positions
 
 
 class PortfolioSnapshotStore:

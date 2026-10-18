@@ -65,7 +65,8 @@ def size(view: MarketView, *, view_lineage, reference: RawReference, snapshot: P
     _check_reference(view, view_lineage, reference, snapshot)
     ctx = getcontext()  # the fresh calculation context `exact` set up (Codex M3 review B6)
     held = snapshot.held(reference.instrument_id)
-    current = ctx.multiply(held, reference.close)
+    # Pending BUYs count toward the position (D30): an order not yet filled still commits the room.
+    current = ctx.add(ctx.multiply(held, reference.close), snapshot.pending_buy_value(reference.instrument_id))
     if view.direction is ViewDirection.BULLISH:
         side = Side.BUY
         limit = ctx.multiply(reference.close, ctx.add(Decimal(1), rules.limit_band_fraction)).quantize(
@@ -78,11 +79,14 @@ def size(view: MarketView, *, view_lineage, reference: RawReference, snapshot: P
             return SizingResult(None, f"below one share (room {ctx.subtract(target, current)} at {limit})")
     else:
         side = Side.SELL
+        available = snapshot.available_shares(reference.instrument_id)  # shares no open SELL already reserves
         if held <= 0:
             return SizingResult(None, "BEARISH: nothing held (long only)")
+        if available <= 0:
+            return SizingResult(None, "BEARISH: every held share is already reserved by an open SELL (D30)")
         limit = ctx.multiply(reference.close, ctx.subtract(Decimal(1), rules.limit_band_fraction)).quantize(
             CENT, rounding=ROUND_UP)
-        quantity = held
+        quantity = available
     zone = ZoneInfo(calendar.timezone)
     target_session = calendar.next_session(view.generated_at.astimezone(zone).date()).date
     intent = OrderIntent(

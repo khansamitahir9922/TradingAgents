@@ -214,8 +214,10 @@ def _session_bounds(calendar, session):
 
 
 def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: ControlStores, knowledge, calendar,
-            coverage, calendar_version: str, code_version: str, correlation_id: str) -> ProposalRecord:
-    """Propose one view for one account. RESEARCH: `at` is the replay time. PAPER: `at=None`, the live time."""
+            coverage, calendar_version: str, code_version: str, correlation_id: str, orders=None) -> ProposalRecord:
+    """Propose one view for one account. RESEARCH: `at` is the replay time. PAPER: `at=None`, the live time.
+    With `orders` (an OrderStore), the snapshot is the provisional projection: the declared start plus recorded
+    fills, splits, dividends and open-order reservations (M4-09); without it, exactly M3's declared snapshot."""
     view_lineage_id = view.evidence_refs[0] if view.evidence_refs else ""
     try:
         account = stores.accounts.account(account_id)
@@ -251,7 +253,7 @@ def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: C
             return existing  # idempotent: the same account and view were already proposed
         _expire(account_id, at, stores)
         record = _propose(account_id, view, at, stores, knowledge, calendar, coverage, calendar_version, code_version,
-                          correlation_id, view_lineage_id, view_lineage)
+                          correlation_id, view_lineage_id, view_lineage, orders)
         stores.proposals.append(record)
     return record
 
@@ -276,7 +278,7 @@ def _missing(account_id, view_lineage_id, at, missing: list[tuple[str, str]]) ->
 
 
 def _propose(account_id, view, at, stores: ControlStores, knowledge, calendar, coverage, calendar_version,
-             code_version, correlation_id, view_lineage_id, view_lineage) -> ProposalRecord:
+             code_version, correlation_id, view_lineage_id, view_lineage, orders=None) -> ProposalRecord:
     missing: list[tuple[str, str]] = []
     try:
         autonomy = stores.accounts.autonomy_at(account_id, at)
@@ -312,9 +314,17 @@ def _propose(account_id, view, at, stores: ControlStores, knowledge, calendar, c
         baseline = clear.at if clear is not None and clear.at >= starting.effective_at else starting.effective_at
         peak = stores.snapshots.peak(account_id, since=baseline, at=at) if at >= baseline else None
         history = [] if peak is None else [peak]  # the highest stored equity since the baseline is all it needs
-        built = build_snapshot(account_id, at=at, starting=starting, knowledge=knowledge, calendar=calendar,
-                               coverage=coverage, last_clear=clear, history=history,
-                               source=view_lineage.snapshot.source)
+        projection = None
+        if orders is not None:
+            from investment_engine.portfolio.provisional import project
+            from investment_engine.portfolio.snapshot import _covers
+
+            projection = project(account_id, at=at, starting=starting, orders=orders, knowledge=knowledge,
+                                 calendar=calendar, coverage=coverage, source=view_lineage.snapshot.source,
+                                 covers=_covers)
+        built = projection if isinstance(projection, Unavailable) else build_snapshot(
+            account_id, at=at, starting=starting, knowledge=knowledge, calendar=calendar, coverage=coverage,
+            last_clear=clear, history=history, source=view_lineage.snapshot.source, projection=projection)
         if isinstance(built, Unavailable):
             missing.append(("snapshot", built.reason))
         else:
@@ -459,7 +469,7 @@ def _route(account_id, view, at, stores, calendar, autonomy, intent, stored, pol
 def propose_over_replay(account_id: str, views: Sequence[MarketView], *, events, stores: ControlStores,
                         knowledge_reader, calendar, coverage, calendar_version: str, code_version: str,
                         proposal_delay: timedelta = timedelta(0),
-                        make_knowledge: Callable | None = None) -> list[ProposalRecord]:
+                        make_knowledge: Callable | None = None, orders=None) -> list[ProposalRecord]:
     """Propose each view in time order against one RESEARCH account, as the replay delivers its knowledge.
 
     `events` is the ReplayFeed the views were made from; `knowledge_reader` is an empty M2 ReplayKnowledgeReader
@@ -489,7 +499,7 @@ def propose_over_replay(account_id: str, views: Sequence[MarketView], *, events,
                                                             calendar=calendar, complete_through=at)
             records.append(propose(account_id, v, at=at, stores=stores, knowledge=knowledge, calendar=calendar,
                                    coverage=coverage, calendar_version=calendar_version, code_version=code_version,
-                                   correlation_id=f"replay:{account_id}:{at.isoformat()}"))
+                                   correlation_id=f"replay:{account_id}:{at.isoformat()}", orders=orders))
 
     for event in events:
         flush(event.received_at)

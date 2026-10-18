@@ -64,7 +64,21 @@ def main(argv: list[str] | None = None) -> int:
         knowledge = StoreKnowledge(MarketDataReader(config.market_store_dir()), calendar)
         broker = build_broker(args.broker, account_kind=AccountKind.RESEARCH, db=db, clock=clock, secrets=secrets,
                               knowledge=knowledge, calendar=calendar)
-        worker = ExecutionWorker(db, clock=clock, broker=broker)
+        from investment_engine.execution.reads import StoreGateReads
+        from investment_engine.killswitch.flag import FLAG_FILE, KillSwitchReader
+        from investment_engine.oms.pipeline import ControlStores
+        from investment_engine.portfolio.provisional import ProvisionalFingerprints
+        from investment_engine.storage.sqlite import SqliteInstrumentRepository
+
+        worker = ExecutionWorker(db, clock=clock, broker=broker,
+                                 kill_switch=KillSwitchReader(config.control_dir() / FLAG_FILE))
+        stores = ControlStores.open(db, clock, instruments=SqliteInstrumentRepository(db))
+        # No established action coverage is configured for live mode, so any holding makes the projection, and
+        # with it the gate's `positions` check, unavailable: fail closed (Law 9; D22 means no PAPER trading in M4).
+        worker.reads = StoreGateReads(stores, worker.orders, knowledge=knowledge, calendar=calendar,
+                                      fingerprints=ProvisionalFingerprints(stores.snapshots, worker.orders,
+                                                                           knowledge=knowledge, calendar=calendar,
+                                                                           coverage=None))
         if args.once:
             from investment_engine.execution.recovery import recover
 

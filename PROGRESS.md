@@ -150,6 +150,23 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-09: provisional positions, open-order exposure and corporate actions)
+- **Built:**
+  - `portfolio/provisional.py`: `project()`, a chronological replay of the declared start, fills at `executed_at` and actions at their ex-date open, with actions before fills at equal times. It uses only what was known at `at`: fills recorded by then, action revisions known by then, and `OrderStore.as_of` states. A SPLIT multiplies held shares (a fraction gives Unavailable). A DIVIDEND credits a receivable, with entitlement at the previous close. Unsupported actions, other currencies, missing coverage, and any unresolved order crossing an action (`created_at < e <= at`) give Unavailable. Reservations for open orders: BUY remainder x limit (no fee reserved, since commission is 0 in M4), SELL shares, UNKNOWN in full.
+  - `ProvisionalFingerprints`, the gate's provider.
+  - `portfolio/snapshot.py`: the PROVISIONAL source; optional `reservations`, `receivables`, `adjustments` and `history_hash`, omitted from the content when None, so M3 ids are unchanged; `available_cash`, `pending_buy_value` and `available_shares`; `build_snapshot(..., projection=)` with valuation Unavailable until a post-action close exists (V3), so no snapshot or peak is stored in that interval.
+  - `portfolio/sizer.py`: pending BUYs count toward the target; a SELL sells only the available shares.
+  - `risk/checks.py`: pending BUYs count against the position cap and gross exposure; cash room is the available cash; a SELL beyond the available shares is rejected.
+  - `oms/pipeline.py`: `propose(..., orders=)` and `propose_over_replay(..., orders=)` use the projection; without `orders`, exactly M3.
+  - `execution/__main__.py`: wires the gate reads and the kill switch into the deployed worker, with `ProvisionalFingerprints` (coverage None in live mode, so any holding fails closed).
+- **Deviations, justified:** `execution/__main__.py` isn't in M4-09's list. The deployed worker had no gate reads, so it could never submit; wiring the provider belongs with the provider. The M4-08 commit also touched `__main__.py` (`--once` runs recovery), which wasn't in that task's list either; both changes are entry-point wiring only.
+- **Tests (new):**
+  - `test_provisional_positions.py` (19): BUY then SELL hand-computed; a fill recorded after `at`, and a later cancel still reserving at `at`; UNKNOWN keeping its full reservation; **two pending $10,000 BUYs under a 10% cap** (the second reduced to 0); a pending SELL never freeing room, and its shares not sold twice; **10 + split + 10 = 110**; dividend entitlement on both sides of the ex-date for BUY and SELL; a correction learned later and a delayed pre-split fill; an unresolved order across a split, including a split at the order's own session open; fractional, unsupported and no-coverage cases; **valuation waiting for a post-split close** (never tenfold equity); a receivable in equity but not spendable; the gate fingerprint changing with a new order or a fill but not with time.
+  - `test_snapshot_compatibility.py`: a snapshot record written by `main`'s M3 code (`fixtures/m3_snapshot_record.json`, captured from the `main` worktree at `4c56ac1`) decodes with the same id and byte-identical content.
+  - Red: the projection and the fields didn't exist. The M3 snapshot, sizer, risk and pipeline suites pass unchanged (69).
+- **Checks (Git Bash):** the targeted files, 20 passed; ruff passed; no `postgres` test skipped.
+  - full suite: 1 failed, 3208 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1019.55s (0:16:59) (only failure: the baseline cache-location test). The whitespace check flagged the fixture's missing final newline; one was added, and its test re-passed.
+
 ### 2026-10-18: Claude Code (M4-08: crash recovery for both processes)
 - **Built:**
   - `execution/recovery.py`: republish; resolve SUBMITTING by `lookup` (a report gives SUBMITTED; no record gives UNKNOWN, D20, never resent; a lookup error leaves it for the next try); then `lookup_unknown`.

@@ -156,9 +156,11 @@ def check_risk(intent: OrderIntent, inputs: RiskInputs, *, at: datetime) -> tupl
     held = s.held(intent.instrument_id)
     if buy:
         cap = getcontext().multiply(limits.max_position_fraction, s.equity)
-        after = getcontext().multiply(getcontext().add(held, qty), limit)
+        pending = s.pending_buy_value(intent.instrument_id)  # open BUYs count against the cap (D30)
+        after = getcontext().add(getcontext().multiply(getcontext().add(held, qty), limit), pending)
         ok = after <= cap
-        allowed = max(_floor(getcontext().subtract(getcontext().divide(cap, limit), held)), Decimal(0))
+        room = getcontext().subtract(cap, pending)
+        allowed = max(_floor(getcontext().subtract(getcontext().divide(room, limit), held)), Decimal(0))
         share = getcontext().divide(after, s.equity) if s.equity > 0 else Decimal(0)
         checks.append(CheckResult("position", ok, f"position {_pct(share)} <= {_pct(limits.max_position_fraction)} "
                                   f"({limits.version})" if ok else
@@ -166,9 +168,10 @@ def check_risk(intent: OrderIntent, inputs: RiskInputs, *, at: datetime) -> tupl
                                   f"reduce {qty} -> {allowed}"))
         if not ok:
             reducible["position"] = allowed
-        gross_now = sum((p.value for p in s.positions), Decimal(0))
+        gross_now = getcontext().add(sum((p.value for p in s.positions), Decimal(0)), s.pending_buy_value())
         cost = getcontext().multiply(qty, limit)
-        room = min(s.cash, getcontext().subtract(getcontext().multiply(limits.max_gross_exposure_fraction, s.equity), gross_now))
+        room = min(s.available_cash(), getcontext().subtract(
+            getcontext().multiply(limits.max_gross_exposure_fraction, s.equity), gross_now))
         ok = cost <= room
         allowed = max(_floor(getcontext().divide(room, limit)), Decimal(0)) if room > 0 else Decimal(0)
         checks.append(CheckResult("cash", ok, f"cost {cost} <= {room} available" if ok else
@@ -176,7 +179,12 @@ def check_risk(intent: OrderIntent, inputs: RiskInputs, *, at: datetime) -> tupl
         if not ok:
             reducible["cash"] = allowed
     else:
-        checks.append(CheckResult("position", True, "a sell only lowers the position"))
+        available = s.available_shares(intent.instrument_id)
+        if qty <= available:
+            checks.append(CheckResult("position", True, "a sell only lowers the position"))
+        else:  # D30: shares an open SELL already reserves can't be sold twice
+            checks.append(CheckResult("position", False, f"sell {qty} > {available} shares not already reserved"))
+            reject.append("position")
         checks.append(CheckResult("cash", True, "a sell needs no cash"))
 
     if inputs.adv is None:
