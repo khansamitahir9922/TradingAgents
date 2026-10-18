@@ -76,10 +76,12 @@ class ExecutionWorker:
                           unknown)
 
     def submit(self, order_id: str) -> str:
-        """Gate, then the broker call outside any transaction, then the outcome. Returns the resulting state."""
-        now = check_utc(self.clock.now(), "now")
+        """Gate, then the broker call outside any transaction, then the outcome. Returns the resulting state.
+
+        Each phase reads the clock for itself (B1): the gate once it holds its locks, the broker call when it is
+        made, and the outcome when it is recorded. The order's terms never change, and nothing is resubmitted."""
         try:
-            decision = gate_order(order_id, at=now, orders=self.orders, reads=self.reads,
+            decision = gate_order(order_id, clock=self.clock, orders=self.orders, reads=self.reads,
                                   kill_switch=self.kill_switch)
         except StaleWrite:
             return "STALE"
@@ -89,13 +91,14 @@ class ExecutionWorker:
             return "GATE_REJECTED"
         order, status = self.orders.get(order_id)  # SUBMITTING is committed before the call (Law 14)
         try:
-            result = self.broker.submit(order, at=now)
+            result = self.broker.submit(order, at=check_utc(self.clock.now(), "now"))
         except BrokerTimeout:
             result = None
         except Exception:  # any error leaves the outcome unknown: never resend
             result = None
         with self.db.transaction():
             self.db.lock(f"account-control|{order.account_id}")
+            now = check_utc(self.clock.now(), "now")
             _, status = self.orders.get(order_id)
             if status.state is not S.SUBMITTING:
                 return status.state.value  # a message already moved it (an ACK ingested meanwhile)

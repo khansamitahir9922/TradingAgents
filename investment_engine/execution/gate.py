@@ -24,6 +24,7 @@ from datetime import datetime
 
 from investment_engine.killswitch.flag import FlagReading
 from investment_engine.lineage.records import canonical_json, register
+from investment_engine.market.availability import check_utc
 from investment_engine.oms.intent_store import StoredIntent
 from investment_engine.oms.intents import IntentState, Side
 from investment_engine.oms.order_states import OrderState
@@ -203,13 +204,18 @@ def _plain(value):
     return value
 
 
-def gate_order(order_id: str, *, at: datetime, orders, reads, kill_switch) -> GateDecision | None:
-    """The gate transaction (rule 4). Returns the decision, or None if the order is no longer NEW."""
+def gate_order(order_id: str, *, clock, orders, reads, kill_switch) -> GateDecision | None:
+    """The gate transaction (rule 4). Returns the decision, or None if the order is no longer NEW.
+
+    The time is read from the injected clock only once both locks are held, and that one reading drives the fresh
+    reads, every check and the transition: a time taken before a lock wait could pass the pre-open check after the
+    open, or miss an expiry or a control that took effect meanwhile (Law 13; Codex M4 review B1)."""
     db = orders._db
     with db.transaction():
         order, _ = orders.get(order_id)
         db.lock(f"account-control|{order.account_id}")
         db.execute("SELECT 1 FROM orders WHERE order_id = :id FOR UPDATE", {"id": order_id})
+        at = check_utc(clock.now(), "now")
         order, status = orders.get(order_id)
         if status.state is not OrderState.NEW:
             return None

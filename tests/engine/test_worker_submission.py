@@ -1,11 +1,14 @@
 """Submission in three phases (docs/tasks/M4-07.md rules 1, 5, 6; Laws 13, 14)."""
 
+from datetime import timedelta
+
 import pytest
 
+from investment_engine.execution import worker as worker_module
 from investment_engine.oms.order_states import OrderState as S
 from investment_engine.storage.database import PostgresDatabase
 from investment_engine.storage.postgres import open_operational_pg
-from tests.engine.test_intent_pipeline import DAY
+from tests.engine.test_intent_pipeline import CAL, DAY, OWNER
 from tests.engine.worker_env import WorkerEnv, after_close, pre_open
 
 pytestmark = pytest.mark.postgres
@@ -79,3 +82,63 @@ def test_a_definite_broker_rejection(env):
     env.broker.reject_next_submit = "not allowed"
     env.worker(pre_open(order, view)).step()
     assert env.state(order).state is S.REJECTED and env.broker.submitted(order.client_order_id) == 1
+
+
+def wait_for_the_account_lock(worker, monkeypatch, until):
+    """The account-control lock is held elsewhere: the gate gets it only once the clock has reached `until`."""
+    original = worker.db.lock
+
+    def lock(key):
+        original(key)
+        if key.startswith("account-control|") and worker.clock.now() < until:
+            worker.clock.advance_to(until)
+
+    monkeypatch.setattr(worker.db, "lock", lock)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("after, failing", [("open", {"session"}), ("approval", {"session", "approval"})])
+def test_the_gate_decides_at_the_time_it_holds_its_locks_not_before(env, monkeypatch, after, failing):
+    """B1 (Codex M4 review): the time was read before the lock wait, so an order could pass the pre-open check
+    after the open and reach the broker stamped before it."""
+    order, _ = env.convert(DAY)
+    session = CAL.session(order.target_session)
+    worker = env.worker(session.open - timedelta(microseconds=1))
+    later = session.open + timedelta(seconds=1) if after == "open" else session.close + timedelta(minutes=1)
+    wait_for_the_account_lock(worker, monkeypatch, later)
+    assert worker.submit(order.order_id) == "GATE_REJECTED"
+    assert env.broker.submits == []
+    (gate,) = worker.orders.gate_decisions(order.order_id)
+    assert gate.checked_at == later and failing <= {c.name for c in gate.checks if not c.passed}
+
+
+@pytest.mark.unit
+def test_a_control_that_takes_effect_during_the_lock_wait_is_seen(env, monkeypatch):
+    order, view = env.convert(DAY)
+    start = pre_open(order, view)
+    env.stores.accounts.set_autonomy("R2", 1, by=OWNER, reason="lowered while the gate waited",
+                                     effective_at=start + timedelta(minutes=1))
+    worker = env.worker(start)
+    wait_for_the_account_lock(worker, monkeypatch, start + timedelta(minutes=2))
+    assert worker.submit(order.order_id) == "GATE_REJECTED" and env.broker.submits == []
+    (gate,) = worker.orders.gate_decisions(order.order_id)
+    assert [c.name for c in gate.checks if not c.passed] == ["controls"]
+
+
+@pytest.mark.unit
+def test_the_broker_call_carries_its_own_time_never_the_gates(env, monkeypatch):
+    order, view = env.convert(DAY)
+    start = pre_open(order, view)
+    worker = env.worker(start)
+    real = worker_module.gate_order
+
+    def gate_then_time_passes(*args, **kwargs):
+        decision = real(*args, **kwargs)
+        worker.clock.advance_to(start + timedelta(minutes=2))
+        return decision
+
+    monkeypatch.setattr(worker_module, "gate_order", gate_then_time_passes)
+    assert worker.submit(order.order_id) == "SUBMITTED"
+    assert env.broker.submits == [(order.client_order_id, start + timedelta(minutes=2))]
+    (gate,) = worker.orders.gate_decisions(order.order_id)
+    assert gate.checked_at == start

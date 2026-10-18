@@ -14,6 +14,7 @@ from decimal import Decimal
 
 import pytest
 
+from investment_engine.clock import ReplayClock
 from investment_engine.execution.gate import gate_order
 from investment_engine.execution.reads import StoreGateReads
 from investment_engine.killswitch.flag import FlagState, KillSwitchReader, encode_flag
@@ -94,7 +95,7 @@ def worker_reads(env, stores, *, fills=False, reservations=False):
 def test_a_real_order_passes_the_gate_and_moves_to_submitting(env):
     order, view, _ = convert(env, DAY)
     orders, reads = worker_reads(env, env.connect())
-    decision = gate_order(order.order_id, at=gate_at(order, view), orders=orders, reads=reads,
+    decision = gate_order(order.order_id, clock=ReplayClock(gate_at(order, view)), orders=orders, reads=reads,
                           kill_switch=env.kill_switch)
     assert decision.passed, [(c.name, c.reason) for c in decision.checks if not c.passed]
     assert orders.get(order.order_id)[1].state is OrderState.SUBMITTING
@@ -121,7 +122,7 @@ def _interleave(env, order, view, *, writer, reads_kw, writer_first: bool):
         t.start()
         hold.wait(timeout=30)
         g = threading.Thread(target=lambda: result.setdefault("decision", gate_order(
-            order.order_id, at=at, orders=orders, reads=reads, kill_switch=env.kill_switch)))
+            order.order_id, clock=ReplayClock(at), orders=orders, reads=reads, kill_switch=env.kill_switch)))
         g.start()
         g.join(timeout=1)
         assert g.is_alive(), "the gate must wait for the writer's lock"
@@ -139,7 +140,7 @@ def _interleave(env, order, view, *, writer, reads_kw, writer_first: bool):
 
         reads.read = paused_read
         g = threading.Thread(target=lambda: result.setdefault("decision", gate_order(
-            order.order_id, at=at, orders=orders, reads=reads, kill_switch=env.kill_switch)))
+            order.order_id, clock=ReplayClock(at), orders=orders, reads=reads, kill_switch=env.kill_switch)))
         g.start()
         hold.wait(timeout=30)
 
@@ -233,7 +234,7 @@ def test_free_races_with_a_limits_publish_never_pass_a_superseded_read(env):
 
         def gate(barrier=barrier, out=out, order=order, view=view, orders=orders, reads=reads):
             barrier.wait()
-            out["d"] = gate_order(order.order_id, at=gate_at(order, view), orders=orders, reads=reads,
+            out["d"] = gate_order(order.order_id, clock=ReplayClock(gate_at(order, view)), orders=orders, reads=reads,
                                   kill_switch=env.kill_switch)
 
         def publish(barrier=barrier, writer_stores=writer_stores, n=n, view=view):

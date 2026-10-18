@@ -150,6 +150,19 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B1: the gate decides at the time it holds its locks)
+- **Codex M4 review B1:** `submit()` read the clock before the gate waited for its account and order locks, and the gate used that old time for its fresh reads, its expiry and session checks, and the broker call. Reproduced: starting a microsecond before the open, with the clock passing the open during the lock wait, the order was SUBMITTED and the broker saw the pre-open time.
+- **Fix:**
+  - `gate_order` takes the injected clock and reads it only once both locks are held. That one reading drives the fresh reads, every check and the transition.
+  - `ExecutionWorker.submit` gives the broker call its own fresh time, and the outcome transaction reads the clock again under its lock. A crossing of the open after the gate is never hidden by backdating.
+  - The three-phase boundary, immutable terms and the no-resubmit rule are unchanged.
+- **Tests (`test_worker_submission.py`):**
+  - a lock wait crossing the open (Codex's probe) and the approval's expiry gives GATE_REJECTED, with the decision stamped at the post-wait time and nothing sent;
+  - an autonomy change taking effect during the wait fails `controls`;
+  - the broker call carries its own time, never the gate's.
+  - All four failed first. `test_gate_concurrency.py` passes the clock, its only change.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3278 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1839.75s (0:30:39) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B8: kill-switch recovery never guesses NOT_APPLIED)
 - **Codex M4 review B8:**
   - A missing flag with no APPLIED line was treated as proof that nothing was ever published. An atomic replace proves the replace was indivisible, not that the published file couldn't be lost later.
