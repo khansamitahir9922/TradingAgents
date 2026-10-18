@@ -34,6 +34,7 @@ from importlib.resources import files
 
 from investment_engine.lineage.records import canonical_json, register
 from investment_engine.market.availability import check_utc
+from investment_engine.money import to_float64
 
 PASSED, FAILED, REFUSED = "PASSED", "FAILED", "REFUSED"
 ACCEPTED = "ACCEPTED"  # what the gate and the policy check need; never produced in M4 (D22)
@@ -100,7 +101,7 @@ def recipe_of(lineage) -> str:
 
 
 def _daily_returns(curve, initial: Decimal) -> list[float]:
-    values = [float(initial)] + [float(v) for _, v in curve]
+    values = [to_float64(initial)] + [to_float64(v) for _, v in curve]  # the one float boundary, as in M2
     return [b / a - 1.0 for a, b in zip(values, values[1:], strict=False) if a]
 
 

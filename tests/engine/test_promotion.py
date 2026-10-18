@@ -214,3 +214,12 @@ def test_the_cli_publishes_and_assesses_a_real_stored_record_honestly(pg):
     assert out.exit_code == 0, out.output
     assert out.output.split()[0] in (PASSED, FAILED, REFUSED)  # computed, never assumed
     assert "PAPER promotion:" in out.output and "ACCEPTED" not in out.output
+
+
+@pytest.mark.unit
+def test_a_non_finite_equity_value_is_refused_not_carried_into_the_metrics():
+    """Decimal crosses into float once, through money.to_float64, which refuses NaN and infinity (self-review)."""
+    from investment_engine.evaluation.promotion import _daily_returns
+
+    with pytest.raises(ValueError):
+        _daily_returns([(None, Decimal("NaN"))], Decimal("100000"))

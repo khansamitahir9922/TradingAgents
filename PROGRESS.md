@@ -150,6 +150,11 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-10 follow-up, self-review: one float boundary)
+- **Found in the milestone self-review:** `evaluation/promotion.py` converted equity values with bare `float()`, so a non-finite Decimal (NaN) would have flowed into the drawdown and Sharpe silently. M2's evaluation crosses into float once, through `money.to_float64`, which refuses NaN and infinity.
+- **Fix:** `_daily_returns` uses `to_float64`. **Test:** `test_promotion.py::test_a_non_finite_equity_value_is_refused_not_carried_into_the_metrics`. It failed first (no error raised) and passes now. The promotion file: 18 passed.
+- **Checks (Git Bash):** the full suite on the tree holding this and the M4-03 follow-up together: 1 failed (baseline cache-location test), 3258 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1285.08s (0:21:25). **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4-09 follow-up: whole shares after a split)
 - **Found by M4-13's full NVDA run:** the local store keeps split ratios as `4.000000000000`. The projection multiplied the held 51 shares into `204.000000000000`, and that exponent reached the SELL order's quantity and terms, plus the later dividend credits (`8.1600000000000000`). The count was numerically right but not a plain whole-share count, as order terms must be.
 - **Fix:** `portfolio/provisional.py` stores the split result as `quantize(Decimal(1))` once it is checked as integral. Fractional results stay Unavailable, as before.
