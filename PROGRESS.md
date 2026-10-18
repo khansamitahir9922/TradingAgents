@@ -150,6 +150,21 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-07: submission, message ingestion, cancels and expiry in the Execution Worker)
+- **Built:**
+  - `execution/worker.py`: the step order (publish, ingest, cancels, UNKNOWN lookups, new submissions). Submission in three phases: the gate transaction commits SUBMITTING; `broker.submit` runs outside any transaction; an outcome transaction records SUBMITTED, REJECTED, or UNKNOWN on a timeout or any unknown outcome, and nothing is resubmitted. UNKNOWN lookups: a report resolves it; no record gives a `lookup_no_record` anomaly (D20). The worker serves only the account kinds its broker serves (D23).
+  - `execution/ingest.py`: the M4-07 rule 2 table plus the M4-00 fill matrix, each message in its own transaction after the account-control lock.
+  - `execution/cancels.py`: durable cancel progress, with retries from CANCEL_PENDING in SENDING; PENDING never closes a request; requests close only on the order's final state (CANCELLED, TOO_LATE or NOTHING_TO_CANCEL); never blocked by the kill switch.
+- **Deviation, justified:** the spec's "stored broker cursor" would need a schema change outside M4-07's allowed files. Ingestion is idempotent instead through records the store already keeps: an applied message's id is its version's or anomaly's `broker_ref`, and fills are keyed by broker fill id. The worker reads the whole delivered stream each step and applies nothing twice. The effect is the same, and the cost is acceptable at M4's scale.
+- **Tests (new; `tests/engine/worker_env.py` wires a real converted order, gate reads and a test double):**
+  - `test_worker_submission.py` (5): NEW to FILLED with contiguous versions; SUBMITTING committed when `submit` is called (read on another connection); a gate failure sends nothing; a timeout gives UNKNOWN, never resubmitted, with `lookup_no_record`; a definite rejection.
+  - `test_worker_ingest.py` (5): two partials then a completion; CANCELLED before a delayed fill (accounting only); duplicate and reordered messages, with a fill before the ack on UNKNOWN; EXPIRED on PARTIALLY_FILLED is one anomaly over many steps; a conflicting fill is one anomaly.
+  - `test_worker_cancels.py` (4): a cancel with trading disabled goes through to CANCELLED and closes; a timeout leaves SENDING, then a resend (attempt 2); TOO_LATE after a fill closes the request; 20 races of a cancel request against a fill.
+  - Fixed while writing: the test helper used the replay time as the cancel command time (operators are checked at real command time, M3-13), and opened a connection per step (it now reuses one).
+  - Red: the step had no submission, ingestion or cancels before this task.
+- **Checks (Git Bash):** the targeted files, 14 passed, plus the process tests; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3178 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1045.19s (0:17:25) (only failure: the baseline cache-location test). M4-08's new files were in the tree, uncollected.
+
 ### 2026-10-18: Claude Code (M4-06: the simulated broker)
 - **Built:**
   - `execution/simulated_broker.py`: its own state (schema `0013_sim_broker`); four separate times (a submit at or after the open is REJECTED; executed at the open, or at the close marked `INTRADAY_UNKNOWN`; delivered at the decision moment D; recorded by the worker).
