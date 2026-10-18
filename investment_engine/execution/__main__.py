@@ -66,7 +66,9 @@ def main(argv: list[str] | None = None) -> int:
                               knowledge=knowledge, calendar=calendar)
         worker = ExecutionWorker(db, clock=clock, broker=broker)
         if args.once:
-            worker.outbox.publish_pending()
+            from investment_engine.execution.recovery import recover
+
+            recover(worker)
             report = worker.step()
             print(f"Execution Worker: one step done; published {report.published} events.")
         else:

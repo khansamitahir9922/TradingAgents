@@ -150,6 +150,24 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-08: crash recovery for both processes)
+- **Built:**
+  - `execution/recovery.py`: republish; resolve SUBMITTING by `lookup` (a report gives SUBMITTED; no record gives UNKNOWN, D20, never resent; a lookup error leaves it for the next try); then `lookup_unknown`.
+  - `ExecutionWorker.run` and `execution run --once` call recovery first. Unfinished cancels continue in the normal step, CANCEL_PENDING ones being resent (M4-07). The Core Engine republishes on start (M4-03).
+  - `tests/engine/process_harness.py`: a test-only child process that builds the unchanged worker or Core role objects over the test database, market store and real simulated broker. A fault point writes a marker and blocks; the parent `Popen.kill()`s it. Production code has no fault hooks.
+- **Tests (new, `test_recovery.py`, 10, real OS processes):**
+  - killed after SUBMITTING, before `submit`: the restart finds no record, gives UNKNOWN, and nothing is ever sent;
+  - killed after the broker accepted: one broker order, SUBMITTED, then FILLED;
+  - killed mid-ingest: the fill recorded once;
+  - cancel crash points before the call and after the broker accepted, each with trading enabled and disabled: CANCELLED and the request CLOSED;
+  - the Core killed before conversion and after conversion before publishing: one order and one `order.created`; the worker then submits once;
+  - a dropped connection, then a reconnect.
+  - **Red, honestly scoped:** with recovery disabled in the harness, only the no-record case fails (it stays SUBMITTING). In the other cases the broker's own messages (ACK, FILL, CANCELLED) resolve the order at the next ingestion. Recovery is needed exactly when the broker never got the order.
+  - **Not run:** a PostgreSQL server restart, because the server is the owner's shared installation (M4-08 rule 6).
+- **Note:** `tests/engine/worker_env.py`'s `approved_view` helper, used here, went in with the M4-07 commit.
+- **Checks (Git Bash):** the recovery file, 10 passed; ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3188 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1049.51s (0:17:29) (only failure: the baseline cache-location test). M4-09's new `provisional.py` was in the tree, unimported.
+
 ### 2026-10-18: Claude Code (M4-07: submission, message ingestion, cancels and expiry in the Execution Worker)
 - **Built:**
   - `execution/worker.py`: the step order (publish, ingest, cancels, UNKNOWN lookups, new submissions). Submission in three phases: the gate transaction commits SUBMITTING; `broker.submit` runs outside any transaction; an outcome transaction records SUBMITTED, REJECTED, or UNKNOWN on a timeout or any unknown outcome, and nothing is resubmitted. UNKNOWN lookups: a report resolves it; no record gives a `lookup_no_record` anomaly (D20). The worker serves only the account kinds its broker serves (D23).

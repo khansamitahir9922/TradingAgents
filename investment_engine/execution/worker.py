@@ -134,8 +134,11 @@ class ExecutionWorker:
         return count
 
     def run(self, *, poll_seconds: Decimal, stop: Callable[[], bool]) -> None:
-        """Live mode: publish what an earlier run left unpublished, then step until `stop()` is true."""
-        self.outbox.publish_pending()
+        """Live mode: recover first (G4: republish, resolve SUBMITTING and UNKNOWN; M4-08), then step until
+        `stop()` is true."""
+        from investment_engine.execution.recovery import recover
+
+        recover(self)
         while not stop():
             self.step()
             deadline = time.monotonic() + float(poll_seconds)
