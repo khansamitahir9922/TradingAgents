@@ -43,6 +43,9 @@ class WorkerEnv(Env):
         the server's connection slots."""
         cached = getattr(self, "_worker_stores", None)
         if cached is None or at < cached.clock.now():
+            if cached is not None:  # going back in time: replace the connection, and close the old one
+                cached.db.connection.close()
+                self.opened.remove(cached.db.connection)
             cached = self._worker_stores = self.connect(ReplayClock(at))
         else:
             cached.clock.advance_to(at)

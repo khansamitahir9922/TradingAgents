@@ -150,6 +150,24 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-11: Part J invariant tests)
+- **Built (tests only):**
+  - `tests/engine/order_sequences.py`: seeded generators. Broker message streams include partial fills, CANCELLED before a delayed fill, identical and conflicting duplicate fills, reordering and repeated delivery. Flow plans include kill-switch flips, submit timeouts, cancels and the market's answer.
+  - `tests/engine/test_order_invariants.py`, checked against the stores' final state and history:
+    - **200 random broker streams:** no duplicate fills, and every recorded fill is one the broker really sent; a REJECTED or GATE_REJECTED order never fills; versions contiguous with one event each; every state change a G3 edge by its owner; filled never above the quantity;
+    - **200 stale compare-and-set writes:** each fails, including a stale write that is no longer even a legal edge, and nothing changes;
+    - **200 random ownership checks;**
+    - the credential rule (the M4-03 layering check, linked);
+    - **200 real flows** through proposal, conversion, gate, worker and test broker: no submit without a CONVERTED intent with policy and risk decisions and a passed gate; nothing submitted with the kill switch off; no order sent more than once (UNKNOWN never resubmitted); approved versions unchanged (content id equals the order's pin);
+    - replay determinism: two fresh databases, 5 flows each, the same ids, states, versions and fills.
+  - A failure names its seed. `IE_INVARIANT_FLOW_SEEDS` changes the flow count (default 200, about 3 minutes).
+- **Red evidence (throwaway broken builds, not kept):**
+  - a worker patched to resubmit UNKNOWN orders failed the flow invariant (seed 4 sent twice);
+  - a record-fill patched to defeat de-duplication **at first passed**, because the invariant only checked uniqueness among recorded ids. The invariant was strengthened ("every recorded fill is one the broker sent"), and the broken build then failed at seed 0.
+- **Helper fix:** `tests/engine/worker_env.py` now closes the connection it replaces when a test moves its replay clock backwards; 200 flows otherwise exhausted the server's connection slots.
+- **Checks (Git Bash):** the invariant file, 6 passed (flows at 200 seeds in 196 s); ruff passed; whitespace clean; no `postgres` test skipped.
+  - full suite: 1 failed, 3231 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1136.08s (0:18:56) (only failure: the baseline cache-location test). M4-12's new test file was in the tree, uncollected.
+
 ### 2026-10-18: Claude Code (M4-10: promotion assessment against the OPEN-09 thresholds)
 - **Built:**
   - `evaluation/promotion.py`: `assess(record, lineage_store, thresholds, as_of)`. The evidence target is one EvaluationRecord, and the **recipe identity** is derived from the runs' decision lineage (`policy_version`, `strategy_versions`, `feature_versions`, `config`, `health_thresholds`; session fields excluded). Missing, empty or mixed lineage, an instrument or provider mismatch, incomplete folds, unavailable stitched values, or costs below the minimum give REFUSED with reasons.
