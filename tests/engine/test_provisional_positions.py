@@ -185,6 +185,20 @@ def test_pre_split_holdings_plus_a_post_split_fill_is_110():
 
 
 @pytest.mark.unit
+def test_a_split_ratio_stored_with_decimal_places_still_leaves_whole_shares():
+    """The local store keeps ratios as 4.000000000000 (the M4-13 full run): the held count must stay 204, not
+    204.000000000000, since it becomes a SELL's quantity, its terms and its order id."""
+    split = action(ActionType.SPLIT, D3, ratio="4.000000000000")
+    p = proj(Orders(), t_close(D3), knowledge=Knowledge([split]), start=starting(positions=("51",)))
+    ((_, quantity),) = p.positions
+    assert str(quantity) == "204"
+    dividend = action(ActionType.DIVIDEND, date(2024, 6, 11), amount="0.04")
+    p = proj(Orders(), t_close(date(2024, 6, 11)), knowledge=Knowledge([split, dividend]),
+             start=starting(positions=("51",)))
+    assert str(p.receivables) == "8.16"
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("side, executed, entitled", [
     (Side.BUY, "before", True), (Side.BUY, "on", False), (Side.SELL, "on", True), (Side.SELL, "before", False)])
 def test_dividend_entitlement_is_fixed_at_the_previous_close(side, executed, entitled):

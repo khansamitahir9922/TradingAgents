@@ -150,6 +150,12 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4-09 follow-up: whole shares after a split)
+- **Found by M4-13's full NVDA run:** the local store keeps split ratios as `4.000000000000`. The projection multiplied the held 51 shares into `204.000000000000`, and that exponent reached the SELL order's quantity and terms, plus the later dividend credits (`8.1600000000000000`). The count was numerically right but not a plain whole-share count, as order terms must be.
+- **Fix:** `portfolio/provisional.py` stores the split result as `quantize(Decimal(1))` once it is checked as integral. Fractional results stay Unavailable, as before.
+- **Test:** `test_provisional_positions.py::test_a_split_ratio_stored_with_decimal_places_still_leaves_whole_shares` (51 × `4.000000000000` gives "204"; the next dividend of 0.04 gives a receivable of "8.16"). It failed first, with `'204.000000000000' == '204'`. The provisional file: 20 passed. After the fix the full run's SELL reads "SELL 204 shares".
+- **Checks (Git Bash):** the same full-suite run as M4-13's entry (the tree held both): 1 failed (baseline), 3257 passed, 7 skipped, 3 deselected; ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4-13: the simulated run and the order log)
 - **Built:**
   - `investment_engine/simulation/run.py`: `simulate()`, the offline research harness (D24). It builds the unchanged Execution Worker and Core-side stores, each with its own connection, process role and replay clock, and the broker only through `build_broker("simulated", account_kind=RESEARCH)`; no secrets are loaded.

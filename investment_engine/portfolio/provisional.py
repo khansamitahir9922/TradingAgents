@@ -127,7 +127,7 @@ def project(account_id: str, *, at: datetime, starting, orders, knowledge, calen
             if after != after.to_integral_value():
                 return Unavailable(f"the {a.ex_date} split of {a.instrument_id} leaves {after} shares; cash in lieu "
                                    "isn't known (D34)")
-            held[a.instrument_id] = after
+            held[a.instrument_id] = after.quantize(Decimal(1))  # whole shares: no exponent from the ratio's scale
             adjustments.append(Adjustment("SPLIT", a.instrument_id, when, a.ratio, _action_ref(a)))
         elif a.action_type is ActionType.DIVIDEND:
             if a.amount.currency != starting.currency:
