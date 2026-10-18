@@ -230,3 +230,35 @@ def test_a_fractional_split_stops_proposing_with_the_reason_in_the_log(pg_databa
         assert "stops (projection unavailable): " + report.stops[0] in text
     finally:
         r.close()
+
+
+@pytest.mark.unit
+def test_a_fresh_process_reads_snapshots_with_adjustments_and_reservations(pg_database, tmp_path):
+    """B13 (Codex M4 review): M4 stores Adjustment and Reservation inside snapshots; a new process that never
+    imported their modules must still decode them, through the public order-log path."""
+    import os
+    import subprocess
+    import sys
+
+    from investment_engine.config import ENV_PG_DSN
+    from investment_engine.oms.intents import Side
+    from investment_engine.portfolio.fingerprint import Reservation
+
+    r = Run(pg_database, tmp_path, actions=(action(ActionType.DIVIDEND, SESSIONS[62], amount="0.5000"),))
+    try:
+        r.run(views=r.views[:2])
+        latest = r.env.stores.snapshots.latest("R2", CAL.session(SESSIONS[70]).close)
+        assert latest.adjustments
+        held = replace(latest, as_of=latest.as_of + timedelta(seconds=1),
+                       reservations=(Reservation("ord-test", "EQ_US_NVDA", Side.BUY, Decimal(3), Decimal("360.00")),))
+        r.env.stores.snapshots.append(held)
+        out = tmp_path / "fresh.json"
+        result = subprocess.run([sys.executable, "-m", "investment_engine", "intents", "order-log", "--account", "R2",
+                                 "--json", str(out)], capture_output=True, encoding="utf-8", errors="replace",
+                                timeout=120, env={**os.environ, ENV_PG_DSN: pg_database, "PYTHONIOENCODING": "utf-8",
+                                                  "INVESTMENT_ENGINE_DATA_DIR": str(tmp_path)})
+        assert result.returncode == 0, result.stdout[-400:] + result.stderr[-400:]
+        assert "DIVIDEND EQ_US_NVDA" in json.loads(out.read_text(encoding="utf-8"))["summary"][
+            "corporate-action adjustments"]
+    finally:
+        r.close()

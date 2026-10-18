@@ -150,6 +150,13 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B13: fresh processes decode M4 snapshots)
+- **Codex M4 review B13:** M4 stores `Adjustment` (`portfolio/provisional.py`) and `Reservation` (`portfolio/fingerprint.py`) inside snapshots, but neither module was in the fresh-reader registry. A new process that hadn't imported the producer failed with `Cannot complete command: 'Adjustment'`.
+- **Fix:** `audit/registry.py` lists both modules, as each M4 task that adds a stored type should have. Stored content and ids are unchanged.
+- **Test:** `test_simulated_run.py::test_a_fresh_process_reads_snapshots_with_adjustments_and_reservations`. After a covered-dividend run, a snapshot holding both an adjustment and a reservation is appended. A real new `python -m investment_engine intents order-log` process then reads it. The test failed first with the same error, and passes now; Codex's probe passes too.
+- **Scope:** `audit/registry.py` is M4-00's file; this is the M4-09 types' registration. Recorded in the review-fix package.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at the base plus these files): 1 failed (the baseline cache-location test), 3259 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1517.56s; ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 milestone close: batch checks, self-review, review package)
 - **All 14 M4 tasks are committed (checked)** on `m4/milestone`, from `c59a863`, with three follow-ups:
   - `653e4fb` (M4-09): whole shares after a split, found by the full NVDA run;
