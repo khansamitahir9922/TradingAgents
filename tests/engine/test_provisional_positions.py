@@ -375,3 +375,40 @@ def test_knowledge_that_begins_after_the_declared_start_makes_the_projection_una
     assert isinstance(p, Unavailable) and "knowledge begins" in p.reason
     knowledge.known_from = START  # complete from the start: no action, so the holding stands
     assert proj(Orders(), START + timedelta(days=500), start=declared(START), knowledge=knowledge).held(NVDA) == 10
+
+
+@pytest.mark.unit
+def test_replay_knowledge_that_does_not_say_where_it_begins_is_not_trusted_with_a_holding(tmp_path):
+    """B7 follow-up (Codex's probe, re-run on the fixed head): replay knowledge from a feed cut sixty days before a
+    view, with no `known_from`, carried a 2019 holding through a 2021 4-for-1 split as ten shares. A replay
+    history must say where it begins before it can carry a holding; the store's own knowledge is the whole store."""
+    from investment_engine.clock import ReplayClock
+    from investment_engine.decision.pipeline import ReplayKnowledgeReader
+    from investment_engine.market.candles import Timeframe
+    from investment_engine.market.replay import ReplayFeed
+    from investment_engine.market.store.reader import MarketDataReader
+    from investment_engine.market.store.writer import MarketDataWriter
+    from investment_engine.portfolio.reference import ReplayKnowledge
+    from tests.engine.test_raw_reference import T, observation
+    from tests.engine.test_research_simulation import action as stored_action
+
+    writer = MarketDataWriter(tmp_path / "market")
+    writer.write_candles([observation(received=T)], import_id="bars")
+    writer.write_corporate_actions([stored_action(date(2021, 7, 20), ratio="4")], import_id="actions")
+    reader = MarketDataReader(tmp_path / "market")
+    declared_at = datetime(2019, 1, 2, 21, tzinfo=UTC)
+
+    def knowledge(feed_start, **kwargs):
+        known = ReplayKnowledgeReader()
+        for event in ReplayFeed(reader, ReplayClock(feed_start), sources=["yfinance"], instrument_ids=[NVDA],
+                                timeframes=[Timeframe.D1], start=feed_start, end=T + timedelta(microseconds=1)):
+            known.accept(event)
+        return ReplayKnowledge(known, calendar=CAL, complete_through=T, **kwargs)
+
+    holding = declared(declared_at, positions=("10",))
+    unlabelled = proj(Orders(), T, start=holding, knowledge=knowledge(T - timedelta(days=60)))
+    assert isinstance(unlabelled, Unavailable) and "doesn't say where" in unlabelled.reason
+    full = proj(Orders(), T, start=holding, knowledge=knowledge(declared_at, known_from=declared_at))
+    assert full.held(NVDA) == Decimal(40)  # the whole history: the split applies
+    cash_only = proj(Orders(), T, start=declared(declared_at, positions=()), knowledge=knowledge(T - timedelta(days=60)))
+    assert cash_only.held(NVDA) == 0 and cash_only.cash == Decimal("100000")  # nothing to carry: unaffected

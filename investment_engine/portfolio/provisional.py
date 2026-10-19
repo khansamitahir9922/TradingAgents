@@ -84,11 +84,6 @@ def project(account_id: str, *, at: datetime, starting, orders, knowledge, calen
     at = check_utc(at, "at")
     if at < starting.effective_at:
         return Unavailable(f"{account_id}'s declared start is after {at.isoformat()}")
-    known_from = getattr(knowledge, "known_from", None)
-    if known_from is not None and known_from > starting.effective_at:
-        # A history that starts later is no evidence that nothing happened before it (Codex M4 review B7).
-        return Unavailable(f"the knowledge begins at {known_from.isoformat()}, after {account_id}'s declared start "
-                           f"{starting.effective_at.isoformat()}; actions since the start can't be established")
     zone = ZoneInfo(calendar.timezone)
     first, last = starting.effective_at.astimezone(zone).date(), at.astimezone(zone).date()
 
@@ -99,6 +94,19 @@ def project(account_id: str, *, at: datetime, starting, orders, knowledge, calen
             if f.recorded_at <= at and f.executed_at <= at:
                 fills.append((f.executed_at, 1, f.fill_id, ("fill", order, f)))
     instruments = {i for i, _ in starting.positions} | {o.instrument_id for o, _, _ in as_of}
+    if instruments and hasattr(knowledge, "known_from"):
+        # Replay knowledge holds only what its feed delivered. A history that starts later than the declared start,
+        # or that doesn't say where it starts, is no evidence that nothing happened since (Codex M4 review B7 and
+        # its re-run probe). The store's own knowledge is the whole store. Nothing held and no orders: nothing to
+        # carry, so no history is needed.
+        known_from = knowledge.known_from
+        if known_from is None:
+            return Unavailable("the replay knowledge doesn't say where its history begins; actions since "
+                               f"{account_id}'s declared start can't be established")
+        if known_from > starting.effective_at:
+            return Unavailable(f"the knowledge begins at {known_from.isoformat()}, after {account_id}'s declared "
+                               f"start {starting.effective_at.isoformat()}; actions since the start can't be "
+                               "established")
 
     actions = []
     for instrument_id in sorted(instruments):

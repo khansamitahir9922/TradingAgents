@@ -150,6 +150,16 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-19: Claude Code (M4 review fix B7, follow-up: replay knowledge must say where it begins)
+- **Found by re-running Codex's probes on the fixed code:** 18 of 20 passed; the two expected by-design differences failed. One of them, `test_simulation_knowledge_window_includes_actions_since_declared_start`, still showed a residual: replay knowledge built from a truncated feed *without* `known_from` carried a 2019 holding through a 2021 4-for-1 split as ten shares. B7 had made every production caller declare where its knowledge begins, but the API's default still trusted an unlabelled history. That is the very mistake B7 names.
+- **Fix:**
+  - `provisional.project` fails closed for replay knowledge (anything with `known_from`) that doesn't say where it begins, as it already did for one that begins after the declared start. Both apply only when instruments are involved (a declared holding or orders); a cash-only start with no orders has nothing to carry. Store-backed knowledge is the whole store.
+  - `propose_over_replay`'s default knowledge takes `known_from` from its feed's own start.
+- **Test:** `test_provisional_positions.py::test_replay_knowledge_that_does_not_say_where_it_begins_is_not_trusted_with_a_holding`: Codex's probe scenario is Unavailable; with the whole history labelled, the split applies (40 shares); cash-only is unaffected. It failed first.
+  - The M3 and M4 proposal suites pass unchanged, 103 tests.
+  - The probe itself now gets Unavailable instead of ten shares. That fails closed, and the review's text allows it ("or report that it is unavailable").
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3328 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 2638.11s (0:43:58) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B12: the acceptance matrix completed, with red evidence for every invariant)
 - **Codex M4 review B12:** several mandatory acceptance cases were weaker than stated. Each is now covered:
   - **Rejected intents never become orders** (`test_order_invariants.py`): seeded flows also propose the same view for RP (policy restricts NVDA) and RR (a latched halt), run conversion and worker steps, and assert the proposals are POLICY_REJECTED / RISK_REJECTED (non-vacuous) with no order at all. Every submitted order's intent has policy *passed* and risk APPROVE or REDUCE. The kill switch is also made unreadable, not only halted.

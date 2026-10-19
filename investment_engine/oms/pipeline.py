@@ -522,8 +522,12 @@ def propose_over_replay(account_id: str, views: Sequence[MarketView], *, events,
                 bar = _decision_bar(stores, v)
                 through = sequences.get(bar) if bar is not None else None
             # Every event delivered by `at` has been accepted, so the knowledge is complete through `at`.
-            knowledge = (make_knowledge or ReplayKnowledge)(knowledge_reader, through_sequence=through,
-                                                            calendar=calendar, complete_through=at)
+            if make_knowledge is not None:
+                knowledge = make_knowledge(knowledge_reader, through_sequence=through, calendar=calendar,
+                                           complete_through=at)
+            else:  # the feed says where its history begins (B7 follow-up)
+                knowledge = ReplayKnowledge(knowledge_reader, through_sequence=through, calendar=calendar,
+                                            complete_through=at, known_from=getattr(events, "start", None))
             records.append(propose(account_id, v, at=at, stores=stores, knowledge=knowledge, calendar=calendar,
                                    coverage=coverage, calendar_version=calendar_version, code_version=code_version,
                                    correlation_id=f"replay:{account_id}:{at.isoformat()}", orders=orders))
