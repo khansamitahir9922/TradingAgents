@@ -352,10 +352,12 @@ def test_research_at_is_the_proposal_time_with_knowledge_through_it(pg_database,
         early = propose_at(SESSIONS[42], deadline(SESSIONS[42]) - timedelta(minutes=1), "early")
         assert early.outcome is ProposalOutcome.AWAITING_APPROVAL
         # A correction of an earlier bar in the volume window, delivered between the view and T, is known at T.
+        # The views here are made five minutes after their bars' close, so the replay delivers with that latency
+        # (Codex M4 re-review R2): received a minute after the view, the correction is delivered at +6, before T.
         fixed_day, view_day = SESSIONS[42], SESSIONS[43]
-        t = t_of(view_day) + timedelta(minutes=2)
+        t = t_of(view_day) + timedelta(minutes=10)
         MarketDataWriter(data / "market").write_candles(
-            [replace(observation(fixed_day, close="119.0000", received=t - timedelta(minutes=1)),
+            [replace(observation(fixed_day, close="119.0000", received=t_of(view_day) + timedelta(minutes=1)),
                      volume=Decimal("1000000"))], import_id="fix")
         corrected = propose_at(view_day, t, "fixed")
         (lineage,) = env.stores.intent_lineage.for_intent(corrected.intent_id)

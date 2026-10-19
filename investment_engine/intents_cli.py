@@ -153,6 +153,41 @@ def views_replay(instrument: str = NVDA, from_day: str = typer.Option(..., "--fr
 # ---------------------------------------------------------------- propose
 
 
+class ReplayHistoryUnavailable(LookupError):
+    """The stored views' delivery history can't be established, so no replay is run (Codex M4 re-review R2)."""
+
+
+def _views_latency(stores, views) -> timedelta:
+    """The delivery latency the selected views were made with. M2 generates a view at its decision bar's delivery,
+    available_from + the feed's latency, and the view's lineage keeps that bar's reference, so each view states its
+    latency exactly. Every view must agree; one that doesn't, or whose decision bar isn't stored, is refused: a
+    delivery history is never assumed (R2). Stored records are only read."""
+    latencies = {}
+    for view in views:
+        try:
+            lineage = stores.lineage.get(view.evidence_refs[0])
+        except (KeyError, IndexError):
+            raise ReplayHistoryUnavailable(f"the view at {view.generated_at.isoformat()} has no stored lineage; its "
+                                           "delivery history can't be established") from None
+        snap = lineage.snapshot
+        zone = ZoneInfo(stores.instruments.get(view.instrument_id).timezone)
+        bars = [r for r in lineage.bar_refs if (r.source, r.instrument_id) == (snap.source, snap.instrument_id)
+                and r.start_time.astimezone(zone).date() == snap.session_date]
+        if len(bars) != 1:
+            raise ReplayHistoryUnavailable(f"the view at {view.generated_at.isoformat()} names no single decision bar; "
+                                           "its delivery history can't be established")
+        latency = view.generated_at - bars[0].available_from
+        if latency < timedelta(0):
+            raise ReplayHistoryUnavailable(f"the view at {view.generated_at.isoformat()} precedes its own decision "
+                                           "bar's availability; its delivery history can't be established")
+        latencies.setdefault(latency, view.generated_at)
+    if len(latencies) != 1:
+        found = ", ".join(f"{lat} (first at {at.isoformat()})" for lat, at in sorted(latencies.items()))
+        raise ReplayHistoryUnavailable(f"the selected views were made with different delivery latencies ({found}); "
+                                       "one replay history can't reproduce them all. Choose a range made by one run")
+    return next(iter(latencies))
+
+
 def _views_between(db, instrument: str, first: datetime, last: datetime):
     from dataclasses import replace
 
@@ -231,8 +266,9 @@ def propose_intents(account: str = typer.Option(..., "--account"), at: str | Non
             # delivered through T (Codex M3 review B5). A range proposes each view at its own time.
             delay = first - views[0].generated_at if at else timedelta(0)
             end = (first if at else max(v.generated_at for v in views)) + timedelta(microseconds=1)
+            # The views' own delivery history: their latency, recovered from their lineage (R2).
             feed = ReplayFeed(reader, ReplayClock(start), sources=[SOURCE], instrument_ids=[instrument],
-                              timeframes=[Timeframe.D1], start=start, end=end)
+                              timeframes=[Timeframe.D1], start=start, end=end, latency=_views_latency(stores, views))
             evidence, cov_first, cov_last, reason = _coverage(end)
             coverage = establish_coverage(evidence, source=SOURCE, instrument_id=instrument,
                                           types=(ActionType.SPLIT, ActionType.DIVIDEND), first=cov_first,
@@ -387,7 +423,8 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
 
     Knowledge is the replay's, as for `intents propose --from/--to`: every bar and action of the local store is
     delivered at its availability (M2's ReplayFeed), so a history downloaded today is known at its historical time,
-    and a later correction only from its own delivery. The feed covers the whole local history (every action since
+    and a later correction only from its own delivery, with the latency the stored views were made with (R2).
+    The feed covers the whole local history (every action since
     the declared start, B7) and runs three weeks past the range, so the last orders reach their decision moments.
     Each proposal stops at its own view's decision bar within that instant (B3)."""
     def go(db):
@@ -419,8 +456,10 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
             # a feed cut anywhere later could miss it while looking complete (Codex M4 review B7).
             start, end = datetime(1970, 1, 1, tzinfo=UTC), last + timedelta(days=21)
             knowledge_reader, sequences = ReplayKnowledgeReader(), {}
+            # The views' own delivery history: their latency, recovered from their lineage (R2).
+            latency = _views_latency(_stores(db, LiveClock()), views)
             feed = ReplayFeed(reader, ReplayClock(start), sources=[SOURCE], instrument_ids=[instrument],
-                              timeframes=[Timeframe.D1], start=start, end=end)
+                              timeframes=[Timeframe.D1], start=start, end=end, latency=latency)
             events, history = replay_with_outstanding_actions(feed)  # the shared composition (R3)
             for event in events:
                 knowledge_reader.accept(event)

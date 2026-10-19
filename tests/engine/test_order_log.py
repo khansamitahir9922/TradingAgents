@@ -30,14 +30,13 @@ def backfilled_bars(root):
 
 
 def recorded_bars_with_a_correction_at_the_sell_view(root):
-    """Bars recorded as they happened (each received a minute after its close), and a correction of SESSIONS[62]'s
-    bar received at exactly the time of the view made from that bar."""
-    from tests.engine.test_intent_pipeline import t_of
-
+    """Bars recorded at their close, and a correction of SESSIONS[62]'s bar recorded at that same instant. The
+    views are made five minutes later, so the replay delivers with that latency (R2): the bar and its correction
+    are both delivered at exactly the SELL view's time, the correction later in sequence."""
     writer = MarketDataWriter(root)
-    writer.write_candles([replace(observation(d, close="120.0000"), volume=Decimal("1000000")) for d in SESSIONS],
-                         import_id="bars")
-    writer.write_candles([replace(observation(SESSIONS[62], close="119.0000", received=t_of(SESSIONS[62])),
+    writer.write_candles([replace(observation(d, close="120.0000", received=CAL.session(d).close),
+                                  volume=Decimal("1000000")) for d in SESSIONS], import_id="bars")
+    writer.write_candles([replace(observation(SESSIONS[62], close="119.0000", received=CAL.session(SESSIONS[62]).close),
                                   volume=Decimal("1000000"))], import_id="correction-at-the-view-time")
     return MarketDataReader(root)
 
@@ -122,33 +121,18 @@ def test_an_account_without_orders_says_so_and_never_prints_none(cli):
 
 
 @pytest.mark.unit
-def test_a_proposal_never_sees_an_equal_time_event_its_view_did_not(cli_with_a_correction, pg_database):
-    """B3 (Codex M4 review): `simulate` preloaded the whole feed with no per-view sequence boundary, so a correction
-    delivered at exactly a view's time, after the view's own bar, reached that proposal (Law 5). Each proposal
-    now has its view's boundary, as M3's replay path does; the gate, a moment later, does see the correction."""
-    from investment_engine.audit.events import AuditStore
-    from investment_engine.oms.order_states import OrderState, ProcessRole
-    from investment_engine.oms.order_store import OrderStore
-    from investment_engine.storage.database import PostgresDatabase
-    from investment_engine.storage.postgres import open_operational_pg
-    from tests.engine.recording_outbox import RecordingOutbox
+def test_a_correction_delivered_with_the_views_bar_is_never_mixed_into_its_proposal(cli_with_a_correction):
+    """B3, under the views' true delivery history (R2). The bar and its correction are recorded at the same instant,
+    so the replay, using the views' five-minute latency, delivers both at the SELL view's time. M1's frozen ordering
+    puts a revision before a close at one instant, so M2's producer would have decided on the correction. A stored
+    view claiming the earlier revision is inconsistent with that history, and its proposal refuses to mix the two,
+    never trading on them. A correction delivered *after* a view stays unseen (test_replay_delivery_history.py)."""
     app, _ = cli_with_a_correction
-    sell_day = SESSIONS[62]
     done = run(app, "intents", "simulate", "--account", "R2", "--from", SESSIONS[59].isoformat(), "--to",
                SESSIONS[63].isoformat())
-    assert done.exit_code == 0 and "2 orders" in done.output, done.output
-    conn = open_operational_pg(pg_database)
-    try:
-        db = PostgresDatabase(conn)
-        orders = OrderStore(db, role=ProcessRole.CORE, audit=AuditStore(db), outbox=RecordingOutbox(db),
-                            clock=ReplayClock(NOW))
-        rows = {o.target_session: (o, st) for o, st in orders.for_account("R2")}
-        sell, status = rows[CAL.next_session(sell_day).date]
-        assert status.state is OrderState.GATE_REJECTED  # proposed on the view's revision; the gate saw the newer one
-        (gate,) = orders.gate_decisions(sell.order_id)
-        assert [c.name for c in gate.checks if not c.passed] == ["view"]
-    finally:
-        conn.close()
+    assert done.exit_code == 0 and "1 orders" in done.output, done.output  # only the BUY; the SELL is refused
+    log = run(app, "intents", "order-log", "--account", "R2")
+    assert "FINAL FILLED" in log.output and log.output.count("ORDER ord-") == 1
 
 
 @pytest.mark.unit

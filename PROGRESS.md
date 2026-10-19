@@ -150,6 +150,20 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-19: Claude Code (M4 re-review fix R2: replays keep the stored views' own delivery latency)
+- **Codex M4 re-review R2 (B3):** both CLI replay paths rebuilt the feed with zero latency, so a correction available between a bar and its view's time, but delivered after the view, reached the proposal. Reproduced with a real M2 view at ten-minute latency: the CLI's proposal knowledge gave revision 2 where the view's own history gave revision 1.
+- **Fix (`intents_cli.py`):**
+  - **The latency is recovered, never assumed.** M2 generates a view at its decision bar's delivery (`available_from` + the feed's latency), and the view's lineage keeps that bar's reference, so each stored view states its latency exactly. `_views_latency` reads it for every selected view.
+  - **Disagreement is refused.** Views that disagree, a view without stored lineage or a single decision bar, or a negative latency, give `ReplayHistoryUnavailable` ("Cannot complete command: ..."): no delivery history is assumed.
+  - **Both paths use it.** `intents simulate` and `intents propose` (range and `--at`) rebuild their feed with the recovered latency, so the simulator's decision moments include it too. Stored records and ids are only read.
+- **Tests (`test_replay_delivery_history.py`, new):** with M2's own `run_views` at ten-minute latency and a correction available at +5 (delivered at +15), `simulate` and `propose --at` both give the view's proposal revision 1. Views made at different latencies are refused by both paths. All three failed first.
+- **Fixture timelines, corrected (recorded):**
+  - The test views here are made five minutes after their bars' close, so their true latency is five minutes.
+  - `test_intents_cli.py::test_research_at_is_the_proposal_time_with_knowledge_through_it` keeps its premise, a correction delivered between the view and T, with T at +10 instead of +2.
+  - B3's integrated test is rewritten. With the bar and its correction delivered at the same instant, M1's frozen ordering puts the revision first, so M2 would have decided on it. A view claiming the earlier revision is inconsistent, and its proposal refuses to mix them (the SELL is never placed).
+  - The equal-time cap stays covered where it can occur: `test_raw_reference.py` and the proposal-knowledge tests.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3337 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 2459.43s (0:40:59) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-19: Claude Code (M4 re-review fix R3: the replay's action history is established, not assumed)
 - **Codex M4 re-review R3 (B7):** a feed's start time was taken as proof of action history. A ReplayFeed selects by delivery, so a split announced before the feed began and effective after the declared holdings was neither reflected in them nor delivered. Reproduced: announced at D1's close, ten shares declared at D2's close, effective at D3's open, and a feed starting an hour before the declared start gave 10 shares, where 100 or Unavailable is required.
 - **Fix (`portfolio/reference.py`, `portfolio/provisional.py`, `oms/pipeline.py`, `intents_cli.py`):**
