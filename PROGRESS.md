@@ -150,6 +150,32 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B11: the saved log keeps the run's context; truthful headers)
+- **Codex M4 review B11:**
+  - A later `order-log` said "stops: none" after a fractional split had stopped proposals.
+  - Every UNKNOWN was "broker has no record", even before any lookup.
+  - The header lacked the code version, calendar version and cutoff.
+  - The adjustments came from an unlabelled snapshot.
+  - The intent reports still printed "NO ORDERS ... | KILL SWITCH: NOT BUILT" after M4 orders existed.
+- **Fix (`reporting/order_log.py`, `intents_cli.py`):**
+  - **Stored context.** The log reads the run's context from stored records:
+    - stops from the proposal records whose projection was unavailable;
+    - code and calendar versions from the intents' intent lineage;
+    - the cutoff as the latest recorded order time;
+    - adjustments as of a named snapshot (at the cutoff).
+  - **Honest UNKNOWN.** "UNRESOLVED: the broker had no record at a lookup at T" only after such a recorded lookup; otherwise "UNCONFIRMED: ... no lookup has answered yet".
+  - **Read-only.** `order-log` opens the database read-only (Codex's suggestion 1).
+  - **Truthful headers.** The intent reports' safety line reads the actual state: the order count, the kill-switch reading, and the portfolio basis.
+- **Document conflict resolved:** M3-14 rule 1 required the old literal labels. By architecture > spec and PRD principle 2, the line shows current state. Recorded as M4-13 rule 8; M3-14's header test asserts the new line.
+- **Tests:**
+  - a later CLI `order-log` and a **fresh process** both keep the stop, in text and JSON;
+  - the header pins the code version, the calendar version and the cutoff;
+  - UNKNOWN before a lookup is "UNCONFIRMED", and after a no-record lookup is "UNRESOLVED ... at T";
+  - the intent report after a run shows "ORDERS: 1", "TRADING ENABLED" and the provisional portfolio.
+  - All four failed first; Codex's four probes pass.
+- **Incident, recorded (both runs kept):** the first full run on this exact tree crossed midnight (2026-10-18 to 19) and gave 13 failed, 3300 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1587.70s (0:26:27): the baseline failure plus 12 upstream TradingAgents tests in `tests/test_yahoo_rate_limit.py` and `tests/test_undated_tools_as_of.py`. Those tests fix "today" when the session starts and compare it with `date.today()` later, so after midnight a run dated 2026-10-18 counted as historical and its data was withheld ("Point-in-time as of: 2026-10-18 ... withheld"). This package changes neither `tradingagents/` nor those tests; on the same tree, run alone afterwards, all 61 passed. The commit was held until the rerun below, on the unchanged tree, was clean. The midnight sensitivity is an upstream test fragility, reported to the owner, not fixed here.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3312 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 2425.97s (0:40:25) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B6: every proposal path sizes on fills and open orders)
 - **Codex M4 review B6:** only the simulator passed the order store, so `intents propose` (range, `--at` and PAPER) kept M3's declared snapshot after M4 fills existed. Reproduced: a BEARISH view after a filled BUY said "nothing held".
 - **Fix:**

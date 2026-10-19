@@ -93,7 +93,8 @@ class Run:
         return build_order_log("R2", orders=self.orders(), intents=self.env.stores.intents,
                                lineage=self.env.stores.lineage, calendar=CAL, source="yfinance",
                                header_extra={"kill switch": "test"}, stops=report.stops,
-                               snapshots=self.env.stores.snapshots, at=CAL.session(SESSIONS[70]).close)
+                               snapshots=self.env.stores.snapshots, at=CAL.session(SESSIONS[70]).close,
+                               proposals=self.env.stores.proposals, intent_lineage=self.env.stores.intent_lineage)
 
     def close(self):
         for c in self.opened:
@@ -330,3 +331,83 @@ def test_a_scoped_simulator_refuses_another_accounts_order(run):
     result = broker.submit(new, at=run.views[0].generated_at + timedelta(minutes=1))
     assert not result.accepted and "R2" in result.reason
     assert broker.lookup(new.client_order_id, at=run.views[0].generated_at + timedelta(minutes=2)) is None
+
+
+# ---------------------------------------------------------------- the saved log keeps the run's context (B11)
+
+
+def cli_env(r, monkeypatch, pg_database, tmp_path):
+    from investment_engine import admin_cli, intents_cli
+    from investment_engine.clock import ReplayClock
+    from investment_engine.config import ENV_PG_DSN
+    from tests.engine.test_intent_pipeline import NOW
+
+    monkeypatch.setenv(ENV_PG_DSN, pg_database)
+    monkeypatch.setenv("INVESTMENT_ENGINE_DATA_DIR", str(tmp_path))
+    for module in (admin_cli, intents_cli):
+        monkeypatch.setattr(module, "LiveClock", lambda: ReplayClock(NOW))
+
+
+@pytest.mark.unit
+def test_a_later_order_log_keeps_the_runs_stop_in_text_json_and_a_fresh_process(pg_database, tmp_path, monkeypatch):
+    """B11 (Codex M4 review): the stop lived only in the run's in-memory report, so a later `order-log` said
+    "stops: none" after a fractional split had stopped proposals. It is now read from the stored proposal records."""
+    import os
+    import subprocess
+    import sys
+
+    from typer.testing import CliRunner
+
+    from investment_engine import cli
+    from investment_engine.config import ENV_PG_DSN
+
+    r = Run(pg_database, tmp_path, actions=(action(ActionType.SPLIT, SESSIONS[62], ratio="1.0001"),))
+    try:
+        report = r.run()
+        assert len(report.stops) == 1
+        cli_env(r, monkeypatch, pg_database, tmp_path)
+        out = tmp_path / "log.json"
+        result = CliRunner().invoke(cli.app, ["intents", "order-log", "--account", "R2", "--json", str(out)])
+        assert result.exit_code == 0, result.output
+        assert report.stops[0] in result.output
+        assert json.loads(out.read_text(encoding="utf-8"))["summary"]["stops (projection unavailable)"] ==             report.stops[0]
+        fresh = tmp_path / "fresh.json"
+        done = subprocess.run([sys.executable, "-m", "investment_engine", "intents", "order-log", "--account", "R2",
+                               "--json", str(fresh)], capture_output=True, encoding="utf-8", errors="replace",
+                              timeout=120, env={**os.environ, ENV_PG_DSN: pg_database, "PYTHONIOENCODING": "utf-8",
+                                                "INVESTMENT_ENGINE_DATA_DIR": str(tmp_path)})
+        assert done.returncode == 0, done.stdout[-300:] + done.stderr[-300:]
+        assert json.loads(fresh.read_text(encoding="utf-8"))["summary"]["stops (projection unavailable)"] ==             report.stops[0]
+    finally:
+        r.close()
+
+
+@pytest.mark.unit
+def test_the_log_pins_code_and_calendar_versions_and_its_cutoff(run):
+    report = run.run()
+    log = run.log(report)
+    assert log.header["code version"] == "test" and log.header["calendar version"] == "cal-1"
+    last = max(t.at for o, _ in run.orders().for_account("R2") for t in run.orders().history(o.order_id))
+    assert log.header["cutoff (latest recorded order time)"] == last.isoformat()
+    assert log.summary["corporate-action adjustments"].startswith("as of the snapshot at ")
+
+
+@pytest.mark.unit
+def test_the_intent_report_header_shows_the_actual_order_and_kill_switch_state(pg_database, tmp_path, monkeypatch):
+    """B11: the report still printed M3's "NO ORDERS ... | KILL SWITCH: NOT BUILT" after M4 orders and fills."""
+    from typer.testing import CliRunner
+
+    from investment_engine import cli
+
+    r = Run(pg_database, tmp_path)
+    try:
+        assert r.run(views=r.views[:1]).orders == 1
+        cli_env(r, monkeypatch, pg_database, tmp_path)
+        result = CliRunner().invoke(cli.app, ["intents", "list", "--account", "R2"])
+        assert result.exit_code == 0, result.output
+        assert "NOT BUILT" not in result.output and "order management arrives in M4" not in result.output
+        assert "ORDERS: 1 for this account" in result.output
+        assert "KILL SWITCH: TRADING ENABLED" in result.output
+        assert "PORTFOLIO: PROVISIONAL PROJECTION FROM RECORDED FILLS (no ledger until M5)" in result.output
+    finally:
+        r.close()

@@ -251,3 +251,35 @@ def test_a_proposal_without_the_order_store_fails_closed_once_the_account_has_or
                      calendar=PIPELINE_CAL, coverage=None, calendar_version="cal-1", code_version="test",
                      correlation_id="no-order-store")
     assert record.outcome.value == "PREREQUISITE_MISSING" and "order history" in record.missing, record.reason
+
+
+@pytest.mark.unit
+def test_an_unknown_order_never_claims_a_lookup_that_has_not_happened(pg_database, tmp_path):
+    """B11: every UNKNOWN was labelled "broker has no record", even straight after a lost submit answer."""
+    from investment_engine.reporting.order_log import build_order_log
+    from tests.engine.test_intent_pipeline import DAY
+    from tests.engine.worker_env import WorkerEnv, after_close, pre_open
+
+    env = WorkerEnv(pg_database, tmp_path / "market", tmp_path / "control")
+    try:
+        order, view = env.convert(DAY)
+        env.broker.timeout_next_submit = True
+        env.broker.lookup = lambda client, *, at: (_ for _ in ()).throw(RuntimeError("not yet"))
+        worker = env.worker(pre_open(order, view))
+        worker.step()
+
+        def text():
+            return build_order_log("R2", orders=worker.orders, intents=env.stores.intents, lineage=env.stores.lineage,
+                                   calendar=CAL, source="yfinance", header_extra={}).to_text()
+
+        before = text()
+        assert "broker has no record" not in before and "no record at a lookup" not in before
+        assert "UNCONFIRMED: the outcome is unknown; no lookup has answered yet" in before
+        del env.broker.lookup  # the double's own lookup again
+        env.broker.known.pop(order.client_order_id)  # the broker never had it (D20)
+        worker = env.worker(after_close(order))
+        worker.step()
+        after = text()
+        assert "UNRESOLVED: the broker had no record at a lookup at " in after
+    finally:
+        env.close()

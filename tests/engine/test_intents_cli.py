@@ -74,8 +74,8 @@ def outcomes(pg_database, tmp_path, monkeypatch):
 
 
 HEADER = ("ACCOUNT R1 RESEARCH", "Level 1 (Approved paper)", "RESEARCH ACCOUNT: SIMULATED / REPLAY",
-          "NO ORDERS: order management arrives in M4", "KILL SWITCH: NOT BUILT (M4)",
-          "PORTFOLIO: DECLARED STARTING STATE (no ledger until M5)", "risk-1, policy-1")
+          "ORDERS: 0 for this account (simulated broker only in M4)", "KILL SWITCH: TRADING DISABLED (missing)",
+          "PORTFOLIO: DECLARED STARTING STATE (no ledger until M5)", "risk-1, policy-1")  # the state now (B11)
 
 
 @pytest.mark.unit

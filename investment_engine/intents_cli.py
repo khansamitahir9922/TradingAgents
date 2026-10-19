@@ -274,9 +274,24 @@ def _header(stores, account_id: str, at: datetime) -> None:
     except NoLimits:
         versions = "no limits effective (every proposal is a missing prerequisite)"
     _say(f"ACCOUNT {account.account_id} {account.kind} | {level} | {mode}")
-    _say("NO ORDERS: order management arrives in M4 | KILL SWITCH: NOT BUILT (M4) | "
-         "PORTFOLIO: DECLARED STARTING STATE (no ledger until M5)")
+    _say(_safety_line(stores, account_id))
     _say(f"limits in force at {at.isoformat()}: {versions}")
+
+
+def _safety_line(stores, account_id: str) -> str:
+    """The safety state as it is now, read from the stores and the flag (PRD principle 2). It replaces M3-14 rule 1's
+    milestone labels ("NO ORDERS ... | KILL SWITCH: NOT BUILT"), which stopped being true in M4 (Codex M4 review B11;
+    resolved in docs/tasks/M4-13.md)."""
+    from investment_engine import config
+    from investment_engine.killswitch.flag import FLAG_FILE, KillSwitchReader
+
+    count = stores.db.fetchone("SELECT COUNT(*) FROM orders WHERE account_id = :a", {"a": account_id})[0]
+    reading = KillSwitchReader(config.control_dir() / FLAG_FILE).read()
+    switch = (f"TRADING ENABLED (sequence {reading.state.sequence})" if reading.enabled
+              else f"TRADING DISABLED ({reading.problem or 'halted'})")
+    portfolio = "PROVISIONAL PROJECTION FROM RECORDED FILLS" if count else "DECLARED STARTING STATE"
+    return (f"ORDERS: {count} for this account (simulated broker only in M4) | KILL SWITCH: {switch} | "
+            f"PORTFOLIO: {portfolio} (no ledger until M5)")
 
 
 def _times(value: datetime | None) -> str:
@@ -475,9 +490,10 @@ def order_log(account: str = typer.Option(..., "--account"),
         log = build_order_log(account, orders=orders, intents=stores.intents, lineage=stores.lineage,
                               calendar=calendar, source=SOURCE, header_extra={"kill switch now": switch,
                                                                               "promotion": "NOT PROMOTED (D23)"},
-                              snapshots=stores.snapshots, at=clock.now())
+                              snapshots=stores.snapshots, at=clock.now(), proposals=stores.proposals,
+                              intent_lineage=stores.intent_lineage)
         _say(log.to_text())
         if json_path:
             Path(json_path).write_text(log.to_json() + "\n", encoding="utf-8")
             _say(f"JSON written to {json_path}")
-    _run(go)
+    _run(go, read_only=True)  # viewing never takes the schema-upgrade or write path
