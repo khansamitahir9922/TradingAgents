@@ -17,7 +17,11 @@ never silently dropped.
 Each round selects only runnable events: per aggregate, the one whose version is
 next after the last it processed. A held or gapped aggregate therefore never fills
 a page, however many later versions it has (Codex M4 review B10). `limit` bounds
-the events attempted in one run.
+the events attempted in one run. Selection rotates: each round starts after the
+aggregate last attempted, by this consumer instance, and wraps around, so a page
+of failing heads never hides a healthy aggregate behind it (Codex M4 re-review
+R4). The position lives in memory: a restarted consumer starts again at the
+beginning and rotates from there; nothing is skipped or applied twice either way.
 """
 
 from collections.abc import Callable, Mapping
@@ -45,8 +49,9 @@ class Consumer:
         if not isinstance(name, str) or not name.strip():
             raise ValueError("a consumer needs a name")
         self.name, self._handles, self._clock = name, dict(handles), clock
+        self._after: tuple[str, str] | None = None  # the aggregate last attempted: the next round starts after it
 
-    def _runnable(self, n: int) -> list:
+    def _heads(self, n: int, where: str, params: dict) -> list:
         """Per aggregate, at most the next version after the last processed: never a later one."""
         return self._db.fetchall(
             f"SELECT {', '.join('l.' + c.strip() for c in _COLUMNS.split(','))} FROM event_log l "
@@ -55,7 +60,18 @@ class Consumer:
             "ON p.aggregate_type = l.aggregate_type AND p.aggregate_id = l.aggregate_id "
             "WHERE l.aggregate_version = COALESCE(p.v, 0) + 1 "
             "AND NOT EXISTS (SELECT 1 FROM processed_events q WHERE q.consumer = :c AND q.event_id = l.event_id) "
-            "ORDER BY l.aggregate_type, l.aggregate_id LIMIT :limit", {"c": self.name, "limit": n})
+            f"AND {where} ORDER BY l.aggregate_type, l.aggregate_id LIMIT :limit",
+            {"c": self.name, "limit": n, **params})
+
+    def _runnable(self, n: int) -> list:
+        """Up to `n` runnable heads in rotation: those after the aggregate last attempted, then from the start."""
+        if self._after is None:
+            return self._heads(n, "TRUE", {})
+        after = {"t": self._after[0], "i": self._after[1]}
+        rows = self._heads(n, "(l.aggregate_type, l.aggregate_id) > (:t, :i)", after)
+        if len(rows) < n:
+            rows += self._heads(n - len(rows), "(l.aggregate_type, l.aggregate_id) <= (:t, :i)", after)
+        return rows
 
     def _held(self) -> int:
         """Unprocessed events waiting for an earlier version of their aggregate."""
@@ -77,6 +93,7 @@ class Consumer:
                 break
             for envelope in heads[:limit - attempted]:
                 attempted += 1
+                self._after = (envelope.aggregate_type, envelope.aggregate_id)
                 outcome = self._apply(envelope, blocked)
                 applied += outcome == "applied"
                 unhandled += outcome == "unhandled"

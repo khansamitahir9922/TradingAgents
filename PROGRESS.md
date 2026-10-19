@@ -150,6 +150,16 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-19: Claude Code (M4 re-review fix R4: consumer rotation, so failing heads never starve later aggregates)
+- **Codex M4 re-review R4 (B10):** selecting only each aggregate's next version fixed one long failing aggregate, but every call restarted at the same lexical heads. `limit` failing aggregates hid every later one: with `a:1` and `b:1` failing at limit 2, a healthy `z:1` never ran.
+- **Fix (`events/consumer.py`):** the consumer remembers the aggregate it last attempted. Each round selects runnable heads after it, then wraps around to the start, so every head is reached within bounded work. Per-aggregate version order, the effect and its mark in one transaction, failure records and de-duplication are unchanged.
+  - The position is in memory: a restarted consumer starts again at the beginning and rotates from there. Nothing is skipped or applied twice either way, so no migration is needed.
+- **Tests (`test_consumers.py`):**
+  - Codex's case (`a`, `b` failing, `z` healthy, limit 2, four calls): `z` is applied;
+  - five failing aggregates (two versions each) at limit 5, plus a healthy one: the healthy one completes within three calls; after the fix every event applies in order, each exactly once (12 processed).
+  - Both failed first; the earlier single-aggregate and gap tests still pass.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3331 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 2520.16s (0:42:00) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-19: Claude Code (M4 re-review fix R1: the whole order log in one Decimal context again)
 - **Codex M4 re-review R1 (B2):** B11's commit inserted a helper, `_unknown`, between `@exact` and `build_order_log`, so the decorator protected the helper's string formatting while the builder's fill totals used the caller's context again. Reproduced: the same stored fills reported 29,431.44 or 30,000 (3.0E+4) USD.
 - **Fix:** `@exact` is back on `build_order_log`, the whole builder; the helpers need none. The UNKNOWN wording and stored context are unchanged.

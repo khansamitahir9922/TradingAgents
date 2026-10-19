@@ -142,3 +142,31 @@ def test_a_gap_with_more_than_a_page_behind_it_never_starves_another(env):
     assert c.run_once(limit=60).applied == 60  # bounded work, in version order
     assert c.run_once(limit=100).applied == 42
     assert effects(env) == [("a", n) for n in range(1, 103)] + [("b", 1)]
+
+
+@pytest.mark.postgres
+@pytest.mark.unit
+def test_a_page_of_failing_heads_never_starves_a_healthy_aggregate_behind_it(env):
+    """R4 (Codex M4 re-review, B10): every call restarted at the same lexical heads, so `limit` failing aggregates
+    hid every later one forever: a:1 and b:1 failing at limit 2 kept z:1 from ever running."""
+    publish(env, envelope("a", 1), envelope("b", 1), envelope("z", 1))
+    broken = consumer(env, fail=lambda e: e.aggregate_id != "z")
+    for _ in range(4):
+        broken.run_once(limit=2)
+    assert effects(env) == [("z", 1)]
+
+
+@pytest.mark.postgres
+@pytest.mark.unit
+def test_a_full_page_of_failing_heads_rotates_and_everything_recovers_exactly_once(env):
+    failing = [f"f{n}" for n in range(5)]
+    publish(env, *[envelope(a, v) for a in failing for v in (1, 2)], envelope("z", 1), envelope("z", 2))
+    broken = consumer(env, fail=lambda e: e.aggregate_id in failing)
+    for _ in range(3):
+        broken.run_once(limit=5)  # a page exactly the size of the failing heads
+    assert effects(env) == [("z", 1), ("z", 2)]
+    fixed = consumer(env)
+    while fixed.run_once(limit=5).applied:
+        pass
+    assert effects(env) == sorted([(a, v) for a in failing for v in (1, 2)] + [("z", 1), ("z", 2)])
+    assert env.db.fetchone("SELECT COUNT(*) FROM processed_events")[0] == 12  # each event once
