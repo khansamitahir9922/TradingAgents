@@ -20,7 +20,7 @@ substitute price.
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -125,6 +125,44 @@ class StoreKnowledge:
                 if a.received_at <= at]
 
 
+REPLAY_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)  # a replay's action history is established from here
+
+
+@dataclass(frozen=True)
+class ActionHistory:
+    """That a replay holds every corporate-action revision delivered from `complete_from` on, including those
+    delivered before its feed began (an action announced before the feed and effective after it). A feed's start
+    time alone is no such proof (Codex M4 re-review R3). Made by `replay_with_outstanding_actions`."""
+
+    complete_from: datetime
+
+
+def replay_with_outstanding_actions(feed):
+    """The shared replay composition (R3): every corporate-action revision the store delivers before `feed`
+    begins, from the start of the store, then the feed's own events, renumbered into one strictly increasing
+    sequence. Delivery times are never changed; the same latency applies. Returns (events, ActionHistory)."""
+    from dataclasses import replace
+
+    from investment_engine.clock import ReplayClock
+    from investment_engine.market.replay import ReplayFeed
+
+    def events():
+        sequence = 0
+        if feed.start > REPLAY_EPOCH:
+            earlier = ReplayFeed(feed.reader, ReplayClock(REPLAY_EPOCH), sources=feed.sources,
+                                 instrument_ids=feed.instrument_ids, timeframes=feed.timeframes, start=REPLAY_EPOCH,
+                                 end=feed.start, latency=feed.latency)
+            for event in earlier:
+                if event.kind == "CORPORATE_ACTION":
+                    yield replace(event, sequence=sequence)
+                    sequence += 1
+        for event in feed:
+            yield replace(event, sequence=sequence)
+            sequence += 1
+
+    return events(), ActionHistory(REPLAY_EPOCH)
+
+
 class ReplayKnowledge:
     """Replay knowledge over M2's ReplayKnowledgeReader, optionally up to an equal-time feed sequence.
 
@@ -134,12 +172,15 @@ class ReplayKnowledge:
     delivered."""
 
     def __init__(self, reader, *, through_sequence: int | None = None, calendar=None,
-                 complete_through: datetime | None = None, known_from: datetime | None = None) -> None:
-        """`known_from` is when the feed this reader was given begins: nothing before it was delivered, so a
-        projection from an earlier declared start is unavailable rather than silently missing actions (B7)."""
+                 complete_through: datetime | None = None, action_history: ActionHistory | None = None) -> None:
+        """`action_history` says the reader was fed through `replay_with_outstanding_actions`, so it holds every
+        action revision from its `complete_from`. Without it a projection carrying a holding is unavailable,
+        never computed from a history that might lack an action (B7; R3)."""
+        if action_history is not None and not isinstance(action_history, ActionHistory):
+            raise TypeError("action_history must be the ActionHistory of the replay composition")
         self._reader, self._through, self._calendar = reader, through_sequence, calendar
         self._complete = None if complete_through is None else check_utc(complete_through, "complete_through")
-        self.known_from = None if known_from is None else check_utc(known_from, "known_from")
+        self.action_history = action_history
 
     def _known(self, identity: tuple, at: datetime) -> list[Candle]:
         if self._complete is not None and check_utc(at, "at") <= self._complete:

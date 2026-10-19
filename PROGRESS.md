@@ -150,6 +150,19 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-19: Claude Code (M4 re-review fix R3: the replay's action history is established, not assumed)
+- **Codex M4 re-review R3 (B7):** a feed's start time was taken as proof of action history. A ReplayFeed selects by delivery, so a split announced before the feed began and effective after the declared holdings was neither reflected in them nor delivered. Reproduced: announced at D1's close, ten shares declared at D2's close, effective at D3's open, and a feed starting an hour before the declared start gave 10 shares, where 100 or Unavailable is required.
+- **Fix (`portfolio/reference.py`, `portfolio/provisional.py`, `oms/pipeline.py`, `intents_cli.py`):**
+  - **The shared composition.** `replay_with_outstanding_actions(feed)` yields every corporate-action revision the store delivers before the feed begins (from the start of the store, at the same latency), then the feed's own events, renumbered into one strictly increasing sequence. Delivery times are unchanged. It returns an `ActionHistory(complete_from)`.
+  - **The proof.** `ReplayKnowledge(action_history=)` replaces `known_from`, which is removed so no caller can mistake a timestamp for proof.
+  - **The projection.** When instruments are involved, it requires an action history complete from the declared start or earlier; otherwise it is Unavailable with the reason. The same-instant convention and provider separation are unchanged.
+  - **The callers.** `propose_over_replay` composes any `ReplayFeed` it is given, and passes the history to its default or the caller's knowledge. `intents simulate` and `intents propose` use the same composition.
+- **Tests:**
+  - `test_provisional_positions.py`: an action announced before the feed and effective after the start, for a split (100 shares through the composition) and for a dividend (its receivable); the bare feed is Unavailable in both. The earlier B7 cases are rewritten on the new API (an action history beginning after the start is refused; unestablished replay knowledge is refused with a holding; a cash-only start is unaffected).
+  - `test_order_log.py`: `propose_over_replay`'s own composition gives every proposal the split announced before its feed, with an established history; `simulate`'s knowledge says its history is complete from before the declared start.
+  - Codex's R3 probe still constructs `ReplayKnowledge(known_from=...)` and so no longer runs: that argument is gone, because the review itself says a feed-start timestamp is not proof. Its scenario is covered above through the composition.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3334 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 2396.98s (0:39:56) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-19: Claude Code (M4 re-review fix R4: consumer rotation, so failing heads never starve later aggregates)
 - **Codex M4 re-review R4 (B10):** selecting only each aggregate's next version fixed one long failing aggregate, but every call restarted at the same lexical heads. `limit` failing aggregates hid every later one: with `a:1` and `b:1` failing at limit 2, a healthy `z:1` never ran.
 - **Fix (`events/consumer.py`):** the consumer remembers the aggregate it last attempted. Each round selects runnable heads after it, then wraps around to the start, so every head is reached within bounded work. Per-aggregate version order, the effect and its mark in one transaction, failure records and de-duplication are unchanged.

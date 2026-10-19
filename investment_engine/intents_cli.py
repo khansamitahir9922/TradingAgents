@@ -186,7 +186,7 @@ def propose_intents(account: str = typer.Option(..., "--account"), at: str | Non
         from investment_engine.oms.order_store import OrderStore
         from investment_engine.oms.pipeline import propose, propose_over_replay
         from investment_engine.policy.accounts import AccountKind
-        from investment_engine.portfolio.reference import ReplayKnowledge, StoreKnowledge
+        from investment_engine.portfolio.reference import StoreKnowledge
         from investment_engine.quant.adjusted import establish_coverage
 
         clock, calendar = LiveClock(), load_us_equities_calendar()
@@ -238,14 +238,10 @@ def propose_intents(account: str = typer.Option(..., "--account"), at: str | Non
                                           types=(ActionType.SPLIT, ActionType.DIVIDEND), first=cov_first,
                                           last=cov_last, as_of=end, reason=reason)
 
-            def make_knowledge(knowledge_reader, **kwargs):
-                return ReplayKnowledge(knowledge_reader, known_from=start, **kwargs)
-
             records = propose_over_replay(account, views, events=feed, stores=stores,
                                           knowledge_reader=ReplayKnowledgeReader(), calendar=calendar,
                                           coverage=coverage, calendar_version=calendar_version,
-                                          code_version=code_version, proposal_delay=delay,
-                                          make_knowledge=make_knowledge, orders=orders)
+                                          code_version=code_version, proposal_delay=delay, orders=orders)
         _header(stores, account, records[-1].at if records else clock.now())
         for record in records:
             _proposal_line(record, stores)
@@ -404,7 +400,10 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
         from investment_engine.market.candles import Timeframe
         from investment_engine.market.corporate_actions import ActionType
         from investment_engine.market.replay import ReplayFeed
-        from investment_engine.portfolio.reference import ReplayKnowledge
+        from investment_engine.portfolio.reference import (
+            ReplayKnowledge,
+            replay_with_outstanding_actions,
+        )
         from investment_engine.quant.adjusted import establish_coverage
         from investment_engine.simulation.run import SimulationRefused, simulate, stored_views
         from investment_engine.storage.database import PostgresDatabase
@@ -420,13 +419,16 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
             # a feed cut anywhere later could miss it while looking complete (Codex M4 review B7).
             start, end = datetime(1970, 1, 1, tzinfo=UTC), last + timedelta(days=21)
             knowledge_reader, sequences = ReplayKnowledgeReader(), {}
-            for event in ReplayFeed(reader, ReplayClock(start), sources=[SOURCE], instrument_ids=[instrument],
-                                    timeframes=[Timeframe.D1], start=start, end=end):
+            feed = ReplayFeed(reader, ReplayClock(start), sources=[SOURCE], instrument_ids=[instrument],
+                              timeframes=[Timeframe.D1], start=start, end=end)
+            events, history = replay_with_outstanding_actions(feed)  # the shared composition (R3)
+            for event in events:
                 knowledge_reader.accept(event)
                 p = event.payload
                 sequences[(p.source, p.instrument_id, getattr(p, "start_time", None), p.revision)] = event.sequence
             # Every event delivered before `end` is accepted; each is known only from its own delivery.
-            knowledge = ReplayKnowledge(knowledge_reader, calendar=calendar, complete_through=end, known_from=start)
+            knowledge = ReplayKnowledge(knowledge_reader, calendar=calendar, complete_through=end,
+                                        action_history=history)
 
         def proposal_knowledge(view, stores):
             """The proposal's knowledge stops at its view's own decision bar within that instant, exactly as M3's
@@ -435,7 +437,7 @@ def simulate_run(account: str = typer.Option(..., "--account"), from_day: str = 
 
             bar = _decision_bar(stores, view)
             return ReplayKnowledge(knowledge_reader, through_sequence=sequences.get(bar) if bar else None,
-                                   calendar=calendar, complete_through=view.generated_at, known_from=start)
+                                   calendar=calendar, complete_through=view.generated_at, action_history=history)
         evidence, cov_first, cov_last, reason = _coverage(last)
         coverage = establish_coverage(evidence, source=SOURCE, instrument_id=instrument,
                                       types=(ActionType.SPLIT, ActionType.DIVIDEND), first=cov_first, last=cov_last,

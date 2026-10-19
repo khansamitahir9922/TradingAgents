@@ -94,19 +94,19 @@ def project(account_id: str, *, at: datetime, starting, orders, knowledge, calen
             if f.recorded_at <= at and f.executed_at <= at:
                 fills.append((f.executed_at, 1, f.fill_id, ("fill", order, f)))
     instruments = {i for i, _ in starting.positions} | {o.instrument_id for o, _, _ in as_of}
-    if instruments and hasattr(knowledge, "known_from"):
-        # Replay knowledge holds only what its feed delivered. A history that starts later than the declared start,
-        # or that doesn't say where it starts, is no evidence that nothing happened since (Codex M4 review B7 and
-        # its re-run probe). The store's own knowledge is the whole store. Nothing held and no orders: nothing to
-        # carry, so no history is needed.
-        known_from = knowledge.known_from
-        if known_from is None:
-            return Unavailable("the replay knowledge doesn't say where its history begins; actions since "
-                               f"{account_id}'s declared start can't be established")
-        if known_from > starting.effective_at:
-            return Unavailable(f"the knowledge begins at {known_from.isoformat()}, after {account_id}'s declared "
-                               f"start {starting.effective_at.isoformat()}; actions since the start can't be "
-                               "established")
+    if instruments and hasattr(knowledge, "action_history"):
+        # Replay knowledge holds only what was fed to it. Its action history must be established: every action
+        # revision delivered from before the declared start, including those announced before the feed began
+        # (Codex M4 review B7; re-review R3). A feed's start time is no such proof. The store's own knowledge is
+        # the whole store. Nothing held and no orders: nothing to carry, so no history is needed.
+        history = knowledge.action_history
+        if history is None:
+            return Unavailable("the replay's action history isn't established (its feed wasn't composed with the "
+                               f"actions outstanding before it began); actions since {account_id}'s declared start "
+                               "can't be established")
+        if history.complete_from > starting.effective_at:
+            return Unavailable(f"the replay's action history begins at {history.complete_from.isoformat()}, after "
+                               f"{account_id}'s declared start {starting.effective_at.isoformat()}")
 
     actions = []
     for instrument_id in sorted(instruments):

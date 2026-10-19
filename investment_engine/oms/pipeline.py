@@ -504,7 +504,11 @@ def propose_over_replay(account_id: str, views: Sequence[MarketView], *, events,
     `generated_at`), once every event delivered by then is accepted. With no extra delay, equal-time events after
     the view's own decision bar are excluded (`through_sequence`), exactly as the view saw them.
     """
-    from investment_engine.portfolio.reference import ReplayKnowledge
+    from investment_engine.market.replay import ReplayFeed
+    from investment_engine.portfolio.reference import (
+        ReplayKnowledge,
+        replay_with_outstanding_actions,
+    )
 
     if stores.accounts.account(account_id).kind is not AccountKind.RESEARCH:
         raise ValueError("only RESEARCH accounts are replayed; PAPER accounts act at live time")
@@ -512,6 +516,9 @@ def propose_over_replay(account_id: str, views: Sequence[MarketView], *, events,
         raise ValueError("proposal_delay can't be negative")
     pending = sorted(views, key=lambda v: (v.generated_at, v.evidence_refs))
     records, sequences = [], {}
+    history = None
+    if isinstance(events, ReplayFeed):  # the shared composition: actions outstanding before the feed, too (R3)
+        events, history = replay_with_outstanding_actions(events)
 
     def flush(before: datetime | None):
         while pending and (before is None or pending[0].generated_at + proposal_delay < before):
@@ -522,12 +529,9 @@ def propose_over_replay(account_id: str, views: Sequence[MarketView], *, events,
                 bar = _decision_bar(stores, v)
                 through = sequences.get(bar) if bar is not None else None
             # Every event delivered by `at` has been accepted, so the knowledge is complete through `at`.
-            if make_knowledge is not None:
-                knowledge = make_knowledge(knowledge_reader, through_sequence=through, calendar=calendar,
-                                           complete_through=at)
-            else:  # the feed says where its history begins (B7 follow-up)
-                knowledge = ReplayKnowledge(knowledge_reader, through_sequence=through, calendar=calendar,
-                                            complete_through=at, known_from=getattr(events, "start", None))
+            knowledge = (make_knowledge or ReplayKnowledge)(knowledge_reader, through_sequence=through,
+                                                            calendar=calendar, complete_through=at,
+                                                            action_history=history)
             records.append(propose(account_id, v, at=at, stores=stores, knowledge=knowledge, calendar=calendar,
                                    coverage=coverage, calendar_version=calendar_version, code_version=code_version,
                                    correlation_id=f"replay:{account_id}:{at.isoformat()}", orders=orders))

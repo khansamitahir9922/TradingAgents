@@ -366,49 +366,95 @@ def test_a_dividend_on_the_start_date_follows_the_same_rule(start, entitled):
 
 
 @pytest.mark.unit
-def test_knowledge_that_begins_after_the_declared_start_makes_the_projection_unavailable():
+def test_an_action_history_that_begins_after_the_declared_start_makes_the_projection_unavailable():
     """B7: a feed preloaded from sixty days before the first view held no record of an earlier split, and the
     projection carried ten shares as if none had happened. A truncated history is not evidence of no actions."""
+    from investment_engine.portfolio.reference import ActionHistory
+
     knowledge = Knowledge([])
-    knowledge.known_from = START + timedelta(days=400)
+    knowledge.action_history = ActionHistory(START + timedelta(days=400))
     p = proj(Orders(), START + timedelta(days=500), start=declared(START), knowledge=knowledge)
-    assert isinstance(p, Unavailable) and "knowledge begins" in p.reason
-    knowledge.known_from = START  # complete from the start: no action, so the holding stands
+    assert isinstance(p, Unavailable) and "action history begins" in p.reason
+    knowledge.action_history = ActionHistory(START)  # complete from the start: no action, so the holding stands
     assert proj(Orders(), START + timedelta(days=500), start=declared(START), knowledge=knowledge).held(NVDA) == 10
 
 
-@pytest.mark.unit
-def test_replay_knowledge_that_does_not_say_where_it_begins_is_not_trusted_with_a_holding(tmp_path):
-    """B7 follow-up (Codex's probe, re-run on the fixed head): replay knowledge from a feed cut sixty days before a
-    view, with no `known_from`, carried a 2019 holding through a 2021 4-for-1 split as ten shares. A replay
-    history must say where it begins before it can carry a holding; the store's own knowledge is the whole store."""
+def stored_market(tmp_path, *, actions, bar_day, bar_received):
+    from investment_engine.market.store.reader import MarketDataReader
+    from investment_engine.market.store.writer import MarketDataWriter
+    from tests.engine.test_raw_reference import observation
+
+    writer = MarketDataWriter(tmp_path / "market")
+    writer.write_candles([observation(bar_day, received=bar_received)], import_id="bars")
+    writer.write_corporate_actions(list(actions), import_id="actions")
+    return MarketDataReader(tmp_path / "market")
+
+
+def replay(reader, feed_start, end, *, composed):
+    """Replay knowledge from a feed beginning at `feed_start`: through the shared composition, or the bare feed."""
     from investment_engine.clock import ReplayClock
     from investment_engine.decision.pipeline import ReplayKnowledgeReader
     from investment_engine.market.candles import Timeframe
     from investment_engine.market.replay import ReplayFeed
-    from investment_engine.market.store.reader import MarketDataReader
-    from investment_engine.market.store.writer import MarketDataWriter
-    from investment_engine.portfolio.reference import ReplayKnowledge
-    from tests.engine.test_raw_reference import T, observation
+    from investment_engine.portfolio.reference import (
+        ReplayKnowledge,
+        replay_with_outstanding_actions,
+    )
+
+    feed = ReplayFeed(reader, ReplayClock(feed_start), sources=["yfinance"], instrument_ids=[NVDA],
+                      timeframes=[Timeframe.D1], start=feed_start, end=end + timedelta(microseconds=1))
+    events, history = replay_with_outstanding_actions(feed) if composed else (feed, None)
+    known = ReplayKnowledgeReader()
+    for event in events:
+        known.accept(event)
+    return ReplayKnowledge(known, calendar=CAL, complete_through=end, action_history=history)
+
+
+@pytest.mark.unit
+def test_replay_knowledge_without_an_established_action_history_is_not_trusted_with_a_holding(tmp_path):
+    """B7 follow-up: replay knowledge from a feed cut sixty days before a view carried a 2019 holding through a
+    2021 4-for-1 split as ten shares. Without the shared composition's action history it is unavailable; with
+    it the split applies. A cash-only start has nothing to carry and is unaffected."""
+    from tests.engine.test_raw_reference import T
     from tests.engine.test_research_simulation import action as stored_action
 
-    writer = MarketDataWriter(tmp_path / "market")
-    writer.write_candles([observation(received=T)], import_id="bars")
-    writer.write_corporate_actions([stored_action(date(2021, 7, 20), ratio="4")], import_id="actions")
-    reader = MarketDataReader(tmp_path / "market")
+    reader = stored_market(tmp_path, actions=[stored_action(date(2021, 7, 20), ratio="4")], bar_day=date(2024, 6, 3),
+                           bar_received=T)
     declared_at = datetime(2019, 1, 2, 21, tzinfo=UTC)
-
-    def knowledge(feed_start, **kwargs):
-        known = ReplayKnowledgeReader()
-        for event in ReplayFeed(reader, ReplayClock(feed_start), sources=["yfinance"], instrument_ids=[NVDA],
-                                timeframes=[Timeframe.D1], start=feed_start, end=T + timedelta(microseconds=1)):
-            known.accept(event)
-        return ReplayKnowledge(known, calendar=CAL, complete_through=T, **kwargs)
-
     holding = declared(declared_at, positions=("10",))
-    unlabelled = proj(Orders(), T, start=holding, knowledge=knowledge(T - timedelta(days=60)))
-    assert isinstance(unlabelled, Unavailable) and "doesn't say where" in unlabelled.reason
-    full = proj(Orders(), T, start=holding, knowledge=knowledge(declared_at, known_from=declared_at))
-    assert full.held(NVDA) == Decimal(40)  # the whole history: the split applies
-    cash_only = proj(Orders(), T, start=declared(declared_at, positions=()), knowledge=knowledge(T - timedelta(days=60)))
-    assert cash_only.held(NVDA) == 0 and cash_only.cash == Decimal("100000")  # nothing to carry: unaffected
+    bare = proj(Orders(), T, start=holding, knowledge=replay(reader, T - timedelta(days=60), T, composed=False))
+    assert isinstance(bare, Unavailable) and "isn't established" in bare.reason
+    composed = proj(Orders(), T, start=holding, knowledge=replay(reader, T - timedelta(days=60), T, composed=True))
+    assert composed.held(NVDA) == Decimal(40)  # the composition supplies the split delivered before the feed
+    cash_only = proj(Orders(), T, start=declared(declared_at, positions=()),
+                     knowledge=replay(reader, T - timedelta(days=60), T, composed=False))
+    assert cash_only.held(NVDA) == 0 and cash_only.cash == Decimal("100000")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("kind", ["split", "dividend"])
+def test_an_action_announced_before_the_feed_and_effective_after_the_start_is_applied(tmp_path, kind):
+    """R3 (Codex M4 re-review): announced at D1's close, holdings declared at D2's close, effective at D3's open,
+    and a feed beginning an hour before the declared start: the bare feed never delivers the action, though it was
+    outstanding at the start. The composition supplies it, so the split gives 100 shares and the dividend its
+    receivable; the bare feed is unavailable, never 10 shares."""
+    from dataclasses import replace as replace_obs
+
+    from tests.engine.test_simulated_run import action as observed_action
+
+    announced, declared_at, as_of = t_close(D1), t_close(D2), t_close(D3) + timedelta(minutes=5)
+    if kind == "split":
+        made = observed_action(ActionType.SPLIT, D3, ratio="10")
+    else:
+        made = observed_action(ActionType.DIVIDEND, D3, amount="0.50")
+    reader = stored_market(tmp_path, actions=[replace_obs(made, received_at=announced, processed_at=announced)],
+                           bar_day=D3, bar_received=as_of)
+    holding = declared(declared_at, positions=("10",))
+    feed_start = declared_at - timedelta(hours=1)  # after the announcement, before the declared start
+    bare = proj(Orders(), as_of, start=holding, knowledge=replay(reader, feed_start, as_of, composed=False))
+    assert isinstance(bare, Unavailable)
+    composed = proj(Orders(), as_of, start=holding, knowledge=replay(reader, feed_start, as_of, composed=True))
+    if kind == "split":
+        assert composed.held(NVDA) == Decimal(100)
+    else:
+        assert composed.held(NVDA) == Decimal(10) and composed.receivables == Decimal("5.00")

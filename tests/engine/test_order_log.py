@@ -168,7 +168,7 @@ def test_simulate_feeds_the_whole_local_history_and_says_where_its_knowledge_beg
         return real_feed(*args, **kwargs)
 
     def recording_simulate(*args, **kwargs):
-        seen.append(kwargs["knowledge"].known_from)
+        seen.append(kwargs["knowledge"].action_history.complete_from)
         return real_simulate(*args, **kwargs)
 
     monkeypatch.setattr(replay, "ReplayFeed", recording_feed)
@@ -177,6 +177,7 @@ def test_simulate_feeds_the_whole_local_history_and_says_where_its_knowledge_beg
                SESSIONS[63].isoformat())
     assert done.exit_code == 0, done.output
     assert starts and starts[0] <= START and seen == [starts[0]]  # from before the declared start, and it says so
+    # (the feed starts at the beginning of the store, so the composition adds no earlier actions: R3)
 
 
 # ---------------------------------------------------------------- ordinary proposals use the order store (B6)
@@ -283,3 +284,47 @@ def test_an_unknown_order_never_claims_a_lookup_that_has_not_happened(pg_databas
         assert "UNRESOLVED: the broker had no record at a lookup at " in after
     finally:
         env.close()
+
+
+@pytest.mark.unit
+def test_propose_over_replay_supplies_actions_announced_before_its_feed(cli_and_env, monkeypatch):
+    """R3 (Codex M4 re-review): the normal replay composition. A feed beginning after a split was announced still
+    gives every proposal the split, with an established action history, through the shared composition."""
+    from dataclasses import replace as replace_obs
+    from datetime import timedelta
+
+    from investment_engine.clock import ReplayClock
+    from investment_engine.decision.pipeline import ReplayKnowledgeReader
+    from investment_engine.market.candles import Timeframe
+    from investment_engine.market.corporate_actions import ActionType
+    from investment_engine.market.replay import ReplayFeed
+    from investment_engine.oms import pipeline
+    from tests.engine.test_intent_pipeline import t_of
+    from tests.engine.test_simulated_run import action as observed_action
+
+    app, tmp, env = cli_and_env
+    ex_day, announced = SESSIONS[64], CAL.session(SESSIONS[55]).close
+    split = replace_obs(observed_action(ActionType.SPLIT, ex_day, ratio="2"), received_at=announced,
+                        processed_at=announced)
+    MarketDataWriter(tmp / "market").write_corporate_actions([split], import_id="announced-early")
+    reader = MarketDataReader(tmp / "market")
+    feed_start = t_of(SESSIONS[58])  # after the announcement
+    from investment_engine.intents_cli import _views_between
+
+    views = _views_between(env.stores.db, "EQ_US_NVDA", feed_start, t_of(SESSIONS[63]))
+    assert views
+    seen = []
+    real = pipeline.propose
+
+    def capture(*args, **kwargs):
+        knowledge = kwargs["knowledge"]
+        seen.append((knowledge.action_history, [a.ex_date for a in knowledge.actions_between(
+            "yfinance", "EQ_US_NVDA", SESSIONS[50], ex_day, at=kwargs["at"])]))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "propose", capture)
+    feed = ReplayFeed(reader, ReplayClock(feed_start), sources=["yfinance"], instrument_ids=["EQ_US_NVDA"],
+                      timeframes=[Timeframe.D1], start=feed_start, end=t_of(SESSIONS[63]) + timedelta(seconds=1))
+    pipeline.propose_over_replay("R2", views, events=feed, stores=env.stores, knowledge_reader=ReplayKnowledgeReader(),
+                                 calendar=CAL, coverage=None, calendar_version="cal-1", code_version="test")
+    assert seen and all(history is not None and ex_day in days for history, days in seen), seen
