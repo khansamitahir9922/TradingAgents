@@ -388,7 +388,7 @@ def test_the_log_pins_code_and_calendar_versions_and_its_cutoff(run):
     log = run.log(report)
     assert log.header["code version"] == "test" and log.header["calendar version"] == "cal-1"
     last = max(t.at for o, _ in run.orders().for_account("R2") for t in run.orders().history(o.order_id))
-    assert log.header["cutoff (latest recorded order time)"] == last.isoformat()
+    assert log.header["cutoff (latest order business time)"] == last.isoformat()
     assert log.summary["corporate-action adjustments"].startswith("as of the snapshot at ")
 
 

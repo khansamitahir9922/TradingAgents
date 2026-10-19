@@ -109,3 +109,36 @@ def test_a_cancel_request_racing_a_fill_ends_filled_or_cancelled_once(env):
         assert status.state in (S.FILLED, S.CANCELLED)
         assert len(env.worker(t).orders.fills(order.order_id)) <= 1
         assert request(env, order) == []
+
+
+@pytest.mark.unit
+def test_a_broker_error_on_one_cancel_leaves_it_retryable_and_the_next_request_goes_through(env):
+    """N1 (Codex M4 re-review): a RuntimeError from one broker cancel aborted the whole step. Any broker-call failure
+    is an unknown outcome, like a timeout: that request stays SENDING with a visible anomaly and is sent again next
+    step; the worker's own database errors are not swallowed (they happen outside the broker call)."""
+    from tests.engine.test_intent_pipeline import SESSIONS
+
+    first, v1 = env.convert(DAY)
+    env.worker(pre_open(first, v1)).step()
+    second, v2 = env.convert(SESSIONS[SESSIONS.index(DAY) + 1], tag="second")
+    env.worker(pre_open(second, v2)).step()
+    now = after_close(second)
+    env.cancel(first, now)
+    env.cancel(second, now)
+    real, seen = env.broker.cancel, []
+
+    def flaky(client, *, at):
+        seen.append(client)
+        if len(seen) == 1:
+            raise RuntimeError("one transient broker cancel failure")
+        return real(client, at=at)
+
+    env.broker.cancel = flaky
+    worker = env.worker(now)
+    worker.step()
+    assert len(seen) == 2  # the second request went through despite the first's error
+    failed = first if seen[0] == first.client_order_id else second
+    assert "cancel_send_failed" in {a.kind for a in worker.orders.anomalies(failed.order_id)}
+    env.broker.cancel = real
+    worker.step()
+    assert all(progress.value == "SENT" for _, progress, _ in worker.orders.open_cancels())

@@ -8,7 +8,7 @@ its intent version and lineage id, its gate decision with every check, each tran
 fill with quantity, price, fee, its executed, delivered and recorded times, timing basis, slippage and bar reference
 (from the fill's provenance), its anomalies and its final state. An UNKNOWN order says "the broker had no record"
 only when a recorded lookup said so, with its time; otherwise it is unconfirmed. A header gives the provider,
-range, the cutoff (the latest recorded order time) and timezone, and the code, calendar, strategy, policy, limits,
+range, the cutoff (the latest order business time, beside the latest record time) and timezone, and the code, calendar, strategy, policy, limits,
 fee and fill-model versions involved. A summary gives counts by final state, filled notional, fees, UNKNOWN orders
 (D20), the corporate-action adjustments of the snapshot it names, and any stop, read from the stored proposal
 records. Units are explicit (shares, USD). Output is plain ASCII.
@@ -94,7 +94,7 @@ def build_order_log(account_id: str, *, orders, intents, lineage, calendar, sour
     """With `proposals` the stops are read from the stored records, the authoritative source; `stops` is used only
     without them. With `intent_lineage` the code and calendar versions are those the intents were proposed with."""
     rows, states, notional, fees, fee_versions, models = [], {}, Decimal(0), Decimal(0), set(), set()
-    first = last = cutoff = None
+    first = last = cutoff = recorded = None
     strategy_versions, policy_versions, limits = set(), set(), set()
     code_versions, calendar_versions, no_record = set(), set(), 0
     for order, status in orders.for_account(account_id):
@@ -129,6 +129,7 @@ def build_order_log(account_id: str, *, orders, intents, lineage, calendar, sour
         anomalies = orders.anomalies(order.order_id)
         for t in history:
             cutoff = t.at if cutoff is None else max(cutoff, t.at)
+            recorded = t.recorded_at if recorded is None else max(recorded, t.recorded_at)
         unknown = _unknown(anomalies) if status.state is OrderState.UNKNOWN else ""
         no_record += unknown.startswith("UNRESOLVED")
         rows.append({
@@ -146,7 +147,9 @@ def build_order_log(account_id: str, *, orders, intents, lineage, calendar, sour
             "anomalies": [{"kind": a.kind, "detail": a.detail} for a in anomalies],
             "final_state": status.state.value, "unknown": unknown})
     header = {"provider (source)": source, "account": account_id, "range": f"{first} .. {last} (target sessions)" if rows else "none (no orders)",
-              "cutoff (latest recorded order time)": _iso(cutoff) if cutoff is not None else "none (no orders)",
+              "cutoff (latest order business time)": _iso(cutoff) if cutoff is not None else "none (no orders)",
+              "recorded through (latest order record time)": _iso(recorded) if recorded is not None
+              else "none (no orders)",
               "code version": ", ".join(sorted(code_versions)) or "not recorded",
               "calendar version": ", ".join(sorted(calendar_versions)) or "not recorded",
               "timezone": f"UTC, with exchange time {calendar.timezone}",

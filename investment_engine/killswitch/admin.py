@@ -250,8 +250,12 @@ class KillSwitchAdmin:
             except OSError as exc:
                 journal = f"FAILED: applied, but not journalled as applied ({type(exc).__name__})"
                 problems.append(f"sequence {sequence} applied but not journalled")
-        history = "complete" if not problems and journal == "recorded" else "incomplete: " + "; ".join(
-            problems or [journal])
+        notes = list(problems)
+        if journal != "recorded":
+            notes.append(journal)
+        if unresolved:  # this change may be recorded fully, but the history isn't (Codex M4 re-review N3)
+            notes.append(f"{unresolved} earlier change(s) remain UNRESOLVED")
+        history = "complete" if not notes else "incomplete: " + "; ".join(notes)
         return ChangeResult(True, sequence, journal, history)
 
     def halt(self, *, operator: str, verified: bool, reason: str) -> ChangeResult:

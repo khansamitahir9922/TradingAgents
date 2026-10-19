@@ -150,6 +150,18 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-19: Claude Code (M4 re-review notes N1-N3: broker-call failures, the cutoff's name, the history caption)
+- **N1 (broker-error isolation was overstated):** a RuntimeError from one broker cancel aborted the step.
+  - At the port, any exception from a broker call is now `BrokerCallFailed`, a `BrokerTimeout`: an unknown outcome. A cancel stays SENDING, records a `cancel_send_failed` anomaly so the failure is never silent, and is retried; the next request still goes through.
+  - A submit becomes UNKNOWN, as before; a lookup or message read waits for the next step.
+  - The worker's own database errors happen outside the broker call and still end the step (reconnection is B4's). KeyboardInterrupt and SystemExit are never caught.
+  - Test: `test_worker_cancels.py::test_a_broker_error_on_one_cancel_leaves_it_retryable_and_the_next_request_goes_through` (Codex's probe scenario; failed first).
+- **N2 (cutoff wording):** the header's cutoff is the latest order *business* time ("cutoff (latest order business time)"), and the latest record time is shown separately ("recorded through (latest order record time)").
+- **N3 (history caption):** a halt journalled fully while earlier changes stay UNRESOLVED now says "incomplete: N earlier change(s) remain UNRESOLVED", never "complete". The safety behaviour is unchanged.
+  - Test: `test_kill_switch.py::test_a_halt_never_calls_the_history_complete_while_earlier_changes_are_unresolved` (Codex's scenario; failed first).
+- **Incident, recorded (both runs kept):** the first full run on this exact tree crossed midnight (2026-10-19 to 20) and gave 13 failed, 3327 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 2243.94s (0:37:23): the baseline failure plus 12 upstream TradingAgents tests in `tests/test_yahoo_rate_limit.py` and `tests/test_undated_tools_as_of.py`. Those tests fix "today" when the session starts and compare it with `date.today()` later, so after midnight a run dated 2026-10-19 counted as historical and its data was withheld ("Point-in-time as of: 2026-10-19 ... withheld"). This package changes neither `tradingagents/` nor those tests; on the same tree, run alone afterwards, all 61 passed. The commit was held until the rerun below, on the unchanged tree, was clean. The midnight sensitivity is an upstream test fragility, reported to the owner, not fixed here.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3339 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1818.31s (0:30:18) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-19: Claude Code (M4 re-review fix R2: replays keep the stored views' own delivery latency)
 - **Codex M4 re-review R2 (B3):** both CLI replay paths rebuilt the feed with zero latency, so a correction available between a bar and its view's time, but delivered after the view, reached the proposal. Reproduced with a real M2 view at ten-minute latency: the CLI's proposal knowledge gave revision 2 where the view's own history gave revision 1.
 - **Fix (`intents_cli.py`):**

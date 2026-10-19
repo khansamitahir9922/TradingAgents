@@ -307,3 +307,16 @@ def test_sync_audit_is_idempotent_and_audit_events_are_deterministic(ks):
     assert [e.event_id for e in seen] == [e.event_id for e in again]
     assert [e.action for e in seen] == ["killswitch.halt", "killswitch.resume"]
     assert seen[0].at == NOW and NOW - timedelta(0) == seen[1].at
+
+
+@pytest.mark.unit
+def test_a_halt_never_calls_the_history_complete_while_earlier_changes_are_unresolved(ks, monkeypatch):
+    """N3 (Codex M4 re-review): after `[INTENT 1, UNRESOLVED 1, INTENT 2, APPLIED 2]` the halt's caption said
+    "complete". It describes the whole history, so it says what remains unresolved."""
+    _fail_on(monkeypatch, ks, publish=True, error=KeyboardInterrupt)
+    with pytest.raises(KeyboardInterrupt):
+        ks.halt(operator="owner", verified=True, reason="crashes before publishing")
+    monkeypatch.undo()
+    result = ks.halt(operator="owner", verified=True, reason="halt again")
+    assert phases(ks) == [(1, "INTENT"), (1, "UNRESOLVED"), (2, "INTENT"), (2, "APPLIED")]
+    assert result.applied and result.history.startswith("incomplete") and "UNRESOLVED" in result.history

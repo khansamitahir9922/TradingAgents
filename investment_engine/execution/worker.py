@@ -17,7 +17,10 @@ settles them, keeping their reservations meanwhile, and are never resent. A
 broker error or a concurrent change (StaleWrite) on one order, message or cancel
 request skips only that item for the step. A lost database connection ends the
 step; `run(..., reconnect=)` then rebuilds the connections and stores, recovers
-again and resumes.
+again and resumes. A broker call that raises anything is, at the port, an unknown
+outcome (`BrokerCallFailed`, like a timeout): a submit becomes UNKNOWN, a cancel stays
+SENDING and records an anomaly, a lookup or message read waits for the next step. The
+worker's own database errors are not broker-call failures and still end the step.
 
 Submission has three phases (Law 14): the gate transaction commits SUBMITTING;
 the broker call happens outside every transaction; an outcome transaction
@@ -47,6 +50,7 @@ from investment_engine.events.outbox import Outbox
 from investment_engine.execution.broker_port import (
     BROKER_DEADLINE_SECONDS,
     BrokerBusy,
+    BrokerCallFailed,
     BrokerTimeout,
 )
 from investment_engine.execution.cancels import process_cancels
@@ -131,8 +135,13 @@ class ExecutionWorker:
         if thread.is_alive():
             self._stalled = thread  # its answer, when it comes, is discarded
             raise BrokerTimeout(f"no answer to {name} within {self.deadline_seconds} s (D26)")
-        if "error" in box:
-            raise box["error"]
+        error = box.get("error")
+        if isinstance(error, BrokerTimeout):
+            raise error
+        if isinstance(error, Exception):  # any other failure of the call: its outcome is unknown (N1)
+            raise BrokerCallFailed(f"{name} failed: {type(error).__name__}: {error}"[:500]) from error
+        if error is not None:  # KeyboardInterrupt, SystemExit: never swallowed
+            raise error
         return box["result"]
 
     def step(self) -> StepReport:

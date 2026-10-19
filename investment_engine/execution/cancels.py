@@ -17,7 +17,7 @@ never closes the request: only the order's final state does.
 
 from dataclasses import dataclass
 
-from investment_engine.execution.broker_port import BrokerTimeout
+from investment_engine.execution.broker_port import BrokerCallFailed, BrokerTimeout
 from investment_engine.market.availability import check_utc
 from investment_engine.oms.intent_store import StaleWrite
 from investment_engine.oms.order_states import FINAL, OrderState
@@ -40,8 +40,11 @@ def _send(request, version, *, orders, broker, now) -> int:
     """SENDING is committed; the broker call happens outside any transaction; then SENT is recorded."""
     try:
         result = broker.cancel(request_client(orders, request), at=now)
-    except BrokerTimeout:
-        return 0  # stays SENDING: resent next step
+    except BrokerTimeout as exc:  # a timeout, a stalled broker or a failed call: stays SENDING, resent next step
+        if isinstance(exc, BrokerCallFailed):  # visible, never silently swallowed (N1)
+            orders.record_anomaly(request.order_id, kind="cancel_send_failed", detail=str(exc), at=now,
+                                  broker_ref=f"{request.cancel_id}:{version}:failed")
+        return 0
     if result.outcome in ("CANCELLED", "PENDING"):
         orders.cancel_progress(request.cancel_id, P.SENT, expected_version=version, at=now,
                                received_at=result.received_at)

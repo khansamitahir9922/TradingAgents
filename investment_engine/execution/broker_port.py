@@ -21,6 +21,11 @@ class BrokerTimeout(Exception):
     """The broker didn't answer in time; the outcome is unknown."""
 
 
+class BrokerCallFailed(BrokerTimeout):
+    """The broker call raised: its outcome is unknown, as after a timeout (Codex M4 re-review N1). The worker's own
+    database errors never take this form; they happen outside the broker call."""
+
+
 class BrokerBusy(BrokerTimeout):
     """An earlier call to this broker hasn't returned; nothing else is sent until it does (Codex M4 review B5)."""
 
@@ -79,5 +84,5 @@ class BrokerPort(Protocol):
     def messages(self, *, after: str | None, at: datetime) -> list[BrokerMessage]: ...
 
 
-__all__ = ["BrokerFill", "BrokerMessage", "BrokerOrderReport", "BrokerPort", "BrokerTimeout", "BrokerBusy", "BROKER_DEADLINE_SECONDS", "CancelResult",
+__all__ = ["BrokerFill", "BrokerMessage", "BrokerOrderReport", "BrokerPort", "BrokerTimeout", "BrokerBusy", "BrokerCallFailed", "BROKER_DEADLINE_SECONDS", "CancelResult",
            "SubmitResult"]
