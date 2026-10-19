@@ -42,7 +42,25 @@ def messages(seed: int, client_order_id: str, quantity: Decimal, start) -> list[
 
 
 def flow_plan(seed: int) -> dict:
-    """One order's flow: kill-switch flips, a submit timeout, a cancel, and the market's answer."""
+    """One order's flow: kill-switch flips, a submit timeout, a cancel, and the market's answer; and, on some
+    seeds, the same view proposed for an account whose policy (RP) or risk (RR) rejects it (Codex M4 review B12)."""
     rng = random.Random(seed)
-    return {"enabled": rng.random() < 0.8, "timeout": rng.random() < 0.2, "cancel": rng.random() < 0.3,
+    plan = {"enabled": rng.random() < 0.8, "timeout": rng.random() < 0.2, "cancel": rng.random() < 0.3,
             "answer": rng.choice(["FILL", "FILL", "EXPIRED", "CANCELLED", "none"]), "flip_after": rng.random() < 0.3}
+    plan["rejected_on"] = rng.choice([None, None, "RP", "RR"])  # drawn last: the earlier draws are unchanged
+    plan["unreadable"] = not plan["enabled"] and rng.random() < 0.5  # off by a bad flag, not a halt
+    return plan
+
+
+def cancel_plan(seed: int) -> dict:
+    """A cancel after submission (Codex M4 review B12): a partial fill first or not, the first send timing out or
+    a crash before it, and the broker's final answer. Valid timelines only: a pending cancel ends CANCELLED or
+    filled (D25; G3 has no CANCEL_PENDING -> EXPIRED), so an expiry is delivered before the cancel is processed."""
+    rng = random.Random(10_000 + seed)
+    partial = rng.random() < 0.3
+    plan = {"partial": partial, "timeout_first": rng.random() < 0.3, "crash_before_send": rng.random() < 0.2,
+            "answer": rng.choice(["CANCELLED", "FILL"] if partial else ["CANCELLED", "FILL", "EXPIRED_FIRST"])}
+    if plan["answer"] == "EXPIRED_FIRST":  # final before the cancel is processed: nothing is sent to crash in
+        plan["crash_before_send"] = plan["timeout_first"] = False
+    plan["trading_off"] = rng.random() < 0.5  # the kill switch never blocks a cancel (Law 15)
+    return plan

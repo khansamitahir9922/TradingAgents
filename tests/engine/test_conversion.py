@@ -126,3 +126,44 @@ def test_the_execution_worker_can_not_convert(env):
     with pytest.raises(ValueError, match="Core Engine"):
         convert_approved("R2", at=view.generated_at, stores=env.stores,
                          orders=order_store(env, role=ProcessRole.EXECUTION))
+
+
+@pytest.mark.postgres
+@pytest.mark.unit
+@pytest.mark.parametrize("race, reason", [
+    ("newer version", "not the latest version (v2 is)"),
+    ("declined meanwhile", "no longer APPROVED (DECLINED)"),
+    ("converted meanwhile", "already converted"),
+    ("stale write", "intent changed meanwhile (stale write)"),
+], ids=["not-latest", "no-longer-approved", "already-converted", "stale-write"])
+def test_each_skip_reason_is_reported_with_its_intent_and_version_and_never_raises(env, monkeypatch, race, reason):
+    """M4-02 acceptance: each `skipped` reason occurs (Codex M4 review B12). Each is a race (the intent was seen
+    APPROVED, then changed before the locked re-read), forced here by substituting exactly the read or write that
+    the race would change. "approval expired" is the real path, in the test above."""
+    from dataclasses import replace
+
+    from investment_engine.oms.intent_store import StaleWrite
+    from investment_engine.oms.intents import IntentState
+
+    stored, view = approved(env)
+    orders = order_store(env)
+    real_get = env.stores.intents.get
+
+    def get(intent_id, version=None):
+        current = real_get(intent_id, version)
+        if race == "newer version":
+            return replace(current, intent=replace(current.intent, version=2))
+        if race == "declined meanwhile":
+            return replace(current, state=IntentState.DECLINED)
+        return current
+
+    monkeypatch.setattr(env.stores.intents, "get", get)
+    if race == "converted meanwhile":
+        monkeypatch.setattr(orders, "for_intent", lambda *_: object())
+    if race == "stale write":
+        def stale(*args, **kwargs):
+            raise StaleWrite("changed meanwhile")
+        monkeypatch.setattr(env.stores.intents, "convert", stale)
+    report = convert_approved("R2", at=view.generated_at, stores=env.stores, orders=orders)
+    assert report.converted == () and report.skipped == ((stored.intent.intent_id, 1, reason),)
+    assert env.count("orders") == 0

@@ -43,11 +43,20 @@ class CoreEngine:
         now = self.clock.now()
         for account in self.stores.accounts.accounts():
             if account.kind is AccountKind.PAPER:
-                converted += len(convert_approved(account.account_id, at=now, stores=self.stores,
-                                                  orders=self.orders).converted)
+                converted += len(self.convert(account.account_id, at=now).converted)
+        published, consumed = self.publish_and_consume()
+        return CoreStepReport(converted, published, consumed)
+
+    def convert(self, account_id: str, *, at):
+        """The Core role's conversion of one account's approved intents at a business time: the live step's for
+        PAPER accounts, and the offline research harness's at replay time (D24; Codex M4 review B12)."""
+        return convert_approved(account_id, at=at, stores=self.stores, orders=self.orders)
+
+    def publish_and_consume(self) -> tuple[int, int]:
+        """Publish the outbox, then run the order-log consumer; returns (published, consumed)."""
         published = self.outbox.publish_pending()
         report = self.consumer.run_once(limit=1000)
-        return CoreStepReport(converted, published, report.applied + report.unhandled)
+        return published, report.applied + report.unhandled
 
     def run(self, *, poll_seconds: Decimal, stop: Callable[[], bool],
             reconnect: Callable[[], "CoreEngine"] | None = None) -> "CoreEngine":

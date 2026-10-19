@@ -150,6 +150,35 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-18: Claude Code (M4 review fix B12: the acceptance matrix completed, with red evidence for every invariant)
+- **Codex M4 review B12:** several mandatory acceptance cases were weaker than stated. Each is now covered:
+  - **Rejected intents never become orders** (`test_order_invariants.py`): seeded flows also propose the same view for RP (policy restricts NVDA) and RR (a latched halt), run conversion and worker steps, and assert the proposals are POLICY_REJECTED / RISK_REJECTED (non-vacuous) with no order at all. Every submitted order's intent has policy *passed* and risk APPROVE or REDUCE. The kill switch is also made unreadable, not only halted.
+  - **Cancels after submission:** seeded valid timelines (partial fill, first send timing out, a crash before the send then restart and recovery, the broker's answer, trading on or off). A request is never CLOSED before its order is final, and is CLOSED once with the matching outcome; at least 20 flows, and every final outcome must occur. Expiry is delivered before the cancel is processed, because G3 has no CANCEL_PENDING -> EXPIRED and a pending cancel ends CANCELLED or filled (D25).
+  - **Replay determinism:** two fresh databases agree on views, intents, every order version, fill with provenance, gate check and anomaly, and every proposal record (including rejections and post-submission cancels).
+  - **Broker contract:** a cancel-after-fill case (TOO_LATE), run against the simulator *and* the test double. The double now behaves like a broker where the contract speaks: unknown order, final order, and a cancel before the open with a calendar.
+  - **Real role objects:** `CoreEngine.convert(account, at=)` and `publish_and_consume()`. The crash child and the harness use the Core role object; `step` is unchanged. The worker now has a graceful-stop test like the Core's.
+  - **Fault scenario 6:** a fill executed *before* the cancellation and delivered after it stays accounting only, with its true execution time.
+  - **M4-05:** twenty unforced interleavings each for the fill and conversion writers, beside limits.
+  - **M4-02:** each skip reason (not latest, no longer APPROVED, already converted, stale write; "approval expired" already real) asserted with its intent and version.
+  - Reconnection is B4's.
+- **Red evidence, every invariant** (each production file restored byte for byte, checked by SHA-256): a deliberately broken build per M4-11 invariant, with its guarding test. All 13 failed as they should:
+  - rejected intents converted;
+  - REJECTED/GATE_REJECTED fills allowed;
+  - the duplicate-fill check removed;
+  - UNKNOWN resubmitted;
+  - an unreadable flag passing the gate;
+  - a changed intent pin;
+  - the compare-and-set version check removed;
+  - one event skipped;
+  - CANCELLED requests never closed;
+  - the owner check skipped;
+  - gate-rejected orders sent;
+  - the Core importing the secrets module;
+  - a time-dependent transition reason.
+  - The cancel-closure sabotage was first *not* detected at the reduced seed count, because no seed ended CANCELLED. The test now runs at least 20 flows and asserts every final outcome occurred; it then failed as it should.
+- **Incident, recorded (both runs kept):** the first full run on this exact tree crossed midnight (2026-10-18 to 19) and gave 13 failed, 3315 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 1775.05s (0:29:35): the baseline failure plus 12 upstream TradingAgents tests in `tests/test_yahoo_rate_limit.py` and `tests/test_undated_tools_as_of.py`. Those tests fix "today" when the session starts and compare it with `date.today()` later, so after midnight a run dated 2026-10-18 counted as historical and its data was withheld ("Point-in-time as of: 2026-10-18 ... withheld"). This package changes neither `tradingagents/` nor those tests; on the same tree, run alone afterwards, all 61 passed. The commit was held until the rerun below, on the unchanged tree, was clean. The midnight sensitivity is an upstream test fragility, reported to the owner, not fixed here.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3327 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 2769.25s (0:46:09) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-18: Claude Code (M4 review fix B11: the saved log keeps the run's context; truthful headers)
 - **Codex M4 review B11:**
   - A later `order-log` said "stops: none" after a fractional split had stopped proposals.

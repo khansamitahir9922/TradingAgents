@@ -8,7 +8,7 @@ the marker and calls `Popen.kill()` (TerminateProcess on Windows): a real crash,
 
 Roles:
 - "worker": recover() then one step(), with the real simulated broker over the test market store;
-- "core": convert the account's approved intents at the given replay time, then publish.
+- "core": a CoreEngine: republish, convert the account's approved intents at the given replay time, publish.
 """
 
 import json
@@ -92,7 +92,6 @@ def child(spec: dict) -> None:
     from investment_engine.killswitch.flag import KillSwitchReader
     from investment_engine.market.calendar.us_equities import load_us_equities_calendar
     from investment_engine.market.store.reader import MarketDataReader
-    from investment_engine.oms.conversion import convert_approved
     from investment_engine.oms.order_states import ProcessRole
     from investment_engine.oms.order_store import OrderStore
     from investment_engine.oms.pipeline import ControlStores
@@ -128,12 +127,13 @@ def child(spec: dict) -> None:
                                       fingerprints=DeclaredFingerprints(stores.snapshots))
         recover(worker)
         worker.step()
-    else:
-        outbox = Outbox(db, writer=ProcessRole.CORE, clock=clock)
-        outbox.publish_pending()  # republish first (G4)
-        orders = OrderStore(db, role=ProcessRole.CORE, audit=stores.audit, outbox=outbox, clock=clock)
-        convert_approved(spec["account"], at=clock.now(), stores=stores, orders=orders)
-        outbox.publish_pending()
+    else:  # the unchanged Core role object (Codex M4 review B12): republish (G4), convert at replay time, publish
+        from investment_engine.core.engine import CoreEngine
+
+        engine = CoreEngine(stores, clock=clock)
+        engine.outbox.publish_pending()
+        engine.convert(spec["account"], at=clock.now())
+        engine.publish_and_consume()
     conn.close()
     print("child done")
 

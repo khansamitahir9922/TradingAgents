@@ -258,6 +258,17 @@ def test_the_contract_suite(db, case):
 
 
 @pytest.mark.unit
+def test_the_contract_suite_after_a_fill(db):
+    from investment_engine.execution import broker_contract
+
+    def fill(b, o):  # the day opens below the limit: a fill at the open, delivered once the bar is known
+        return CUTOFF
+
+    for case in broker_contract.CASES_AFTER_A_FILL:
+        case(lambda: broker(db, (CLOSE + timedelta(minutes=10), bar("99.00", "101", "98"))), order, BEFORE, fill=fill)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("hostile", HOSTILE, ids=["prec1-down", "prec3-ceiling", "prec6-inexact-trapped"])
 def test_slippage_and_fills_ignore_the_callers_decimal_context(db, hostile):
     """B2 (Codex M4 review): with precision 3, the 5 bps BUY at 99 came out 99.00 instead of 99.05."""

@@ -252,3 +252,74 @@ def test_free_races_with_a_limits_publish_never_pass_a_superseded_read(env):
         assert decision.passed or [c.name for c in decision.checks if not c.passed] == ["controls"]
         outcomes.append(decision.passed)
     assert len(outcomes) == 20  # either order can win; both are consistent
+
+
+def free_race(env, gate_view_day, writer, *, reads_kw, before_race=None):
+    """One unforced race: the gate and `writer(stores, view)` start together on their own connections.
+    `before_race()` runs once the gate's order exists."""
+    order, view, _ = convert(env, gate_view_day)
+    if before_race is not None:
+        before_race()
+    gate_stores, writer_stores = env.connect(), env.connect()
+    orders, reads = worker_reads(env, gate_stores, **reads_kw)
+    barrier, out = threading.Barrier(2), {}
+
+    def gate():
+        barrier.wait()
+        out["d"] = gate_order(order.order_id, clock=ReplayClock(gate_at(order, view)), orders=orders, reads=reads,
+                              kill_switch=env.kill_switch)
+
+    def write():
+        barrier.wait()
+        writer(writer_stores, view)
+
+    threads = [threading.Thread(target=gate), threading.Thread(target=write)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=60)
+    return out["d"]
+
+
+@pytest.mark.unit
+def test_free_races_with_a_fill_on_another_order_are_consistent(env):
+    """M4-05: twenty interleavings for the fill writer too (Codex M4 review B12), not one forced pair."""
+    outcomes = []
+    for n in range(20):
+        other, other_view, _ = convert(env, SESSIONS[40 + n])
+        worker = order_store(env, role=ProcessRole.EXECUTION)
+        gate = GateDecision(other.order_id, 1, True, (CheckResult("kill_switch", True, "test"),),
+                            other_view.generated_at, "{}")
+        status = worker.transition(other.order_id, OrderState.SUBMITTING, expected_aggregate_version=1,
+                                   at=other_view.generated_at, reason="test", gate=gate)
+        worker.transition(other.order_id, OrderState.SUBMITTED, expected_aggregate_version=status.aggregate_version,
+                          at=other_view.generated_at, reason="test")
+
+        def fill(stores, view, other=other, n=n):
+            fills = order_store(env, stores, role=ProcessRole.EXECUTION)
+            _, current = fills.get(other.order_id)
+            fills.record_fill(Fill(other.order_id, Decimal(1), Decimal("100.00"), Decimal(0), "USD", view.generated_at,
+                                   view.generated_at, view.generated_at, f"race-fill-{n}", "{}"),
+                              expected_aggregate_version=current.aggregate_version)
+
+        decision = free_race(env, SESSIONS[100 + n], fill, reads_kw={"fills": True})
+        assert decision.passed or [c.name for c in decision.checks if not c.passed] == ["positions"], n
+        outcomes.append(decision.passed)
+    assert len(outcomes) == 20
+
+
+@pytest.mark.unit
+def test_free_races_with_a_new_conversion_are_consistent(env):
+    """M4-05: twenty interleavings for the conversion writer (Codex M4 review B12)."""
+    outcomes = []
+    for n in range(20):
+        later = view_for(env.stores, env.reader, SESSIONS[140 + n % 20], tag=f"race-later-{n}")
+
+        def conversion(stores, view, later=later):
+            convert_approved("R2", at=later.generated_at, stores=stores, orders=order_store(env, stores))
+
+        decision = free_race(env, SESSIONS[100 + n], conversion, reads_kw={"reservations": True},
+                             before_race=lambda later=later: env.propose("R2", later, declared_only=True))
+        assert decision.passed or [c.name for c in decision.checks if not c.passed] == ["positions"], n
+        outcomes.append(decision.passed)
+    assert len(outcomes) == 20

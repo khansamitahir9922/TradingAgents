@@ -1,7 +1,8 @@
 """The broker contract suite (architecture Part J "contract tests"; docs/tasks/M4-06.md rule 10).
 
 Plain functions over a `BrokerPort` factory, so every adapter runs the same
-checks: the simulator and the test double now, M7's paper adapter later. Each
+checks: the simulator and the test double now (tests/engine/test_simulated_broker.py and
+test_broker_double_contract.py), M7's paper adapter later. Each
 function raises AssertionError on a breach. A case gets a fresh broker from
 `make()` and an order from `make_order(n)`; `before_open` is a time before the
 order's target session opens.
@@ -54,7 +55,20 @@ def messages_are_stable_and_filtered_by_delivery(make: Callable, make_order: Cal
         assert broker.messages(after=first[-1].message_id, at=later) == []
 
 
+def cancel_after_a_fill_is_too_late(make: Callable, make_order: Callable, before_open: datetime, *,
+                                    fill: Callable) -> None:
+    """`fill(broker, order)` makes the adapter fill the order completely and returns a time after the fill is
+    delivered (Codex M4 review B12)."""
+    broker, order = make(), make_order(5)
+    assert broker.submit(order, at=before_open).accepted
+    after = fill(broker, order)
+    assert any(m.kind == "FILL" for m in broker.messages(after=None, at=after)), "the fill must be delivered"
+    result = broker.cancel(order.client_order_id, at=after)
+    assert result.outcome == "TOO_LATE", result
+
+
 CASES = (submit_then_lookup, submit_is_idempotent, unknown_order_has_no_record, cancel_before_the_open_is_conclusive,
          messages_are_stable_and_filtered_by_delivery)
+CASES_AFTER_A_FILL = (cancel_after_a_fill_is_too_late,)  # these need the adapter's `fill` hook
 
-__all__ = ["CASES"]
+__all__ = ["CASES", "CASES_AFTER_A_FILL"]

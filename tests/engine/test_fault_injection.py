@@ -45,14 +45,15 @@ def fills(env, order):
     return order_store(env).fills(order.order_id)
 
 
-def message(env, order, kind, delivered, *, message_id, quantity=None, fill_id=None):
-    """Play the broker: a message in the simulator's own table (the test acting as the market)."""
+def message(env, order, kind, delivered, *, message_id, quantity=None, fill_id=None, executed=None):
+    """Play the broker: a message in the simulator's own table (the test acting as the market). A fill executes at
+    `executed` (default: when it is delivered)."""
     fill = None
     if kind == "FILL":
         import json
 
         fill = json.dumps({"broker_fill_id": fill_id, "quantity": str(quantity), "price": "120.00", "fee": "0",
-                           "currency": "USD", "executed_at": delivered.isoformat(), "provenance": "{}"},
+                           "currency": "USD", "executed_at": (executed or delivered).isoformat(), "provenance": "{}"},
                           sort_keys=True)
     env.stores.db.execute("INSERT INTO sim_broker.messages VALUES (:m, :c, :k, :d, :f, 'injected')",
                           {"m": message_id, "c": order.client_order_id, "k": kind, "d": delivered, "f": fill})
@@ -131,16 +132,23 @@ def test_5_and_7_duplicate_fills_and_repeated_delivery_apply_once(env):
 
 
 @pytest.mark.unit
-def test_6_cancelled_before_a_delayed_fill(env):
+def test_6_cancelled_then_an_earlier_execution_delivered_late(env):
+    """Part J: a fill that executed *before* the cancellation, but was delivered after it (Codex M4 review B12: the
+    earlier version executed it after the cancel). The order stays CANCELLED; the fill counts, as accounting only,
+    with its true execution time."""
     order, view = submitted(env)
     during = CAL.session(order.target_session).open + timedelta(minutes=10)
     message(env, order, "CANCELLED", during, message_id="c-1")
     child(env, "worker", during + timedelta(minutes=1))
+    assert env.state(order).state is S.CANCELLED
+    executed = during - timedelta(minutes=5)  # before the cancellation took effect
     message(env, order, "FILL", during + timedelta(minutes=2), message_id="late-fill", quantity=Decimal(3),
-            fill_id="late")
+            fill_id="late", executed=executed)
     child(env, "worker", during + timedelta(minutes=3))
     status = env.state(order)
-    assert (status.state, status.filled_qty) == (S.CANCELLED, Decimal(3))  # accounting only
+    assert (status.state, status.filled_qty) == (S.CANCELLED, Decimal(3))  # accounting only: no state edge
+    (fill,) = fills(env, order)
+    assert fill.executed_at == executed and fill.delivered_at == during + timedelta(minutes=2)
 
 
 @pytest.mark.unit

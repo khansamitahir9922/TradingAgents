@@ -25,15 +25,11 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from investment_engine.clock import ReplayClock
-from investment_engine.events.consumer import Consumer
-from investment_engine.events.outbox import Outbox
+from investment_engine.core.engine import CoreEngine
 from investment_engine.execution.factory import build_broker, build_gate_reads
 from investment_engine.execution.worker import ExecutionWorker
 from investment_engine.killswitch.flag import KillSwitchReader
 from investment_engine.lineage.records import LineageStore
-from investment_engine.oms.conversion import convert_approved
-from investment_engine.oms.order_states import ProcessRole
-from investment_engine.oms.order_store import OrderStore
 from investment_engine.oms.pipeline import ControlStores, propose
 from investment_engine.policy.accounts import AccountKind
 from investment_engine.portfolio.provisional import ProvisionalFingerprints
@@ -82,11 +78,10 @@ def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, 
     if account.kind is not AccountKind.RESEARCH:
         raise SimulationRefused("only a RESEARCH account runs a simulation; a PAPER account never reaches the simulator "
                                 "(D23)")
-    core_outbox = Outbox(core_db, writer=ProcessRole.CORE, clock=core_clock)
-    core_orders = OrderStore(core_db, role=ProcessRole.CORE, audit=core.audit, outbox=core_outbox, clock=core_clock)
+    engine = CoreEngine(core, clock=core_clock)  # the unchanged Core role object (D24; Codex M4 review B12)
+    core_orders = engine.orders
     if core_orders.for_account(account_id):
         raise SimulationRefused(f"{account_id} already has orders from a run; use a fresh account")
-    consumer = Consumer(core_db, name="order-log", handles={}, clock=core_clock)  # marks what the Core has seen
 
     # The broker has its own connection, never the worker's: a call outliving the D26 deadline can't share it (B5).
     # Scoped to this account, the broker and the worker never touch another account's work (B9).
@@ -120,9 +115,8 @@ def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, 
         outcomes[record.outcome.value] = outcomes.get(record.outcome.value, 0) + 1
         if record.outcome.value == "PREREQUISITE_MISSING" and "snapshot" in record.missing:
             stops.append(f"{t.isoformat()}: {record.reason}")  # the projection is Unavailable: stop here (rule 4)
-        convert_approved(account_id, at=t, stores=core, orders=core_orders)  # 2
-        core_outbox.publish_pending()
-        consumer.run_once(limit=1000)
+        engine.convert(account_id, at=t)  # 2: the Core role object's conversion, at replay time
+        engine.publish_and_consume()
         at(t + _TICK)
         worker.step()  # 3: gate and submit before the target session's open
     last = max(o.target_session for o, _ in core_orders.for_account(account_id)) if core_orders.for_account(
@@ -131,8 +125,7 @@ def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, 
         at(calendar.next_session(last).open + _TICK)
         worker.step()
         worker.step()
-    core_outbox.publish_pending()
-    consumer.run_once(limit=1000)
+    engine.publish_and_consume()
     return SimulationReport(account_id, len(views), outcomes, len(core_orders.for_account(account_id)), tuple(stops))
 
 

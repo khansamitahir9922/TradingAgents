@@ -165,6 +165,38 @@ def test_a_graceful_stop_and_a_hard_kill(tmp_path, pg_database):
     assert crashed.returncode != 0
 
 
+@pytest.mark.postgres
+@pytest.mark.unit
+def test_the_worker_stops_gracefully_too(tmp_path, pg_database):
+    """B12 (Codex M4 review): the graceful-stop test covered only the Core. The worker's entry point finishes its
+    step and exits 0 on the stop signal; a kill is a crash."""
+    schema(pg_database)
+    secrets = tmp_path / "data" / "secrets" / "execution_worker.env"
+    secrets.parent.mkdir(parents=True)
+    secrets.write_text("BROKER_KEY=not-used-by-the-simulator\n", encoding="utf-8")
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
+
+    def start():
+        process = subprocess.Popen([sys.executable, "-u", "-m", "investment_engine.execution", "run", "--broker",
+                                    "simulated", "--poll", "0.2"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   encoding="utf-8", errors="replace", cwd=ROOT, env=environment(tmp_path, pg_database),
+                                   creationflags=flags)
+        deadline, line = time.monotonic() + 60, process.stdout.readline()
+        while "running" not in line and time.monotonic() < deadline:
+            line = process.stdout.readline()
+        assert "running" in line, process.stderr.read()[-1500:]
+        return process
+
+    process = start()
+    process.send_signal(signal.CTRL_BREAK_EVENT if sys.platform == "win32" else signal.SIGTERM)
+    rest, _ = process.communicate(timeout=60)
+    assert process.returncode == 0 and "Execution Worker stopped." in rest
+    crashed = start()
+    crashed.kill()
+    crashed.communicate(timeout=60)
+    assert crashed.returncode != 0
+
+
 @pytest.mark.unit
 def test_the_probe_does_see_the_worker_read_its_secrets(tmp_path):
     """A positive control for the canary test: the worker's entry point reads the file, and the probe notices."""
