@@ -150,6 +150,12 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-19: Claude Code (M4 re-review fix R1: the whole order log in one Decimal context again)
+- **Codex M4 re-review R1 (B2):** B11's commit inserted a helper, `_unknown`, between `@exact` and `build_order_log`, so the decorator protected the helper's string formatting while the builder's fill totals used the caller's context again. Reproduced: the same stored fills reported 29,431.44 or 30,000 (3.0E+4) USD.
+- **Fix:** `@exact` is back on `build_order_log`, the whole builder; the helpers need none. The UNKNOWN wording and stored context are unchanged.
+- **Test:** `test_simulated_run.py::test_the_whole_log_is_identical_under_any_callers_decimal_context`: the same stored log, built under precision 2, under precision 3 with ROUND_CEILING, and under precision 6 with ROUND_DOWN and Inexact/Rounded trapped, gives JSON byte for byte equal to the normal build. It failed first at precision 2.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3329 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 2829.68s (0:47:09) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-19: Claude Code (M4 review fixes: batch checks and the re-review package)
 - **Codex's review at `8e683f0` (B1–B13) is answered** on `m4/milestone`:
   - one fix commit per finding: `982adcc` B13, `91b44fa` B10, `00df7eb` B2, `ddee260` B8, `e8221ad` B1, `6a021b8` B5, `7cf8b2e` B4, `85ecaa3` B9, `86a5cc7` B3, `0cfc913` B7, `36a8ad4` B6, `94ce169` B11, `920f7b3` B12;

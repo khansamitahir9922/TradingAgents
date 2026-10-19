@@ -411,3 +411,20 @@ def test_the_intent_report_header_shows_the_actual_order_and_kill_switch_state(p
         assert "PORTFOLIO: PROVISIONAL PROJECTION FROM RECORDED FILLS (no ledger until M5)" in result.output
     finally:
         r.close()
+
+
+@pytest.mark.unit
+def test_the_whole_log_is_identical_under_any_callers_decimal_context(run):
+    """R1 (Codex M4 re-review, B2): a helper inserted for B11 took the builder's `@exact`, so the log's totals used
+    the caller's context again: the same fills reported 29,431.44 or 30,000 (3.0E+4) USD. The stored log must come
+    out byte for byte the same under any precision, rounding and traps."""
+    from decimal import ROUND_CEILING, ROUND_DOWN, Inexact, Rounded, localcontext
+
+    report = run.run()
+    normal = run.log(report).to_json()
+    for settings in ({"prec": 2}, {"prec": 3, "rounding": ROUND_CEILING}, {"prec": 6, "rounding": ROUND_DOWN}):
+        with localcontext() as context:
+            for key, value in settings.items():
+                setattr(context, key, value)
+            context.traps[Inexact] = context.traps[Rounded] = settings.get("prec") == 6
+            assert run.log(report).to_json() == normal, settings

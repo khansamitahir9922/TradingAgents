@@ -73,7 +73,6 @@ def _iso(value) -> str:
     return value.isoformat() if isinstance(value, datetime) else str(value)
 
 
-@exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
 def _unknown(anomalies) -> str:
     """What an UNKNOWN order's record supports (D20): never more than a recorded lookup said."""
     no_record = [a for a in anomalies if a.kind == "lookup_no_record"]
@@ -88,6 +87,7 @@ def stops_from(proposals, account_id: str) -> list[str]:
             if r.outcome.value == "PREREQUISITE_MISSING" and "snapshot" in r.missing]
 
 
+@exact  # the whole builder in one fully specified Decimal context, whatever the caller's (B2; R1)
 def build_order_log(account_id: str, *, orders, intents, lineage, calendar, source: str, header_extra: dict,
                     stops=None, snapshots=None, at: datetime | None = None, proposals=None,
                     intent_lineage=None) -> OrderLog:
