@@ -185,3 +185,49 @@ def test_the_running_core_loop_reconnects_and_publishes_what_was_saved_meanwhile
         done.set()
         loop.join(30)
     assert not loop.is_alive() and len(built) >= 2
+
+
+@pytest.mark.unit
+def test_a_lost_broker_connection_reaches_the_running_loops_reconnect(env):
+    """R5 (Codex M4 review of fd73684): N1 turned every broker-call exception into an ordinary unknown outcome,
+    including the simulator's own lost database connection. The loop never rebuilt it, and a new order became
+    UNKNOWN. A lost connection must reach the reconnect, whichever connection it was; ordinary broker errors stay
+    isolated (N1). After the rebuild, the order is submitted exactly once, and messages, cancels and lookups work."""
+    from investment_engine.execution.simulated_broker import SimulatedBroker, load_fee_schedule
+
+    order, view = env.convert(DAY)
+    clock = ReplayClock(pre_open(order, view))
+    built, steps = [], []
+
+    def build():
+        stores, broker_stores = env.connect(clock), env.connect(clock)  # separate connections, as deployed
+        broker = SimulatedBroker(broker_stores.db, knowledge=env.knowledge, calendar=CAL, source="yfinance",
+                                 fees=load_fee_schedule())
+        worker = ExecutionWorker(stores.db, clock=clock, broker=broker, kill_switch=KillSwitchReader(env.flag))
+        worker.reads = StoreGateReads(stores, worker.orders, knowledge=env.knowledge, calendar=CAL,
+                                      fingerprints=DeclaredFingerprints(stores.snapshots))
+        real = worker.step
+
+        def step():
+            steps.append(len(steps))
+            return real()
+
+        worker.step = step
+        built.append(worker)
+        return worker
+
+    first = build()
+    first.broker._db.connection.close()  # only the broker's connection: the worker's and the server stay healthy
+    last = first.run(poll_seconds=Decimal("0"), stop=lambda: len(steps) >= 4, reconnect=build)
+    assert len(built) >= 2, "the reconnect was never called"
+    assert env.state(order).state is S.SUBMITTED
+    assert env.stores.db.fetchone("SELECT COUNT(*) FROM sim_broker.orders WHERE client_order_id = :c",
+                                  {"c": order.client_order_id})[0] == 1  # exactly once
+    # The rebuilt broker serves every call again: a lookup, a cancel and a message read.
+    later = after_close(order) + timedelta(minutes=1)
+    clock.advance_to(later)
+    assert last.port.lookup(order.client_order_id, at=later) is not None
+    env.cancel(order)
+    last.step()
+    assert {p.value for _, p, _ in last.orders.open_cancels()} <= {"SENT"}
+    assert isinstance(last.port.messages(after=None, at=later), list)

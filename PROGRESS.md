@@ -150,6 +150,18 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-20: Claude Code (M4 review fix R5: a lost broker connection reaches the reconnect again)
+- **Codex's review of `fd73684`, R5 (N1 x B4):** N1 turned every exception from a broker call into `BrokerCallFailed`, an ordinary unknown outcome. That included `psycopg` errors from the simulator's *own* connection, which is separate from the worker's in production. Message ingestion swallowed it, `run`'s reconnect never ran, the broker kept its closed connection, and a new order became UNKNOWN. The identical probe passes on the parent `af18b48`.
+- **Fix (`execution/worker.py`):** a lost database connection keeps its type across the broker boundary. `_bounded` re-raises `storage.postgres.connection_lost_errors()` unwrapped, and the broad handlers re-raise it (a submit, UNKNOWN lookups, SUBMITTING reconciliation). So it ends the step and reaches `run`'s reconnect, which rebuilds the worker's and the broker's connections and recovers.
+  - A submit interrupted this way is left SUBMITTING and is looked up after the rebuild, never resent (Law 14).
+  - Unchanged: ordinary broker errors stay isolated with their anomaly (N1); B5's deadline and stalled-call protection; the reconciliation rule.
+- **Test:** `test_worker_resilience.py::test_a_lost_broker_connection_reaches_the_running_loops_reconnect`, beside the worker-connection test. The worker and the simulator are on separate real connections; only the simulator's is closed, and the unchanged loop runs with its reconnect.
+  - The loop is rebuilt and the order is SUBMITTED, exactly once at the simulator.
+  - On the rebuilt broker, a lookup, a cancel (SENT) and a message read all work.
+  - It failed first ("the reconnect was never called"). Codex's probe (SHA-256 `4104ac56…`, run unchanged from an excluded local copy, since removed) passes.
+  - The worker, deadline, cancel, submission, recovery, layering, simulated-run and fault-injection files pass, 82 tests.
+- **Checks (Git Bash), on this commit's exact tree** (a fresh detached worktree at its parent plus this fix, verified equal to the commit's tree before committing): 1 failed, 3340 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 3891.30s (1:04:51) The only failure is the baseline cache-location test. **No new failures.** ruff passed; whitespace clean.
+
 ### 2026-10-20: Claude Code (M4 re-review fixes R1-R4 and N1-N3: batch checks and the package)
 - **Codex's re-review at `af18b48` is answered** on `m4/milestone`: `3d2d3bf` R1, `1febe97` R4, `fd4bed8` R3, `6875ab0` R2, `1b4134e` N1–N3. Each commit's full Git Bash suite ran on its exact tree, and the commit was refused unless the staged tree equalled the checked one; only the baseline cache-location test failed. Package: `docs/reviews/claude-m4-rereview-fix-package.md`.
 - **Codex's re-review probes** (run unchanged from an excluded local copy, since removed): 4 of 5 pass. R3's probe raises `TypeError` before its assertions because it passes `ReplayKnowledge(known_from=...)`, which R3 removes: the review states a feed-start timestamp isn't proof. Its scenario is tested through the shared composition.

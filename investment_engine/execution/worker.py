@@ -19,8 +19,10 @@ request skips only that item for the step. A lost database connection ends the
 step; `run(..., reconnect=)` then rebuilds the connections and stores, recovers
 again and resumes. A broker call that raises anything is, at the port, an unknown
 outcome (`BrokerCallFailed`, like a timeout): a submit becomes UNKNOWN, a cancel stays
-SENDING and records an anomaly, a lookup or message read waits for the next step. The
-worker's own database errors are not broker-call failures and still end the step.
+SENDING and records an anomaly, a lookup or message read waits for the next step. A lost
+database connection is not such a failure, whether it is the worker's or the broker's own
+(the simulator has one): it keeps its type, ends the step and reaches the reconnect, which
+rebuilds both connections (Codex M4 review of fd73684, R5).
 
 Submission has three phases (Law 14): the gate transaction commits SUBMITTING;
 the broker call happens outside every transaction; an outcome transaction
@@ -103,6 +105,11 @@ class ExecutionWorker:
         self.kill_switch, self.reads, self.serves = kill_switch, reads, serves
         self.accounts = None if accounts is None else frozenset(accounts)
         self.deadline_seconds = deadline_seconds
+        from investment_engine.storage.postgres import connection_lost_errors
+
+        # A lost database connection, the worker's or the broker's own, is never a per-order outcome: it reaches
+        # run()'s reconnect, which rebuilds both (Codex M4 review of fd73684, R5).
+        self._lost = connection_lost_errors()
         self._stalled: threading.Thread | None = None
         self.port = _BoundedPort(self)
         self.outbox = Outbox(db, writer=ProcessRole.EXECUTION, clock=clock)
@@ -136,7 +143,7 @@ class ExecutionWorker:
             self._stalled = thread  # its answer, when it comes, is discarded
             raise BrokerTimeout(f"no answer to {name} within {self.deadline_seconds} s (D26)")
         error = box.get("error")
-        if isinstance(error, BrokerTimeout):
+        if isinstance(error, (BrokerTimeout, *self._lost)):  # a lost connection stays typed, for the reconnect (R5)
             raise error
         if isinstance(error, Exception):  # any other failure of the call: its outcome is unknown (N1)
             raise BrokerCallFailed(f"{name} failed: {type(error).__name__}: {error}"[:500]) from error
@@ -191,6 +198,9 @@ class ExecutionWorker:
             result = self.port.submit(order, at=check_utc(self.clock.now(), "now"))
         except BrokerTimeout:
             result = None
+        except self._lost:
+            # Left SUBMITTING: run() reconnects, and recovery looks the order up, never resending it (R5; Law 14).
+            raise
         except Exception:  # any error leaves the outcome unknown: never resend
             result = None
         with self.db.transaction():
@@ -220,6 +230,8 @@ class ExecutionWorker:
                 continue
             try:
                 report = self.port.lookup(order.client_order_id, at=now)
+            except self._lost:
+                raise  # reconnect (R5)
             except Exception:  # unanswered, stalled or a broker error: still UNKNOWN, tried again next step (B4)
                 continue
             count += 1
@@ -258,6 +270,8 @@ class ExecutionWorker:
             looked_up.add(order.order_id)
             try:
                 report = self.port.lookup(order.client_order_id, at=now)
+            except self._lost:
+                raise  # reconnect (R5)
             except Exception:  # can't tell yet: tried again next step (B4)
                 left += 1
                 continue
