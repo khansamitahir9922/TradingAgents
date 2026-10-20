@@ -85,8 +85,9 @@ owner approves the batch → per task: spec → tests → implementation → tas
 
 ### 6. Checks and honest reporting
 The commands are in `docs/tasks/README.md`. Record **the exact commands and their result summaries** in `PROGRESS.md`.
-- **For every task, before its commit:** the task's tests, the full suite (Git Bash) and `ruff check .`. If the task changes **dependencies or packaging**, also run the clean-install smoke check then.
-- **For every batch, before review and merge:** the full suite in **PowerShell** and the **clean-install smoke check** in a fresh venv. Cached package downloads are fine.
+- **For every task or fix, before its commit:** the task's own tests, the tests of every module it touches, and `ruff check .`. A fix needs a test that fails before it and passes after (red, then green). If the task changes **dependencies or packaging**, also run the clean-install smoke check then.
+- **For every batch or review package, before review and merge:** the full suite in **Git Bash** and in **PowerShell**, and the **clean-install smoke check** in a fresh venv. Cached package downloads are fine. A new failure stops the package: find the commit that caused it and fix it in a follow-up commit. Avoid starting a full run that will cross midnight (some upstream tests are date-sensitive).
+- *(Owner decision, 2026-10-20: the full suite takes 30–45 minutes, so it runs once per package instead of before every commit, to keep long, uninterrupted sessions. The stop rules and the separate merge and push approvals are unchanged.)*
 
 Reporting rules:
 - Every test that passed in the recorded baseline (`docs/baselines/`, created by M1-00) must still pass. List every failure by test ID, as "recorded in the baseline" or "new". **A new failure blocks the task.**
