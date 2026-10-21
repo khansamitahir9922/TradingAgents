@@ -212,3 +212,33 @@ def test_private_execution_sql_rejects_nonfinite_or_premature_facts(env,column,v
     selected=["broker_fill_id || '-invalid'" if c=="broker_fill_id" else "%s" if c==column else c for c in columns]
     with pytest.raises(PgError),db.connection.transaction():
         db.connection.execute("INSERT INTO sim_broker.account_executions SELECT "+",".join(selected)+" FROM sim_broker.account_executions",(value,))
+
+
+def test_identical_research_setup_on_different_command_days_keeps_snapshot_identity(pg_database):
+    from investment_engine.policy.accounts import AccountKind
+    from tests.engine.conftest import maintenance_dsn, temporary_database
+    def capture(dsn,delay):
+        conn=open_operational_pg(dsn)
+        try:
+            apply_pg_schema(conn)
+            db=PostgresDatabase(conn)
+            command=ReplayClock(BEFORE+timedelta(days=delay))
+            audit=AuditStore(db)
+            accounts=AccountRegistry(db,audit,command)
+            accounts.bootstrap_admin("owner",os_user="test")
+            accounts.create_account("R1",AccountKind.RESEARCH,"USD",by=OWNER,reason="same research account",effective_at=BEFORE)
+            states=PortfolioSnapshotStore(db,audit,accounts,command)
+            states.declare_start("R1",by=OWNER,reason="same declared cash",effective_at=BEFORE)
+            setup=BrokerSetupStore(db,audit=audit,accounts=accounts,states=states,command_clock=command).request(
+                "R1",source="yfinance",coverage_evidence=(),by=OWNER,reason="same approved setup")
+            value=broker(db,Market()).snapshot("R1",at=BEFORE)
+            return setup,value
+        finally:
+            conn.close()
+    first_setup,first=capture(pg_database,5)
+    with temporary_database(maintenance_dsn()) as second_dsn:
+        second_setup,second=capture(second_dsn,6)
+    assert first_setup.command_at!=second_setup.command_at
+    assert first_setup.setup_id==second_setup.setup_id
+    assert first.snapshot_id==second.snapshot_id
+    assert first==second

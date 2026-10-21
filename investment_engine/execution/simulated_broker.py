@@ -345,7 +345,10 @@ class SimulatedBroker:
                     reasons.append("broker open-order link missing")
                     continue
                 open_orders.append(BrokerOpenOrder(oid,client,instrument,side,"CANCEL_RECEIVED" if cancelled is not None and cancelled<=at else "OPEN",quantity))
-            raw_hash=hashlib.sha256(canonical_json((seed.values(),tuple(tuple(r) for r in executions),tuple(tuple(r) for r in action_rows),tuple(open_orders))).encode()).hexdigest()
+            # The setup ID binds all economic seed fields. Actual Admin command
+            # time/actor attribution stays in its immutable setup/audit record,
+            # not in otherwise identical replay capture identities.
+            raw_hash=hashlib.sha256(canonical_json((seed.setup_id,tuple(tuple(r) for r in executions),tuple(tuple(r) for r in action_rows),tuple(open_orders))).encode()).hexdigest()
             self._db.execute("INSERT INTO sim_broker.account_captures (account_id,taken_at,raw_hash) VALUES(:a,:t,:h) ON CONFLICT DO NOTHING",
                              {"a":account_id,"t":at,"h":raw_hash})
             positions=None if reasons else tuple(BrokerPosition(i,q,"SHARES") for i,q in sorted(held.items()) if q)
