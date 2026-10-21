@@ -158,6 +158,14 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+## 2026-10-21 — M5-01 (Codex backup implementer)
+
+Additive schema 0016; per-unit deferred balance, sealed entry manifests, full one-time reversals, immutable journals/receipts/activation; account-then-ledger CAS locking, atomic audit/outbox and explicit current-Admin activation. Upgraded only disposable test databases; retained schema files untouched.
+
+Observed red: run_check.py bash m5-01-red tests/engine/test_ledger_store.py tests/engine/test_ledger_upgrade.py: missing store module. Activation test separately failed on missing activate. TDD found OLD trigger alias collision, corrected to prior; SQL-bypass test first hit AuditEvent Python validation, rewritten to direct SQL so the database guard itself is exercised. Final exact command: root venv python run_check.py bash m5-01-final tests/engine/test_ledger_store.py tests/engine/test_ledger_upgrade.py tests/engine/test_postgres_schema.py tests/engine/test_ledger_contracts.py tests/engine/test_reconciliation_contracts.py tests/engine/test_audit.py tests/engine/test_layering.py: 112 passed in 100.20s, no skips. python -m ruff check . passed. Fresh installed SQL discovery will also be checked at package smoke. No existing-test failures.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
+
 ## 2026-10-21 — M5-00 (Codex backup implementer)
 
 Immutable unit-separated ledger/source/book and neutral broker/reconciliation contracts; deterministic manifests, full reversal construction, audit registrations, two authorized frozen-architecture ADR cross-references. No serializer rewrite.
