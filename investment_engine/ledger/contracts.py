@@ -18,6 +18,8 @@ from investment_engine.market.availability import (
     check_revision,
     check_utc,
 )
+from investment_engine.market.corporate_actions import AmountBasis, CorporateAction
+from investment_engine.money import Money
 
 
 def identity(value: object) -> str:
@@ -402,6 +404,6 @@ class SnapshotProvider(Protocol):
     def capture(self, account_id: str, *, at: datetime) -> object: ...
 
 
-for _type in (Unit, SourceRef, SourceBundle, LedgerEntry, JournalTransaction, OpeningLot,
+for _type in (Money, AmountBasis, CorporateAction, Unit, SourceRef, SourceBundle, LedgerEntry, JournalTransaction, OpeningLot,
               LotMatch, BookBatch, BalanceQuery, LedgerBalances):
     register(_type)

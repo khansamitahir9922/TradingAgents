@@ -158,3 +158,15 @@ def test_lot_book_back_reference_has_no_circular_identity_and_records_are_frozen
     bundle = SourceBundle("R1", T, inputs, (source(),), "declared", "coverage", (), "v1")
     inputs[0]["declared"].append(Decimal(2))
     assert tuple(bundle.records[0]["declared"]) == (Decimal(1),)
+
+
+def test_source_bundle_can_roundtrip_full_stored_action_and_money():
+    from investment_engine.ledger.contracts import identity
+    from investment_engine.market.corporate_actions import ActionType
+    from tests.engine.test_corporate_actions import FETCHED, action
+
+    stored = action(ActionType.DIVIDEND)
+    ref = SourceRef("action", "dividend", 1, "stored-action", identity(stored), stored.available_from,
+                    stored.available_from, FETCHED, "yfinance")
+    bundle = SourceBundle("R1", FETCHED, (stored,), (ref,), "yfinance", "verified-history", (), "v1")
+    assert decode(json.loads(canonical_json(bundle))) == bundle

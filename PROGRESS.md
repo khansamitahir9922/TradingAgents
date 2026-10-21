@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | M0, M2 and M3 complete locally. **M4 merged locally at `5cd9363`. M5 ADR/specs/D35-D44 owner-accepted; whole implementation authorized.** M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-03 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
+| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-00 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | Unchanged by M5 preparation. No runtime/tests/dependencies/CI/frozen architecture/diagrams changed. Main and Claude implementation worktrees preserved. |
 | **Checks** | M5 documentation validation passed: 22 docs-only files, 15 complete task specs, backward dependencies, links, proposed decisions, 55 h/eight task-size exceptions, worked accounting examples plus 400 exact-rational cumulative-allocation cases, whitespace and preserved histories/reminder. v0.2 readiness/consumer/incident interleavings reviewed against existing source. No M5 runtime tests, migrations, backup/restore, installs or CI run. M4 S1/S2 check evidence remains separate: both suites 3340 passed with only the cache-location baseline; fresh base/engine installs and Ruff passed. |
@@ -157,6 +157,14 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-21 — M5-00 (Codex backup implementer)
+
+Action-source codec follow-up: register unchanged CorporateAction, AmountBasis and Money as components of new accounting SourceBundles when ledger contracts load. Existing codec and existing record fields/IDs unchanged; audit registry already imports ledger contracts for fresh-process decoding.
+
+Red: run_check.py bash m5-00-action-codec-red tests/engine/test_ledger_contracts.py::test_source_bundle_can_roundtrip_full_stored_action_and_money: TypeError, CorporateAction was not registered. Green: run_check.py bash m5-00-action-codec-green tests/engine/test_ledger_contracts.py tests/engine/test_reconciliation_contracts.py tests/engine/test_lineage.py tests/engine/test_corporate_actions.py tests/engine/test_audit.py: 122 passed in 25.08s. Root venv python -m ruff check . passed.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
 
 ## 2026-10-21 — M5-03 (Codex backup implementer)
 
