@@ -313,7 +313,7 @@ A request creates a job row. The Research Worker (LLM credentials only) runs Tra
 - **GateDecision**: `order_id`, `passed`, failed checks with reasons, `checked_at`.
 - **Fill**: `fill_id`, `order_id`, `quantity`, `price`, `fee`, `currency`, `executed_at`, `broker_fill_id` (unique, for de-duplication).
 - **BrokerSnapshot**: `taken_at`, positions, open orders, cash, as reported by the broker. Written by the Execution Worker.
-- **LedgerEntry**: `entry_id`, `transaction_id`, `account`, `debit`, `credit`, `unit` (currency or instrument), `posted_at`, `reverses?`. The exact securities model is set by the ADR before M5.
+- **LedgerEntry**: `entry_id`, `transaction_id`, `account`, `debit`, `credit`, `unit` (currency or instrument), `posted_at`, `reverses?`. The exact securities model is set by the ADR before M5. **Accepted reference (owner, 2026-10-21): [ADR-010](adr/ADR-010-securities-ledger-model.md)** specifies independent currency/quantity books, FIFO and temporal corrections.
 - **ReconciliationIncident**: what differed (internal vs `BrokerSnapshot`), when, status.
 - **AuditEvent**: `actor` (user or process), `action`, `target`, `before`, `after`, `at`, `reason`.
 - **LineageRecord**: references to bars (with revisions), feature version, strategy version, research run, model version, portfolio snapshot, policy/risk versions, DataHealth, code version.
@@ -361,7 +361,7 @@ A request creates a job row. The Research Worker (LLM credentials only) runs Tra
 | **M2** Quant + basic evaluation | Indicators, FeatureSnapshot, rule strategies, MarketView, lineage, evaluation with costs and next-bar prices (SQLite) | HTML report: NVDA chart with MarketViews + an honest evaluation |
 | **M3** Portfolio, policy, risk | **Move to PostgreSQL.** PortfolioSnapshot, sizer, versioned OrderIntent, policy (autonomy), risk, audit | CLI: proposed intents with approve/reject/reduce reasons |
 | **M4** OMS + Execution Worker (simulated) | Order state machine with transition ownership + compare-and-set, **Execution Worker process**, Pre-Execution Gate, simulated broker (own state, fees, slippage, next-bar fills), kill switch (Admin-only write), outbox, crash recovery | Simulated paper run + order log + crash tests on both processes |
-| **M5** Ledger + reconciliation | **ADR: securities ledger model first.** Double-entry ledger, positions/cash/P&L, BrokerSnapshot from the simulator, reconciliation | P&L + reconciliation reports |
+| **M5** Ledger + reconciliation | **ADR: securities ledger model first ([accepted ADR-010](adr/ADR-010-securities-ledger-model.md), owner 2026-10-21).** Double-entry ledger, positions/cash/P&L, BrokerSnapshot from the simulator, reconciliation | P&L + reconciliation reports |
 | **M6** TradingAgents adapter | Research Worker, ResearchRecord, ResearchContext, LLM budget | Research shown alongside the MarketView |
 | **M7** Paper broker + hosting | **ADR: broker choice after the jurisdiction check (incl. whether its data key can trade).** Paper-broker adapter in the Execution Worker; move to a VPS with **separate OS users/containers per process and a read-only kill-switch flag for the Execution Worker** | Real paper orders on the broker's paper account |
 | **M8** API + dashboard | FastAPI, WebSocket, login/roles, minimal UI | Web dashboard |

@@ -24,4 +24,6 @@ MODULES: tuple[str, ...] = (
     "investment_engine.portfolio.fingerprint",  # M4-09: Reservation, stored inside snapshots (Codex M4 review B13)
     "investment_engine.portfolio.provisional",  # M4-09: Adjustment, stored inside snapshots (B13)
     "investment_engine.evaluation.promotion",  # M4-10
+    "investment_engine.ledger.contracts",  # M5-00
+    "investment_engine.reconciliation.contracts",  # M5-00: neutral evidence only
 )
