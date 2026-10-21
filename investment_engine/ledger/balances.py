@@ -75,6 +75,13 @@ def balances(account_id, *, effective_at, known_at, book_id, ledger):
                 fees += value
     if any(instrument not in dict(positions) for instrument, _ in costs):
         reasons.append("inventory cost without held quantity")
+    # A valid posted acquisition can have explicit zero remaining basis (including
+    # a fully allocated cumulative rounding residual). Preserve known zero as an
+    # explicit cost field; an absent cost supplied to the portfolio adapter is missing.
+    cost_map = dict(costs)
+    for instrument, _ in positions:
+        cost_map.setdefault(instrument, Decimal(0))
+    costs = tuple(sorted(cost_map.items()))
     return LedgerBalances(query, exact_decimal(cash), "USD", tuple(positions), tuple(costs), tuple(receivables),
                            exact_decimal(realized), exact_decimal(income), exact_decimal(fees), refs,
                            not reasons, tuple(reasons))

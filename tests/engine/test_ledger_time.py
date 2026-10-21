@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 
 from investment_engine.ledger.balances import balances, value_balances
-from investment_engine.ledger.contracts import AccountingUnavailable
+from investment_engine.ledger.contracts import AccountingUnavailable, OpeningLot, Unit
 from investment_engine.ledger.postings import post_fill
 from investment_engine.ledger.sources import opening_bundle
 from investment_engine.lineage.records import canonical_json
@@ -100,3 +100,12 @@ def test_cash_only_initial_condition_needs_no_mark_or_previous_calendar_year(env
     value = balances("R1",effective_at=start.effective_at,known_at=env.clock.now(),book_id=head.book_id,ledger=env.ledger)
     result = value_balances(value,marks={},calendar=CAL,source="yfinance",ledger=env.ledger)
     assert result.complete and result.equity == 100000 and result.net_pnl == 0
+
+
+def test_explicit_zero_acquisition_basis_is_known_zero_not_missing(env):
+    def lots(start):
+        return (OpeningLot("free-declared-lot",start.state_id,"R1",NVDA,Decimal(3),Decimal(0),Unit("CURRENCY","USD"),
+                           start.effective_at,env.clock.now(),"owner","explicit known zero acquisition cost"),)
+    head = activate(env,positions=((NVDA,Decimal(3)),),lots=lots)
+    value = balances("R1",effective_at=env.clock.now(),known_at=env.clock.now(),book_id=head.book_id,ledger=env.ledger)
+    assert value.complete and value.costs == ((NVDA,Decimal(0)),)

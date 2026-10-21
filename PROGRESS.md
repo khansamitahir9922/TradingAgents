@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | M0, M2 and M3 complete locally. **M4 merged locally at `5cd9363`. M5 ADR/specs/D35-D44 owner-accepted; whole implementation authorized.** M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-06 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
+| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-05 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | Unchanged by M5 preparation. No runtime/tests/dependencies/CI/frozen architecture/diagrams changed. Main and Claude implementation worktrees preserved. |
 | **Checks** | M5 documentation validation passed: 22 docs-only files, 15 complete task specs, backward dependencies, links, proposed decisions, 55 h/eight task-size exceptions, worked accounting examples plus 400 exact-rational cumulative-allocation cases, whitespace and preserved histories/reminder. v0.2 readiness/consumer/incident interleavings reviewed against existing source. No M5 runtime tests, migrations, backup/restore, installs or CI run. M4 S1/S2 check evidence remains separate: both suites 3340 passed with only the cache-location baseline; fresh base/engine installs and Ruff passed. |
@@ -157,6 +157,14 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-21 — M5-05 (Codex backup implementer)
+
+Self-review follow-up: preserve explicit zero remaining acquisition cost for each held position, rather than omitting it and making the portfolio adapter confuse known zero with missing basis. Only balances derived from the validated posted book gain this explicit zero; supplied missing costs still fail closed.
+
+Red: run_check.py bash m5-05-zero-cost-red tests/engine/test_ledger_time.py::test_explicit_zero_acquisition_basis_is_known_zero_not_missing: 1 failed because the known zero field was absent. Green: run_check.py bash m5-05-zero-cost-green tests/engine/test_ledger_time.py tests/engine/test_ledger_restatements.py tests/engine/test_ledger_portfolio.py tests/engine/test_snapshot_compatibility.py: 18 passed in 29.13s. Root venv python -m ruff check . passed.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
 
 ## 2026-10-21 — M5-06 (Codex backup implementer)
 
