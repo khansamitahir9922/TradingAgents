@@ -29,8 +29,9 @@ class CoreStepReport:
 
 
 class CoreEngine:
-    def __init__(self, stores, *, clock) -> None:
+    def __init__(self, stores, *, clock, accounting=None) -> None:
         self.stores, self.clock = stores, clock
+        self.accounting = accounting
         self.outbox = Outbox(stores.db, writer=ProcessRole.CORE, clock=clock)
         self.orders = OrderStore(stores.db, role=ProcessRole.CORE, audit=stores.audit, outbox=self.outbox,
                                  clock=clock)
@@ -56,7 +57,14 @@ class CoreEngine:
         """Publish the outbox, then run the order-log consumer; returns (published, consumed)."""
         published = self.outbox.publish_pending()
         report = self.consumer.run_once(limit=1000)
-        return published, report.applied + report.unhandled
+        accounted = 0
+        if self.accounting is not None:
+            result = self.accounting.consumer.run_once(limit=1000)
+            accounted = result.applied + result.unhandled
+        return published, report.applied + report.unhandled + accounted
+
+    def sync_accounting(self, account_id, *, at):
+        return None if self.accounting is None else self.accounting.synchronize(account_id, at=at)
 
     def run(self, *, poll_seconds: Decimal, stop: Callable[[], bool],
             reconnect: Callable[[], "CoreEngine"] | None = None) -> "CoreEngine":

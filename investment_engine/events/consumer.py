@@ -42,13 +42,15 @@ class ConsumerReport:
 
 
 class Consumer:
-    def __init__(self, db, *, name: str, handles: Mapping[str, Callable[[EventEnvelope], None]], clock) -> None:
+    def __init__(self, db, *, name: str, handles: Mapping[str, Callable[[EventEnvelope], None]], clock,
+                 serialize: bool = False) -> None:
         self._db = port(db)
         if self._db.backend != "postgresql":
             raise TypeError("consumers are PostgreSQL only (docs/tasks/M4-01.md)")
         if not isinstance(name, str) or not name.strip():
             raise ValueError("a consumer needs a name")
         self.name, self._handles, self._clock = name, dict(handles), clock
+        self._serialize = serialize
         self._after: tuple[str, str] | None = None  # the aggregate last attempted: the next round starts after it
 
     def _heads(self, n: int, where: str, params: dict) -> list:
@@ -84,6 +86,8 @@ class Consumer:
             {"c": self.name})[0]
 
     def run_once(self, *, limit: int = 100) -> ConsumerReport:
+        if self._serialize and self._db.in_transaction:
+            raise RuntimeError("serialized consumer cannot run in an outer transaction (consumer -> account -> ledger)")
         applied = unhandled = failed = attempted = 0
         blocked: set[tuple[str, str]] = set()  # failed in this run: held for the rest of it
         while attempted < limit:
@@ -105,6 +109,8 @@ class Consumer:
         handler = self._handles.get(envelope.event_type)
         try:
             with self._db.transaction():
+                if self._serialize:
+                    self._db.lock(f"consumer|{self.name}")
                 if self._db.fetchone("SELECT 1 FROM processed_events WHERE consumer = :c AND event_id = :e",
                                      {"c": self.name, "e": envelope.event_id}) is not None:
                     return None  # another instance of this consumer got there first

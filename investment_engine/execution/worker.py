@@ -83,7 +83,7 @@ class _BoundedPort:
     """The broker port as the worker calls it: each call under the deadline. The method is looked up when it is
     called, so a substituted method is bounded too."""
 
-    _CALLS = frozenset({"submit", "cancel", "lookup", "messages"})
+    _CALLS = frozenset({"submit", "cancel", "lookup", "messages", "snapshot"})
 
     def __init__(self, worker) -> None:
         self._worker = worker
@@ -98,11 +98,15 @@ class _BoundedPort:
 class ExecutionWorker:
     def __init__(self, db, *, clock, broker, kill_switch=None, reads=None,
                  serves: frozenset[AccountKind] = frozenset({AccountKind.RESEARCH}),
-                 deadline_seconds: float = BROKER_DEADLINE_SECONDS, accounts: frozenset[str] | None = None) -> None:
+                 deadline_seconds: float = BROKER_DEADLINE_SECONDS, accounts: frozenset[str] | None = None,
+                 accounting=None) -> None:
         """`accounts` limits every kind of work to those accounts (None: all): submissions, ingestion, SUBMITTING
         and UNKNOWN reconciliation, and cancels (Codex M4 review B9)."""
         self.db, self.clock, self.broker = db, clock, broker
         self.kill_switch, self.reads, self.serves = kill_switch, reads, serves
+        from investment_engine.reconciliation.service import ReadinessReader
+
+        self.accounting = ReadinessReader(db, service=accounting)
         self.accounts = None if accounts is None else frozenset(accounts)
         self.deadline_seconds = deadline_seconds
         from investment_engine.storage.postgres import connection_lost_errors
@@ -161,6 +165,7 @@ class ExecutionWorker:
                                   sendable=lambda: not self.broker_stalled(), in_scope=self.in_scope)
         *_, looked_up = self.reconcile_submitting()
         lookups = self.lookup_unknown(skip=looked_up)
+        self.capture_accounting()
         submitted = rejected = unknown = 0
         if self.reads is not None and self.kill_switch is not None and not self.broker_stalled():
             for order, _ in self.orders.in_states(S.NEW):
@@ -172,6 +177,8 @@ class ExecutionWorker:
                 submitted += outcome == "SUBMITTED"
                 rejected += outcome == "GATE_REJECTED"
                 unknown += outcome == "UNKNOWN"
+        if submitted or rejected or unknown:
+            self.capture_accounting()
         published += self.outbox.publish_pending()
         return StepReport(published, ingested.applied, cancels.sent, cancels.closed, lookups, submitted, rejected,
                           unknown)
@@ -184,6 +191,11 @@ class ExecutionWorker:
         While an earlier broker call is stalled, nothing is gated: the order stays NEW (B5)."""
         if self.broker_stalled():
             return "BROKER_BUSY"
+        account_id = self.orders.get(order_id)[0].account_id
+        if self.accounting.activated(account_id) and not self.accounting.at(account_id, self.clock.now()).ready:
+            cancel = any(r.order_id == order_id for r, _, _ in self.orders.open_cancels())
+            if not cancel:
+                return "ACCOUNTING_WAIT"  # NEW waits for Core; a cancel still reaches the rejecting gate
         try:
             decision = gate_order(order_id, clock=self.clock, orders=self.orders, reads=self.reads,
                                   kill_switch=self.kill_switch)
@@ -218,6 +230,68 @@ class ExecutionWorker:
             self.orders.transition(order_id, to, expected_aggregate_version=status.aggregate_version, at=now,
                                    reason=reason, broker_order_id=broker_id)
         return to.value
+
+    def capture_accounting(self):
+        """Bounded broker I/O outside every transaction, including zero-order activated accounts.
+
+        Vendor values and worker delivery progress are separate immutable records.
+        A snapshot can materialize new messages; those must be ingested on the next
+        step before its prefix is claimed complete. No broker/private schema query
+        is made here, and a lost connection keeps its type (M4 R5).
+        """
+        from investment_engine.reconciliation.service import capture_prefix
+        from investment_engine.reconciliation.snapshots import BrokerSnapshotStore
+
+        if self.db.in_transaction:
+            raise RuntimeError("broker snapshot cannot run inside a database transaction")
+        rows = self.db.fetchall("SELECT l.account_id,a.kind FROM ledger_activations l JOIN accounts a USING(account_id) ORDER BY l.account_id")
+        store = BrokerSnapshotStore(self.db, role=ProcessRole.EXECUTION, audit=AuditStore(self.db),
+                                     outbox=self.outbox, clock=self.clock)
+        for account_id, kind in rows:
+            if AccountKind(kind) not in self.serves:
+                continue
+            if self.accounts is not None and account_id not in self.accounts:
+                continue
+            if self.broker_stalled():
+                break
+            at = check_utc(self.clock.now(), "now")
+            try:
+                snapshot = self.port.snapshot(account_id, at=at)
+                messages = self.port.messages(after=None, at=at)
+            except self._lost:
+                raise
+            except Exception:
+                continue  # no fabricated evidence; old time/pins cannot authorize a new gate
+            # All database work is outside the broker exception handler: operational
+            # failures must reach reconnect, never become an ordinary broker error.
+            if snapshot.account_id != account_id or snapshot.effective_at != at:
+                continue
+            store.record(snapshot)
+            complete = True
+            for message in messages:
+                try:
+                    order, status = self.orders.by_client_id(message.client_order_id)
+                except KeyError:
+                    complete = False
+                    continue
+                if order.account_id != account_id:
+                    continue
+                recorded = self.db.fetchone(
+                    "SELECT 1 FROM order_versions WHERE order_id=:o AND broker_ref=:r "
+                    "UNION ALL SELECT 1 FROM broker_anomalies WHERE order_id=:o AND broker_ref=:r LIMIT 1",
+                    {"o": order.order_id, "r": message.message_id}) is not None
+                if message.kind == "FILL":
+                    recorded = recorded or any(f.broker_fill_id == message.fill.broker_fill_id
+                                               for f in self.orders.fills(order.order_id))
+                    recorded = recorded or self.db.fetchone("SELECT 1 FROM broker_anomalies WHERE order_id=:o AND broker_ref=:f",
+                        {"o": order.order_id, "f": message.fill.broker_fill_id}) is not None
+                elif message.kind == "ACK":
+                    recorded = recorded or status.state not in (S.NEW, S.SUBMITTING, S.UNKNOWN)
+                elif message.kind in ("EXPIRED", "CANCELLED", "REJECTED"):
+                    recorded = recorded or status.state in (S.EXPIRED, S.CANCELLED, S.REJECTED, S.FILLED)
+                complete = complete and recorded
+            store.record_ingestion(snapshot.snapshot_id, complete=complete,
+                                     prefix_ref=capture_prefix(snapshot, orders=self.orders, at=at))
 
     def lookup_unknown(self, *, skip=frozenset()) -> int:
         """Look up each UNKNOWN order once (D20): a report resolves it; no record leaves it UNKNOWN, recorded. A

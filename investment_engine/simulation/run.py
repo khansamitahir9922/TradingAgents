@@ -61,13 +61,16 @@ def stored_views(db, instrument_id: str, first: datetime, last: datetime) -> lis
 
 
 def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, flag_path, source: str,
-             calendar_version: str, code_version: str, proposal_knowledge=None) -> SimulationReport:
+             calendar_version: str, code_version: str, proposal_knowledge=None, accounting_factory=None,
+             accounting_work_budget: int = 8) -> SimulationReport:
     """`open_db()` returns a fresh PostgresDatabase: one connection per role. `knowledge` is the broker's and the
     gate's, which may run ahead. `proposal_knowledge(view, stores)`, when given, is each proposal's: bounded at the
     sequence of that view's own decision bar, so an event delivered at exactly the view's time but after its bar is
     never seen by the proposal (Law 5; Codex M4 review B3), as in M3's replay path."""
     if not views:
         raise SimulationRefused("no stored views in that range; run 'views replay' first")
+    if type(accounting_work_budget) is not int or accounting_work_budget < 1:
+        raise SimulationRefused("accounting work budget must be a positive integer")
     start = views[0].generated_at
     core_clock, worker_clock = ReplayClock(start), ReplayClock(start)
     core_db, worker_db = open_db(), open_db()
@@ -78,7 +81,8 @@ def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, 
     if account.kind is not AccountKind.RESEARCH:
         raise SimulationRefused("only a RESEARCH account runs a simulation; a PAPER account never reaches the simulator "
                                 "(D23)")
-    engine = CoreEngine(core, clock=core_clock)  # the unchanged Core role object (D24; Codex M4 review B12)
+    accounting = None if accounting_factory is None else accounting_factory(core_db, core_clock)
+    engine = CoreEngine(core, clock=core_clock, accounting=accounting)
     core_orders = engine.orders
     if core_orders.for_account(account_id):
         raise SimulationRefused(f"{account_id} already has orders from a run; use a fresh account")
@@ -87,44 +91,72 @@ def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, 
     # Scoped to this account, the broker and the worker never touch another account's work (B9).
     broker = build_broker("simulated", account_kind=AccountKind.RESEARCH, db=open_db(), account_id=account_id,
                           knowledge=knowledge, calendar=calendar, source=source)
+    worker_accounting = None if accounting_factory is None else accounting_factory(worker_db, worker_clock)
     worker = ExecutionWorker(worker_db, clock=worker_clock, broker=broker, kill_switch=KillSwitchReader(flag_path),
-                             accounts=frozenset({account_id}))
+                             accounts=frozenset({account_id}), accounting=worker_accounting)
     worker_stores = ControlStores.open(worker_db, worker_clock, instruments=SqliteInstrumentRepository(worker_db))
     worker.reads = build_gate_reads(worker_stores, worker.orders, knowledge=knowledge, calendar=calendar,
                                     fingerprints=ProvisionalFingerprints(worker_stores.snapshots, worker.orders,
                                                                          knowledge=knowledge, calendar=calendar,
-                                                                         coverage=coverage, source=source))
+                                                                         coverage=coverage, source=source),
+                                    accounting=worker_accounting)
 
     def at(t):
         for clock in (core_clock, worker_clock):
             if t > clock.now():
                 clock.advance_to(t)
 
+    def settle():
+        if accounting is None or not accounting.activated(account_id):
+            worker.step()
+            return True
+        previous = None
+        for _ in range(accounting_work_budget):
+            worker.step()
+            engine.publish_and_consume()
+            engine.sync_accounting(account_id, at=core_clock.now())
+            ready = accounting.ready(account_id, core_clock.now())
+            from investment_engine.oms.order_states import OrderState
+            pending = worker.orders.in_states(OrderState.NEW, account_id=account_id)
+            if ready.ready and not pending:
+                return True
+            marker = (ready, tuple((o.order_id, s.aggregate_version) for o, s in worker.orders.for_account(account_id)),
+                      core_db.fetchone("SELECT count(*) FROM processed_events WHERE consumer='accounting-ledger'")[0])
+            if marker == previous:
+                break
+            previous = marker
+        return False
+
     outcomes, stops = {}, []
     for view in views:
         t = view.generated_at
         at(t)
-        worker.step()  # 1: everything decided by now is ingested before sizing
+        settled = settle()  # 1: finite pinned prefix before sizing
+        if not settled and not stops:
+            stops.append(f"{t.isoformat()}: INCOMPLETE accounting prefix/readiness (no progress or work budget)")
         if stops:
             outcomes["NOT_PROPOSED (stopped)"] = outcomes.get("NOT_PROPOSED (stopped)", 0) + 1
             continue
         seen = knowledge if proposal_knowledge is None else proposal_knowledge(view, core)
         record = propose(account_id, view, at=t, stores=core, knowledge=seen, calendar=calendar,
                          coverage=coverage, calendar_version=calendar_version, code_version=code_version,
-                         correlation_id=f"sim:{account_id}:{t.isoformat()}", orders=core_orders)
+                         correlation_id=f"sim:{account_id}:{t.isoformat()}", orders=core_orders, accounting=accounting)
         outcomes[record.outcome.value] = outcomes.get(record.outcome.value, 0) + 1
         if record.outcome.value == "PREREQUISITE_MISSING" and "snapshot" in record.missing:
             stops.append(f"{t.isoformat()}: {record.reason}")  # the projection is Unavailable: stop here (rule 4)
         engine.convert(account_id, at=t)  # 2: the Core role object's conversion, at replay time
         engine.publish_and_consume()
         at(t + _TICK)
-        worker.step()  # 3: gate and submit before the target session's open
+        if not settle() and not stops:
+            stops.append(f"{core_clock.now().isoformat()}: INCOMPLETE accounting after proposal (no progress or work budget)")
     last = max(o.target_session for o, _ in core_orders.for_account(account_id)) if core_orders.for_account(
         account_id) else None
     if last is not None:
         at(calendar.next_session(last).open + _TICK)
-        worker.step()
-        worker.step()
+        settled = settle()
+        settled = settle() and settled
+        if not settled and not stops:
+            stops.append(f"{core_clock.now().isoformat()}: INCOMPLETE final accounting prefix/readiness")
     engine.publish_and_consume()
     return SimulationReport(account_id, len(views), outcomes, len(core_orders.for_account(account_id)), tuple(stops))
 

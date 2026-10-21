@@ -231,6 +231,7 @@ class OrderStore:
             raise TypeError("expected an Order")
         now = self._now()
         with self._db.transaction():
+            self._db.lock(f"account-control|{order.account_id}")
             self._claim_role()
             existing = self.for_intent(order.intent_id, order.intent_version)
             if existing is not None:
@@ -265,8 +266,12 @@ class OrderStore:
         if to in FILL_STATES:
             raise order_states.IllegalTransition(f"{to} is reached only by recording a fill (rule 4)")
         with self._db.transaction():
+            account_id = self.get(order_id)[0].account_id  # immutable identity only, reread state after lock
+            self._db.lock(f"account-control|{account_id}")
             self._claim_role()
             order, status = self.get(order_id)
+            if status.aggregate_version != expected_aggregate_version:
+                raise StaleWrite(f"{order_id} changed since version {expected_aggregate_version}; nothing was written")
             order_states.check(status.state, to, self.role)
             from_new = status.state is S.NEW
             if from_new != (gate is not None):
@@ -322,6 +327,8 @@ class OrderStore:
             raise TypeError("expected a Fill")
         now = self._now()
         with self._db.transaction():
+            account_id = self.get(fill.order_id)[0].account_id
+            self._db.lock(f"account-control|{account_id}")
             self._claim_role()
             order, status = self.get(fill.order_id)
             row = self._db.fetchone("SELECT order_id, quantity, price, fee, currency, executed_at, delivered_at, "

@@ -215,7 +215,7 @@ def _session_bounds(calendar, session):
 
 def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: ControlStores, knowledge, calendar,
             coverage, calendar_version: str, code_version: str, correlation_id: str, orders=None,
-            declared_only: bool = False) -> ProposalRecord:
+            declared_only: bool = False, accounting=None) -> ProposalRecord:
     """Propose one view for one account. RESEARCH: `at` is the replay time. PAPER: `at=None`, the live time.
     With `orders` (an OrderStore), the snapshot is the provisional projection: the declared start plus recorded
     fills, splits, dividends and open-order reservations (M4-09); without it, exactly M3's declared snapshot, but
@@ -251,6 +251,8 @@ def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: C
         # genuine view can still be proposed (Codex M3 review B2).
         return ProposalRecord(account_id, view_lineage_id, at, ProposalOutcome.PREREQUISITE_MISSING,
                               f"view lineage: {mismatch}", ("view lineage",), None, ())
+    if accounting is not None and accounting.activated(account_id):
+        accounting.synchronize(account_id, at=at)
     with stores.db.transaction():
         stores.db.lock(f"account-control|{account_id}")
         existing = stores.proposals.for_view(account_id, view_lineage_id)
@@ -258,7 +260,7 @@ def propose(account_id: str, view: MarketView, *, at: datetime | None, stores: C
             return existing  # idempotent: the same account and view were already proposed
         _expire(account_id, at, stores)
         record = _propose(account_id, view, at, stores, knowledge, calendar, coverage, calendar_version, code_version,
-                          correlation_id, view_lineage_id, view_lineage, orders, declared_only)
+                          correlation_id, view_lineage_id, view_lineage, orders, declared_only, accounting)
         stores.proposals.append(record)
     return record
 
@@ -290,7 +292,7 @@ def _missing(account_id, view_lineage_id, at, missing: list[tuple[str, str]]) ->
 
 def _propose(account_id, view, at, stores: ControlStores, knowledge, calendar, coverage, calendar_version,
              code_version, correlation_id, view_lineage_id, view_lineage, orders=None,
-             declared_only: bool = False) -> ProposalRecord:
+             declared_only: bool = False, accounting=None) -> ProposalRecord:
     missing: list[tuple[str, str]] = []
     if orders is None and not declared_only and _has_orders(stores, account_id):
         missing.append(("order history", f"{account_id} has orders, so its portfolio is the order store's "
@@ -331,7 +333,14 @@ def _propose(account_id, view, at, stores: ControlStores, knowledge, calendar, c
         peak = stores.snapshots.peak(account_id, since=baseline, at=at) if at >= baseline else None
         history = [] if peak is None else [peak]  # the highest stored equity since the baseline is all it needs
         projection = None
-        if orders is not None:
+        activated = stores.db.backend == "postgresql" and stores.db.fetchone(
+            "SELECT 1 FROM ledger_activations WHERE account_id=:a", {"a": account_id}) is not None
+        if activated:
+            if accounting is None:
+                projection = Unavailable("activated ledger accounting service is missing; provisional fallback refused")
+            else:
+                projection = accounting.projection(account_id, at)
+        elif orders is not None:
             from investment_engine.portfolio.provisional import project
             from investment_engine.portfolio.snapshot import _covers
 

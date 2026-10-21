@@ -29,10 +29,11 @@ def _read(fn, what: str):
 
 
 class StoreGateReads:
-    def __init__(self, stores, orders, *, knowledge, calendar, fingerprints, promotion=None) -> None:
+    def __init__(self, stores, orders, *, knowledge, calendar, fingerprints, promotion=None, accounting=None) -> None:
         self.stores, self.orders = stores, orders
         self.knowledge, self.calendar, self.fingerprints = knowledge, calendar, fingerprints
         self.promotion = promotion or (lambda order, intent, at: "PROMOTION NOT ASSESSED (OPEN-09)")
+        self.accounting = accounting
 
     def read(self, order: Order, *, at: datetime):
         s = self.stores
@@ -77,7 +78,16 @@ class StoreGateReads:
             return order.instrument_id in s.limits.policy_at(order.account_id, at).restricted
 
         def fingerprint():
-            value = self.fingerprints.at(order.account_id, at, excluding_order=order.order_id)
+            active = s.db.fetchone("SELECT 1 FROM ledger_activations WHERE account_id=:a", {"a": order.account_id})
+            if active:
+                if self.accounting is None:
+                    raise LookupError("activated ledger readiness provider is missing")
+                from investment_engine.ledger.fingerprint import LedgerFingerprints
+
+                value = LedgerFingerprints(self.accounting.current_balances, self.orders).at(
+                    order.account_id, at, excluding_order=order.order_id)
+            else:
+                value = self.fingerprints.at(order.account_id, at, excluding_order=order.order_id)
             if not isinstance(value, str):
                 raise LookupError(getattr(value, "reason", str(value)))
             return value

@@ -36,12 +36,13 @@ def build_broker(kind: str, *, account_kind: AccountKind, **deps):
                            account_id=deps.get("account_id"))
 
 
-def build_gate_reads(stores, orders, *, knowledge, calendar, fingerprints):
+def build_gate_reads(stores, orders, *, knowledge, calendar, fingerprints, accounting=None):
     """The gate's read provider, for a composer outside this package (the offline harness, M4-13) that may import
     only this factory, the worker, the port and the simulator (M4-03 layering)."""
     from investment_engine.execution.reads import StoreGateReads
 
-    return StoreGateReads(stores, orders, knowledge=knowledge, calendar=calendar, fingerprints=fingerprints)
+    return StoreGateReads(stores, orders, knowledge=knowledge, calendar=calendar, fingerprints=fingerprints,
+                           accounting=accounting)
 
 
 __all__ = ["KINDS", "BrokerUnavailable", "build_broker", "build_gate_reads", "check_available"]
