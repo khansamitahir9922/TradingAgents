@@ -70,3 +70,10 @@ def correction_plan(original, replacement, *, dependent_sources):
     if len(old) != 1 or len(new) != 1 or old[0].identity != new[0].identity or old[0].provider != new[0].provider or new[0].revision <= old[0].revision:
         raise SourceConflict("correction must identify a newer revision of the same provider action")
     return reverse_transaction(original, posted_at=replacement.posted_at), replacement
+
+
+def restate_dependents(account_id, *, through, sources, ledger):
+    """M5-05's complete source-validated closure; never a broker discrepancy repair."""
+    from investment_engine.ledger.restate import sync_account
+
+    return sync_account(account_id, through=through, sources=sources, ledger=ledger)
