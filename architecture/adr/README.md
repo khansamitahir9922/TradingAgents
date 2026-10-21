@@ -21,7 +21,9 @@ An ADR explains **why** a decision was made: the problem, the alternatives, the 
 | [ADR-008](ADR-008-database-sqlite-then-postgresql.md) | Database: SQLite in M1–M2, PostgreSQL from M3 | 10, 11 | M1 / M3 |
 | [ADR-009](ADR-009-append-only-revisions-point-in-time.md) | Append-only revisions and point-in-time views | 5, 8, 18 | M1 |
 
-**Planned later** (architecture Part K): ADR-010 securities ledger model (before M5) · ADR-011 broker and data provider, incl. whether the data key can trade (before M7) · ADR-012 hosting and OS-level process isolation (before M7).
+**Accepted for M5 (owner, 2026-10-21):** [ADR-010: Separate currency and security-quantity books](ADR-010-securities-ledger-model.md), v0.2 (Codex backup implementer), **owner-accepted**. The [M5 task pack](../../docs/tasks/M5-README.md) is authorized for implementation; finished code still needs review before a separately approved merge.
+
+**Planned later** (architecture Part K): ADR-011 broker and data provider, incl. whether the data key can trade (before M7) · ADR-012 hosting and OS-level process isolation (before M7).
 
 ## Status values
 - **Proposed**: written, not yet decided.

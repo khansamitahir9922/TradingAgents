@@ -334,6 +334,8 @@ Everything below is **provisional**. M2's draft tasks are linked below; M3 – M
 ### M5 — Ledger + reconciliation
 **Before it starts:** **ADR-010** (securities ledger model) is accepted; OPEN-12.
 
+**Owner-accepted implementation plan (2026-10-21):** [M5 task pack](tasks/M5-README.md), 15 tasks / 55 h, eight tasks over 3 h, and [accepted ADR-010 v0.2](../architecture/adr/ADR-010-securities-ledger-model.md). D35-D44 are accepted and the whole milestone is authorized for local implementation/task commits. M4 is merged locally at `5cd9363`. Final independent/owner review, M5 merge and push remain separate. Hourly and PAPER gates are unchanged.
+
 | Provisional work package | Est. |
 |---|---|
 | Double-entry ledger per ADR-010; reversing entries only | 6–8 h |
