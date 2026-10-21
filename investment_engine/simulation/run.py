@@ -21,6 +21,7 @@ and the order log give (rule 4). The worker keeps stepping, so orders already pl
 portfolio is ever invented.
 """
 
+import json
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
@@ -48,6 +49,54 @@ class SimulationReport:
     proposals: dict
     orders: int
     stops: tuple[str, ...]  # why proposing stopped (the projection became Unavailable), at most one
+    accounting_json: str | None = None  # immutable pinned M5 output; legacy runs remain None
+
+
+def _collect_accounting(account_id, *, service, at, calendar, source, calendar_version, code_version,
+                        views, orders, lineage, stops):
+    """Read only. No broker calls, synchronization, invented mark delivery or repairs.
+
+    The run's compact result intentionally supplies no marks: held inventory is
+    UNAVAILABLE for valuation here. The separate accounting report accepts
+    explicit (raw mark, actual delivery) pairs for a full marked valuation.
+    """
+    from investment_engine.reporting.accounting import build_report
+
+    head = service.ledger.read_head(account_id, known_at=at)
+    payload = json.loads(build_report(account_id, effective_at=at, known_at=at, book_id=head.book_id,
+        ledger=service.ledger, calendar=calendar, source=source, marks={}).to_json())
+    rows = orders.for_account(account_id)
+    missing = sorted({o.target_session.isoformat() for o, _ in rows
+                      if any('no market data' in t.reason for t in orders.history(o.order_id))})
+    unknown = sorted(o.order_id for o, state in rows if state.state.value in ('UNKNOWN', 'SUBMITTING'))
+    rejected = sorted(o.order_id for o, state in rows if state.state.value in ('REJECTED', 'GATE_REJECTED'))
+    records = [lineage.get(view.evidence_refs[0]) for view in views]
+    payload['run'] = {'label': 'SIMULATED | REPLAY | RESEARCH | NOT PROMOTED', 'provider': source,
+        'code_version': code_version, 'calendar_version': calendar_version, 'policy_version': head.policy_version,
+        'view_lineage_ids': [record.lineage_id for record in records],
+        'strategy_versions': [dict(record.strategy_versions) for record in records],
+        'feature_versions': [dict(record.feature_versions) for record in records],
+        'action_versions': [{'identity': ref.identity, 'revision': ref.revision, 'content_hash': ref.content_hash}
+                            for ref in head.sources if ref.kind == 'action'],
+        'unknown_orders': unknown, 'rejected_orders': rejected, 'missing_sessions': missing,
+        'stops': list(stops), 'fill_provenance': [json.loads(fill.provenance) for order, _ in rows
+                                                 for fill in orders.fills(order.order_id)],
+        'journal_transactions': sum(len(batch.transactions) for batch in service.ledger.ancestry(head.book_id)),
+        'valuation': 'No raw mark delivery is inferred; held positions require explicit marks in the accounting report.'}
+    extra = list(stops)
+    if missing:
+        extra.append('INCOMPLETE market sessions: ' + ', '.join(missing))
+    if unknown:
+        extra.append('INCOMPLETE unresolved submissions: ' + ', '.join(unknown))
+    if payload['reconciliation_status'] != 'MATCH':
+        extra.append('INCOMPLETE reconciliation: ' + payload['reconciliation_status'])
+    if extra:
+        payload['complete'] = False
+        payload['reasons'] = sorted(set(payload['reasons'] + extra))
+        for key in ('market_value', 'unrealized', 'equity', 'net_pnl'):
+            payload['metrics'][key] = None
+        payload['daily_pnl'] = None
+    return json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=True)
 
 
 def stored_views(db, instrument_id: str, first: datetime, last: datetime) -> list:
@@ -158,7 +207,13 @@ def simulate(account_id: str, *, views, open_db, knowledge, calendar, coverage, 
         if not settled and not stops:
             stops.append(f"{core_clock.now().isoformat()}: INCOMPLETE final accounting prefix/readiness")
     engine.publish_and_consume()
-    return SimulationReport(account_id, len(views), outcomes, len(core_orders.for_account(account_id)), tuple(stops))
+    accounting_json = None
+    if accounting is not None and accounting.activated(account_id):
+        accounting_json = _collect_accounting(account_id, service=accounting, at=core_clock.now(), calendar=calendar,
+            source=source, calendar_version=calendar_version, code_version=code_version, views=views,
+            orders=core_orders, lineage=core.lineage, stops=stops)
+    return SimulationReport(account_id, len(views), outcomes, len(core_orders.for_account(account_id)), tuple(stops),
+                            accounting_json)
 
 
 __all__ = ["SimulationRefused", "SimulationReport", "simulate", "stored_views"]
