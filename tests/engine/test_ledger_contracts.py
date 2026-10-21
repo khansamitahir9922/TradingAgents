@@ -10,6 +10,7 @@ from investment_engine.ledger.contracts import (
     BalanceQuery,
     BookBatch,
     LedgerEntry,
+    LotMatch,
     OpeningLot,
     SourceBundle,
     SourceRef,
@@ -146,3 +147,14 @@ def test_quantity_book_never_credits_money_and_legacy_codec_unchanged():
                     ("SHARE_OFFSET", SHARES, Decimal(-90))))
     assert [(e.debit, e.credit) for e in value.entries] == [(Decimal(90), Decimal(0)), (Decimal(0), Decimal(90))]
     assert canonical_json({"old": Decimal("1.00")}) == '{"$map":[["old",{"$decimal":"1.00"}]]}'
+
+
+def test_lot_book_back_reference_has_no_circular_identity_and_records_are_frozen():
+    match = LotMatch("m", "pending", "buy", "sell", Decimal(1), Decimal(1), USD, "fifo-v1")
+    batch = BookBatch("R1", None, 1, "fifo-v1", (source(),), (tx(),), (match,), T)
+    finalized = replace(batch, lot_matches=(replace(match, book_id=batch.book_id),))
+    assert finalized.book_id == batch.book_id
+    inputs = [{"declared": [Decimal(1)]}]
+    bundle = SourceBundle("R1", T, inputs, (source(),), "declared", "coverage", (), "v1")
+    inputs[0]["declared"].append(Decimal(2))
+    assert tuple(bundle.records[0]["declared"]) == (Decimal(1),)

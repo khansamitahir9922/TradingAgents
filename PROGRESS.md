@@ -158,6 +158,14 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+## 2026-10-21 — M5-00 (Codex backup implementer)
+
+Self-review follow-up: remove redundant LotMatch.book_id from book identity material to avoid a circular hash; retain economic match fields and immutable bound reference. Deep-freeze SourceBundle input records through the unchanged canonical codec. No persisted lot-bearing books existed; empty-match M5 IDs and all legacy IDs unchanged.
+
+Observed red: run_check.py bash m5-00-id-red tests/engine/test_ledger_contracts.py::test_lot_book_back_reference_has_no_circular_identity_and_records_are_frozen: 1 failed on circular ID. Green: run_check.py bash m5-00-id-green tests/engine/test_ledger_contracts.py tests/engine/test_reconciliation_contracts.py tests/engine/test_ledger_store.py tests/engine/test_ledger_upgrade.py tests/engine/test_lineage.py: 76 passed in 44.20s, no skips. Root venv python -m ruff check . passed.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
+
 ## 2026-10-21 — M5-01 (Codex backup implementer)
 
 Additive schema 0016; per-unit deferred balance, sealed entry manifests, full one-time reversals, immutable journals/receipts/activation; account-then-ledger CAS locking, atomic audit/outbox and explicit current-Admin activation. Upgraded only disposable test databases; retained schema files untouched.

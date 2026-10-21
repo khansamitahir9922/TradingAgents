@@ -11,7 +11,7 @@ from decimal import Decimal
 from fractions import Fraction
 from typing import Protocol
 
-from investment_engine.lineage.records import canonical_json, register
+from investment_engine.lineage.records import canonical_json, decode, encode, register
 from investment_engine.market.availability import (
     check_instrument_id,
     check_name,
@@ -44,9 +44,10 @@ def digest(value, name):
 
 
 def sources_tuple(values):
-    result = tuple(sorted(values, key=lambda s: (s.kind, s.identity, s.revision, s.provider)))
-    if not all(isinstance(s, SourceRef) for s in result):
+    values = tuple(values)
+    if not all(isinstance(s, SourceRef) for s in values):
         raise TypeError("source references required")
+    result = tuple(sorted(values, key=lambda s: (s.kind, s.identity, s.revision, s.provider)))
     keys = [(s.kind, s.identity, s.revision, s.provider) for s in result]
     if len(keys) != len(set(keys)):
         raise ValueError("duplicate source reference")
@@ -116,7 +117,7 @@ class SourceBundle:
         for name in ("account_id", "provider", "coverage_ref", "model_version"):
             check_name(getattr(self, name), name)
         check_utc(self.cutoff, "cutoff")
-        object.__setattr__(self, "records", tuple(self.records))
+        object.__setattr__(self, "records", tuple(decode(encode(r)) for r in self.records))
         object.__setattr__(self, "references", sources_tuple(self.references))
         object.__setattr__(self, "omissions", tuple(self.omissions))
         if any(s.known_at > self.cutoff for s in self.references):
@@ -319,7 +320,12 @@ class BookBatch:
 
     @property
     def book_id(self):
-        return identity(content(self))
+        values = content(self)
+        # A match refers back to this book. Hash its economic content without that
+        # redundant back-reference, then bind the reference before append. No old
+        # book IDs change: no matches had been stored before this correction.
+        values["lot_matches"] = tuple(content(m, exclude=("book_id",)) for m in self.lot_matches)
+        return identity(values)
 
 
 @dataclass(frozen=True)
