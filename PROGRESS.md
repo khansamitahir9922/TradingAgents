@@ -8,9 +8,9 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 | | |
 |---|---|
-| **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 13/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
+| **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 14/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-07 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
+| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-13 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
 | **Checks** | Focused/affected task checks and Ruff recorded per task below. Full Bash/PowerShell suites and fresh base/engine installs are required once for the finished package; not yet run for M5. CI not run. Implementer self-review is not independent acceptance. |
@@ -31,7 +31,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 **Codex is backup implementer while Claude is unavailable (owner, 2026-10-21).**
 
 1. Completed: owner acceptance recorded, M4 fast-forwarded locally, planning commit `0f93c75`, isolated `m5/milestone` worktree created.
-2. Continue authorized M5: 13/15 tasks committed (checked), next M5-13. Keep focused checks/local commits; full suites and fresh installs once for the finished package. No per-task approval needed.
+2. Continue authorized M5: 14/15 tasks committed (checked), next M5-14. Keep focused checks/local commits; full suites and fresh installs once for the finished package. No per-task approval needed.
 3. M4 tidy-ups remain checked but uncommitted on their separate branch; they were excluded from the authorized main fast-forward.
 4. Final M5 package needs designated independent/owner review and separate merge approval. No push, keys, downloads, owner database reset/restore, actual backup scheduling or M6.
 5. M1 hourly/PAPER/UNKNOWN and all retained architecture conditions remain. D35-D44 are now owner-accepted, not independently accepted by this implementer.
@@ -157,6 +157,14 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-22 — M5-13 (Codex backup implementer)
+
+Added 200 deterministic independent-rational accounting flows, 50 actual competing posting races, 50 actual fill/proposal races and 50 incident CAS races. Three Core hard-kill boundaries plus interrupted Worker snapshot capture recover on real disposable processes with original event IDs and no duplicate effects. Added SQL replacement and Core/Worker/secret-reader boundary probes. Existing M4 harness behavior, hooks and timeouts are unchanged.
+
+Exact focused command: ROOTPY run_check.py bash m5-13-final tests/engine/test_ledger_invariants.py tests/engine/test_m5_fault_injection.py tests/engine/test_m5_boundaries.py: 214 passed in 183.63s. Retained affected command: ROOTPY run_check.py bash m5-13-retained tests/engine/test_fault_injection.py tests/engine/test_snapshot_compatibility.py tests/engine/test_reconciliation_compare.py tests/engine/test_worker_cancels.py: 39 passed in 163.98s. ROOTPY=C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe; runner=C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/run_check.py. Initial new test SQL used nonexistent source_kind/source_identity columns; corrected the new assertion to the actual stored book source refs and transaction count, no production relaxation. Fill/proposal fixture uses the real CoreEngine with the replay clock. Ruff and whitespace passed. Existing order invariant suite remains for final full package runs.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
 
 ## 2026-10-22 — M5-07 (Codex backup implementer)
 

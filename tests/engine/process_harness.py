@@ -83,6 +83,9 @@ def _install(fault: str, marker: str) -> None:
 
 
 def child(spec: dict) -> None:
+    if spec["role"].startswith("m5_"):
+        child_m5(spec)
+        return
     from investment_engine.clock import ReplayClock
     from investment_engine.events.outbox import Outbox
     from investment_engine.execution.reads import StoreGateReads
@@ -136,6 +139,65 @@ def child(spec: dict) -> None:
         engine.publish_and_consume()
     conn.close()
     print("child done")
+
+
+def child_m5(spec):
+    """M5-only fixtures; old M4 roles/fault hooks and timeouts are unchanged."""
+    from psycopg.conninfo import make_conninfo
+
+    from investment_engine.clock import ReplayClock
+    from investment_engine.ledger.service import AccountingService, SourceSelector
+    from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+    from investment_engine.storage.database import PostgresDatabase
+    from investment_engine.storage.postgres import open_operational_pg
+    from tests.conftest import pg_effective_params
+    from tests.engine.test_ledger_actions import coverage
+
+    dsn=make_conninfo("",**pg_effective_params(os.environ["IE_HARNESS_DSN"]))
+    clock=ReplayClock(datetime.fromisoformat(spec["at"]))
+    command=ReplayClock(datetime.fromisoformat(spec["command_at"]))
+    calendar=load_us_equities_calendar()
+    conn=open_operational_pg(dsn)
+    db=PostgresDatabase(conn)
+    fault=spec.get("fault")
+    if spec["role"]=="m5_ledger":
+        sources=SourceSelector(db,clock=clock,command_clock=command,calendar=calendar,provider="yfinance",
+            coverage=lambda a,t:(coverage(t),),delivered_actions=lambda a,t:(),market_root=Path(spec["market"]))
+        service=AccountingService(db,clock=clock,command_clock=command,sources=sources)
+        initial=db.fetchone("SELECT count(*) FROM ledger_transactions")[0]
+        execute=db.execute
+        def patched(sql,params=None):
+            result=execute(sql,params)
+            if fault=="m5_before_journal_commit" and sql.startswith("INSERT INTO ledger_entries"):
+                _block(spec["marker"])
+            if fault=="m5_before_processed_mark" and sql.startswith("INSERT INTO processed_events") and db.fetchone("SELECT count(*) FROM ledger_transactions")[0]>initial:
+                _block(spec["marker"])
+            return result
+        db.execute=patched
+        service.outbox.publish_pending(limit=1000)
+        assert service.consumer.run_once(limit=1000).failed==0
+        if fault=="m5_after_ledger_commit":
+            _block(spec["marker"])
+    else:
+        from investment_engine.execution.simulated_broker import SimulatedBroker, load_fee_schedule
+        from investment_engine.execution.worker import ExecutionWorker
+        from investment_engine.market.store.reader import MarketDataReader
+        from investment_engine.portfolio.reference import StoreKnowledge
+        broker_conn=open_operational_pg(dsn)  # separate connection for every bounded broker call
+        broker=SimulatedBroker(PostgresDatabase(broker_conn),knowledge=StoreKnowledge(MarketDataReader(Path(spec["market"])),calendar),
+                                 calendar=calendar,source="yfinance",fees=load_fee_schedule(),account_id=spec["account"])
+        worker=ExecutionWorker(db,clock=clock,broker=broker,accounts=frozenset({spec["account"]}))
+        execute=db.execute
+        def patched(sql,params=None):
+            result=execute(sql,params)
+            if fault=="m5_snapshot_before_commit" and sql.startswith("INSERT INTO broker_snapshots"):
+                _block(spec["marker"])
+            return result
+        db.execute=patched
+        worker.step()
+        broker_conn.close()
+    conn.close()
+    print("M5 child done")
 
 
 def start(spec: dict, *, dsn: str, tmp: Path):
