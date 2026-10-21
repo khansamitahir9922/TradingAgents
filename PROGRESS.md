@@ -158,6 +158,14 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+## 2026-10-21 — M5-01 (Codex backup implementer)
+
+Self-review follow-up: enforce finalized lot matches reference their containing book, on append and read; complementary guard to the M5-00 non-circular economic identity fix. No migration edited.
+
+Observed red: run_check.py bash m5-01-lot-ref-red tests/engine/test_ledger_store.py::test_lot_match_must_point_to_its_containing_book: 1 failed, bad reference was accepted. Green: run_check.py bash m5-01-lot-ref-green tests/engine/test_ledger_store.py tests/engine/test_ledger_contracts.py: 45 passed in 34.38s. Root venv python -m ruff check . passed.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
+
 ## 2026-10-21 — M5-00 (Codex backup implementer)
 
 Self-review follow-up: remove redundant LotMatch.book_id from book identity material to avoid a circular hash; retain economic match fields and immutable bound reference. Deep-freeze SourceBundle input records through the unchanged canonical codec. No persisted lot-bearing books existed; empty-match M5 IDs and all legacy IDs unchanged.

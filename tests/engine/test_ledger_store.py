@@ -14,6 +14,7 @@ from investment_engine.ledger.contracts import (
     BookBatch,
     JournalTransaction,
     LedgerEntry,
+    LotMatch,
     SourceBundle,
     Unit,
     journal,
@@ -229,3 +230,13 @@ def test_raw_sql_altered_manifest_and_cross_account_orphan_refused(env):
     with pytest.raises(PgError, match="fully negate"):
         store.append_batch(make_batch(parent=first.book_id, version=2, when=bad.posted_at, transactions=(bad,)))
     assert canonical_json(store.get(first.book_id)) == canonical_json(first)
+
+
+def test_lot_match_must_point_to_its_containing_book(env):
+    _, _, store = env
+    match = LotMatch("m", "wrong-book", "buy", "sell", Decimal(1), Decimal(1), Unit("CURRENCY", "USD"), "fifo-v1")
+    batch = replace(make_batch(), lot_matches=(match,))
+    with pytest.raises(ValueError, match="lot.*book"):
+        store.append_batch(batch)
+    finalized = replace(batch, lot_matches=(replace(match, book_id=batch.book_id),))
+    assert store.append_batch(finalized) == finalized

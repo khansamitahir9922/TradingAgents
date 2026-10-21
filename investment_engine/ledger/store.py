@@ -44,6 +44,8 @@ class LedgerStore:
         book = decode(json.loads(row[1]))
         if not isinstance(book, BookBatch) or book.book_id != row[0]:
             raise SourceConflict("stored ledger book content/hash mismatch")
+        if any(match.book_id != book.book_id for match in book.lot_matches):
+            raise SourceConflict("stored lot match book reference mismatch")
         return book
 
     def get(self, book_id):
@@ -147,6 +149,8 @@ class LedgerStore:
     def append_batch(self, batch):
         if not isinstance(batch, BookBatch):
             raise TypeError("BookBatch required")
+        if any(match.book_id != batch.book_id for match in batch.lot_matches):
+            raise ValueError("lot match must refer to its containing book")
         with self._db.transaction():
             self._db.lock(f"account-control|{batch.account_id}")
             self._db.lock(f"ledger|{batch.account_id}")
