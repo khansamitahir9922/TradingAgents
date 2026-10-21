@@ -151,3 +151,26 @@ class FifoBook:
         result = tuple(matches)
         self._disposals[disposal] = ((instrument_id, quantity), result)
         return result
+
+    def split(self, instrument_id, ratio):
+        """Preflight every lot, then begin new allocation epochs with conserved cost."""
+        check_instrument_id(instrument_id)
+        amount(ratio, "ratio")
+        if ratio <= 0 or ratio == 1:
+            raise ValueError("split ratio must be positive and not one")
+        transformed = []
+        old_total = new_total = 0
+        for lot in self._lots:
+            if lot.instrument_id != instrument_id or lot.remaining_quantity == 0:
+                transformed.append(lot)
+                continue
+            quantity = Fraction(lot.remaining_quantity) * Fraction(ratio)
+            if quantity.denominator != 1:
+                raise AccountingUnavailable(self.account_id, self.at, ("split leaves a fractional lot; cash-in-lieu unsupported",))
+            old_total += int(lot.remaining_quantity)
+            new_total += quantity.numerator
+            new_quantity = Decimal(quantity.numerator)
+            transformed.append(replace(lot, remaining_quantity=new_quantity, epoch_quantity=new_quantity,
+                                       epoch_cost=lot.remaining_cost, disposed=Decimal(0), allocated=Decimal(0)))
+        self._lots = transformed
+        return Decimal(new_total - old_total)

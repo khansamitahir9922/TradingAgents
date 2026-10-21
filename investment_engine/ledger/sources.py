@@ -1,5 +1,5 @@
 """Validated stored economic sources; broker anomalies never become postings."""
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from investment_engine.ledger.contracts import (
     AccountingUnavailable,
@@ -9,8 +9,10 @@ from investment_engine.ledger.contracts import (
     identity,
 )
 from investment_engine.market.availability import check_utc
+from investment_engine.market.corporate_actions import CorporateAction
 from investment_engine.oms.orders import Fill, Order
 from investment_engine.portfolio.snapshot import StartingState
+from investment_engine.quant.adjusted import AdjustmentUnavailable, require_coverage
 
 
 def opening_bundle(start: StartingState, *, at: datetime) -> SourceBundle:
@@ -53,4 +55,42 @@ def validate_fill(order: Order, fill: Fill, *, account_id: str, at: datetime, or
     ref = fill_reference(order, fill)
     if max(ref.known_at, ref.effective_at) > at:
         raise AccountingUnavailable(account_id, at, ("accepted fill not yet effective/delivered at cutoff",), (ref,))
+    return ref
+
+
+def action_reference(action, *, delivered_at, calendar):
+    """Delivery comes from the public replay event or observed ingestion evidence.
+
+    Never substitute the action's availability or its later provider-download time
+    for actual replay delivery. The source selector supplies that evidence explicitly.
+    """
+    if not isinstance(action, CorporateAction):
+        raise TypeError("CorporateAction required")
+    check_utc(delivered_at, "delivered_at")
+    if delivered_at < action.available_from:
+        raise ValueError("action cannot be delivered before availability")
+    effective = calendar.session(action.ex_date).open
+    key = f"{action.source}/{action.instrument_id}/{action.action_type}/{action.ex_date}"
+    return SourceRef("action", key, action.revision, f"{key}/{action.revision}/{action.import_id}",
+                     identity(action), effective, action.available_from, delivered_at, action.source)
+
+
+def validate_action(action, *, account_id, reader, provider, instrument_id, delivered_at, at, calendar, coverage):
+    check_utc(at, "at")
+    if action.source != provider or action.instrument_id != instrument_id:
+        raise SourceConflict("action provider/instrument mismatch")
+    stored = reader.action_revision_history(provider, instrument_id, action.ex_date,
+                                             action.ex_date + timedelta(days=1), types=(action.action_type,))
+    matches = [a for a in stored if a.source == provider and a.instrument_id == instrument_id
+               and a.ex_date == action.ex_date and a.action_type == action.action_type and a.revision == action.revision]
+    if matches != [action]:
+        raise SourceConflict("action differs from its stored immutable revision")
+    try:
+        require_coverage(coverage, source=provider, instrument_id=instrument_id, action_type=action.action_type,
+                         first=action.ex_date, last=action.ex_date, at=at)
+    except AdjustmentUnavailable as exc:
+        raise AccountingUnavailable(account_id, at, (str(exc),)) from None
+    ref = action_reference(action, delivered_at=delivered_at, calendar=calendar)
+    if ref.known_at > at:
+        raise AccountingUnavailable(account_id, at, ("action revision not available/delivered at cutoff",), (ref,))
     return ref
