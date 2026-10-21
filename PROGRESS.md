@@ -158,6 +158,14 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+## 2026-10-21 — M5-02 (Codex backup implementer)
+
+Source-validated accepted OMS fill plans and atomic exactly-once posting; explicit opening source bundles, mandatory injected SELL basis until M5-03, accepted partial/late fills, unchanged cancellations and typed missing basis. Actual negative cash is retained and reported as a breach. Full ADR buy/sell example with recorded fees reproduced.
+
+Observed red: run_check.py bash m5-02-red tests/engine/test_fill_postings.py tests/engine/test_ledger_activation.py: two missing-module errors. Initial green: 14 passed. Final: root venv python run_check.py bash m5-02-final tests/engine/test_fill_postings.py tests/engine/test_ledger_activation.py tests/engine/test_ledger_store.py tests/engine/test_ledger_contracts.py tests/engine/test_reconciliation_contracts.py: 69 passed in 56.23s, no skips. Root venv python -m ruff check . passed. Activation tests use the store API introduced/tested in M5-01; no future FIFO implementation imported.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
+
 ## 2026-10-21 — M5-01 (Codex backup implementer)
 
 Self-review follow-up: enforce finalized lot matches reference their containing book, on append and read; complementary guard to the M5-00 non-circular economic identity fix. No migration edited.
