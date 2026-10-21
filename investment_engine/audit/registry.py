@@ -26,4 +26,5 @@ MODULES: tuple[str, ...] = (
     "investment_engine.evaluation.promotion",  # M4-10
     "investment_engine.ledger.contracts",  # M5-00
     "investment_engine.reconciliation.contracts",  # M5-00: neutral evidence only
+    "investment_engine.reconciliation.incidents",  # M5-09: incident/readiness payloads
 )
