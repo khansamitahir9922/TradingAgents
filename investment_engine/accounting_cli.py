@@ -224,3 +224,32 @@ def resolve(incident_id: str, sources: Annotated[Path, typer.Option("--sources")
             expected_sequence=expected_sequence, at=at, match_id=match, sources=sources)
         _print(result.state + ": current matching evidence verified; trading was not resumed.")
     _with_db(action, read_only=False)
+
+
+_DEFAULT_PG_BIN = Path("C:/Program Files/PostgreSQL/17/bin")
+
+
+@accounting_app.command("backup")
+def backup(destination: Path, pg_bin: Annotated[Path, typer.Option("--pg-bin")] = _DEFAULT_PG_BIN):
+    """Explicit local backup; does not install a schedule, prune history or restore anything."""
+    from investment_engine.cli import _fail, _print
+    from investment_engine.config import market_store_dir, operational_db_dsn
+    from investment_engine.storage.backups import create_backup
+    try:
+        manifest = create_backup(operational_db_dsn(), destination=destination, market_root=market_store_dir(),
+                                   clock=LiveClock(), pg_bin=pg_bin)
+        _print(json.dumps(manifest, sort_keys=True, indent=2))
+    except Exception as exc:
+        _fail(exc)
+
+
+@accounting_app.command("verify")
+def verify(destination: Path):
+    """Read-only manifest/dump/file/reference verification. No database is restored by this command."""
+    from investment_engine.cli import _fail, _print
+    from investment_engine.storage.backups import verify_backup
+    try:
+        manifest = verify_backup(destination)
+        _print("VERIFIED: " + manifest["consistency"] + "; no database restored, no trading enabled.")
+    except Exception as exc:
+        _fail(exc)
