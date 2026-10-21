@@ -8,10 +8,12 @@ import pytest
 from investment_engine.audit.events import AuditStore
 from investment_engine.events.outbox import Outbox
 from investment_engine.ledger.contracts import AccountingUnavailable, LotMatch, SourceConflict, Unit
-from investment_engine.ledger.postings import plan_fill, post_fill
+from investment_engine.ledger.lots import FifoBook
+from investment_engine.ledger.postings import plan_fifo_fill, plan_fill, post_fill
 from investment_engine.ledger.sources import fill_reference, validate_fill
 from investment_engine.ledger.store import LedgerStore
 from investment_engine.oms.order_states import OrderState as S, ProcessRole
+from investment_engine.oms.orders import Fill, FillOutcome
 from tests.engine.test_order_store import Env
 
 
@@ -118,3 +120,23 @@ def test_post_fill_idempotent_and_decimal_context_independent(env):
     # Activation is deliberately required: a fresh ledger cannot invent capital.
     with pytest.raises(AccountingUnavailable, match="activat"):
         post_fill(order, fill, ledger=ledger, orders=env.core)
+
+
+@pytest.mark.postgres
+def test_real_fifo_uses_two_accepted_acquisitions_and_a_sale(env):
+    fifo = FifoBook("R1", at=env.clock.now() + timedelta(days=1))
+    plans = []
+    for n, (side, quantity, price) in enumerate((("BUY", "3", "100"), ("BUY", "2", "200"), ("SELL", "4", "120"))):
+        order = env.created(side=side, quantity=quantity)
+        status = env.walk(order, S.SUBMITTING, S.SUBMITTED)
+        fill = Fill(order.order_id, Decimal(quantity), Decimal(price), Decimal(0), "USD", env.clock.now(),
+                    env.clock.now(), env.clock.now(), f"f{n}", "{}")
+        assert env.worker.record_fill(fill, expected_aggregate_version=status.aggregate_version) is FillOutcome.RECORDED
+        fill = env.core.fills(order.order_id)[0]
+        ref = validate_fill(order, fill, account_id="R1", at=env.clock.now(), orders=env.core)
+        plans.append(plan_fifo_fill(order, fill, ref=ref, posted_at=env.clock.now(), fifo=fifo))
+        env.clock.advance_by(timedelta(seconds=1))
+    assert sum((m.cost for m in plans[-1].lot_matches), Decimal(0)) == 500
+    assert totals(plans[-1].transaction)[("REALIZED_PNL:EQ_US_NVDA", "CURRENCY:USD")] == 20
+    assert sum((lot.remaining_quantity for lot in fifo.lots()), Decimal(0)) == 1
+    assert sum((lot.remaining_cost for lot in fifo.lots()), Decimal(0)) == 200

@@ -15,6 +15,7 @@ from investment_engine.ledger.contracts import (
     Unit,
     journal,
 )
+from investment_engine.ledger.lots import FifoBook
 from investment_engine.ledger.sources import fill_reference, validate_fill
 from investment_engine.oms.intents import Side
 from investment_engine.oms.orders import Fill, Order
@@ -74,6 +75,17 @@ def _cash_breaches(book, ledger):
     return ("negative cash",) if cash < 0 else ()
 
 
+def plan_fifo_fill(order, fill, *, ref, posted_at, fifo: FifoBook):
+    """Apply a validated source to a rebuildable FIFO plan, never a price mark."""
+    if not isinstance(fifo, FifoBook) or fifo.account_id != order.account_id:
+        raise SourceConflict("FIFO plan belongs to another investment account")
+    plan = plan_fill(order, fill, ref=ref, posted_at=posted_at, cost_basis=fifo)
+    if order.side is Side.BUY:
+        cost = next(e.debit for e in plan.transaction.entries if e.account == f"INVENTORY_COST:{order.instrument_id}")
+        fifo.acquire(order.instrument_id, fill.quantity, cost, fill.fill_id, at=fill.executed_at)
+    return plan
+
+
 def post_fill(order, fill, *, ledger, orders, cost_basis=None):
     """Commit a selected accepted fill exactly once, including a real cash breach."""
     at = ledger._clock.now()
@@ -88,7 +100,8 @@ def post_fill(order, fill, *, ledger, orders, cost_basis=None):
             if ref in old.sources:
                 return PostingResult(old.book_id, ref, _cash_breaches(old, ledger))
         head = history[-1]
-        plan = plan_fill(order, fill, ref=ref, posted_at=at, cost_basis=cost_basis)
+        plan = (plan_fifo_fill(order, fill, ref=ref, posted_at=at, fifo=cost_basis) if isinstance(cost_basis, FifoBook)
+                else plan_fill(order, fill, ref=ref, posted_at=at, cost_basis=cost_basis))
         batch = BookBatch(order.account_id, head.book_id, head.version + 1, head.policy_version,
                           (*head.sources, ref), (plan.transaction,), plan.lot_matches, at)
         batch = replace(batch, lot_matches=tuple(replace(m, book_id=batch.book_id) for m in batch.lot_matches))

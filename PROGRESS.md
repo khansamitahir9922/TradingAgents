@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | M0, M2 and M3 complete locally. **M4 merged locally at `5cd9363`. M5 ADR/specs/D35-D44 owner-accepted; whole implementation authorized.** M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Codex backup implementer: `docs/m5-specs`, worktree `C:/Users/LOQ/TradingAgents-m5-specs`, based on accepted M4 `5cd9363`. Accepted ADR-010 v0.2 and 15 M5 task specs, 55 h / eight task-size exceptions. Planning commit `0f93c75`; isolated `m5/milestone`, current task M5-00 committed (checked), continuing next task. |
+| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-03 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | Unchanged by M5 preparation. No runtime/tests/dependencies/CI/frozen architecture/diagrams changed. Main and Claude implementation worktrees preserved. |
 | **Checks** | M5 documentation validation passed: 22 docs-only files, 15 complete task specs, backward dependencies, links, proposed decisions, 55 h/eight task-size exceptions, worked accounting examples plus 400 exact-rational cumulative-allocation cases, whitespace and preserved histories/reminder. v0.2 readiness/consumer/incident interleavings reviewed against existing source. No M5 runtime tests, migrations, backup/restore, installs or CI run. M4 S1/S2 check evidence remains separate: both suites 3340 passed with only the cache-location baseline; fresh base/engine installs and Ruff passed. |
@@ -157,6 +157,14 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-21 — M5-03 (Codex backup implementer)
+
+FIFO lot acquisition/disposal evidence, exact-rational cumulative half-even allocation with bounded totals and exact final residual, stable tie order, atomic insufficient-lot refusal and injected real FIFO fill planner. Lot state is a rebuildable planning object; only immutable lot matches persist.
+
+Observed red: run_check.py bash m5-03-red tests/engine/test_fifo_lots.py: missing module; real planner test red on missing plan_fifo_fill. Arithmetic green: 11 tests including 400 cases, 4.08s. First combined run: 71 passed, one new fixture failed because old Env.fill fixes execution at NOW regardless of advanced clock; new test now explicitly records actual distinct execution times, preserving expected FIFO result. Final: run_check.py bash m5-03-final-correct-times tests/engine/test_fifo_lots.py tests/engine/test_fill_postings.py tests/engine/test_ledger_activation.py: 27 passed in 30.32s. Prior unchanged store/contracts checks passed in the 71-pass run. Root venv python -m ruff check . passed.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
 
 ## 2026-10-21 — M5-02 (Codex backup implementer)
 
