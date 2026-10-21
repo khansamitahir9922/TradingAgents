@@ -381,3 +381,7 @@ _register_admin_commands(app)
 from investment_engine import intents_cli as _intents_cli  # noqa: E402
 
 app.add_typer(_intents_cli.views_app, name="views")
+
+from investment_engine.accounting_cli import accounting_app as _accounting_app  # noqa: E402
+
+app.add_typer(_accounting_app, name="accounting")

@@ -8,9 +8,9 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 | | |
 |---|---|
-| **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 11/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
+| **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 12/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-05 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
+| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-11 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
 | **Checks** | Focused/affected task checks and Ruff recorded per task below. Full Bash/PowerShell suites and fresh base/engine installs are required once for the finished package; not yet run for M5. CI not run. Implementer self-review is not independent acceptance. |
@@ -31,7 +31,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 **Codex is backup implementer while Claude is unavailable (owner, 2026-10-21).**
 
 1. Completed: owner acceptance recorded, M4 fast-forwarded locally, planning commit `0f93c75`, isolated `m5/milestone` worktree created.
-2. Continue authorized M5: 11/15 tasks committed (checked), next M5-11. Keep focused checks/local commits; full suites and fresh installs once for the finished package. No per-task approval needed.
+2. Continue authorized M5: 12/15 tasks committed (checked), next M5-12. Keep focused checks/local commits; full suites and fresh installs once for the finished package. No per-task approval needed.
 3. M4 tidy-ups remain checked but uncommitted on their separate branch; they were excluded from the authorized main fast-forward.
 4. Final M5 package needs designated independent/owner review and separate merge approval. No push, keys, downloads, owner database reset/restore, actual backup scheduling or M6.
 5. M1 hourly/PAPER/UNKNOWN and all retained architecture conditions remain. D35-D44 are now owner-accepted, not independently accepted by this implementer.
@@ -157,6 +157,14 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-22 — M5-11 (Codex backup implementer)
+
+Pinned immutable CLI/JSON/static HTML accounting model; exact Decimal strings and UTC E/K/book/query/source provenance. Shows cash, basis, receivables, realized/unrealized, fees, capital/equity bridge, historical lot-allocation audit and incident history. Missing marks/coverage/endpoints or unresolved incidents never become confirmed P&L zero. Daily values require complete comparable same-book/knowledge session-close endpoints. Legacy snapshots retain original IDs/labels and absent basis. Read-only report command never migrates/syncs; separate current-Admin activation, validated source synchronization and incident commands. Opening basis is explicit, no market mark repricing. Role checks and source/clock lock ordering retained; HTML escaped. Codex backup implementation, not independent acceptance.
+
+Observed red: ROOTPY run_check.py bash m5-11-red tests/engine/test_accounting_reports.py tests/engine/test_accounting_cli.py: missing report module. Initial green 7 passed; subsequent source-sync fixture exposed genuine M5-05 equal-time collision, fixed separately at 33779f5 with its red/green evidence. New renderer variable-shadow and PostgreSQL test-marker setup errors were corrected. Exact final checks: C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/run_check.py bash m5-11-final-v2 tests/engine/test_accounting_reports.py tests/engine/test_accounting_cli.py tests/engine/test_snapshot_compatibility.py tests/engine/test_layering.py tests/engine/test_cli.py tests/engine/test_intents_cli.py: 67 passed in 168.20s. Later strengthened own cases (future/provider/instrument marks, current Admin success versus Viewer refusal) run with LABEL m5-11-own-final and the two own files: 15 passed in 27.28s. ROOTPY -m ruff check . and git diff --check passed. Full package suites, clean installs and CI not yet run.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
 
 ## 2026-10-22 — M5-05 (Codex backup implementer)
 

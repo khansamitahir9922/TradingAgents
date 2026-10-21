@@ -40,6 +40,9 @@ GROUPS: dict[str, typer.Typer] = {"accounts": accounts_app, "operators": operato
 
 def register(app: typer.Typer) -> None:
     """Add every Admin CLI command group to the main app (called once by investment_engine.cli)."""
+    from investment_engine.accounting_cli import incidents_app, ledger_app
+
+    GROUPS.update(ledger=ledger_app, incidents=incidents_app)
     for name, group in GROUPS.items():
         app.add_typer(group, name=name)
 
