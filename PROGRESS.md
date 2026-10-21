@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | M0, M2 and M3 complete locally. **M4 merged locally at `5cd9363`. M5 ADR/specs/D35-D44 owner-accepted; whole implementation authorized.** M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-05 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
+| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-07 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | Unchanged by M5 preparation. No runtime/tests/dependencies/CI/frozen architecture/diagrams changed. Main and Claude implementation worktrees preserved. |
 | **Checks** | M5 documentation validation passed: 22 docs-only files, 15 complete task specs, backward dependencies, links, proposed decisions, 55 h/eight task-size exceptions, worked accounting examples plus 400 exact-rational cumulative-allocation cases, whitespace and preserved histories/reminder. v0.2 readiness/consumer/incident interleavings reviewed against existing source. No M5 runtime tests, migrations, backup/restore, installs or CI run. M4 S1/S2 check evidence remains separate: both suites 3340 passed with only the cache-location baseline; fresh base/engine installs and Ruff passed. |
@@ -157,6 +157,14 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-21 — M5-07 (Codex backup implementer)
+
+Additive schema 0017: immutable audited RESEARCH setup commands; only the simulator consumes them into private seed/execution/action records; worker-only public snapshots. Broker cash/shares use its own executions and raw actions, independent of ledger/OMS accounting. Snapshot receipt and DB recording time are separate. Worker ingestion-prefix observations are separate immutable evidence, allowing a fixed-time incomplete prefix to progress without altering unchanged vendor balances. No production worker scheduling wired before M5-10.
+
+Red: m5-07-red missing module; financial SQL probes 4 failures (NaN/Infinity/premature knowledge), late-recording test 1 failure, prefix-observation API 1 missing-method failure, then fixed before commit. Initial own SQL test used nonexistent raw_hash column and new fee fixture lacked Side import; corrected test code, no weakened assertions. run_check.py bash m5-07-final-v3 tests/engine/test_broker_snapshots.py tests/engine/test_simulated_account_book.py tests/engine/test_simulated_broker.py tests/engine/test_layering.py tests/engine/test_snapshot_compatibility.py: 70 passed in 78.45s. run_check.py bash m5-07-affected tests/engine/test_broker_double_contract.py tests/engine/test_worker_submission.py tests/engine/test_recovery.py tests/engine/test_worker_resilience.py: 31 passed in 186.49s. Strengthened actual incorrect internal OMS plus journal independence probe, then run_check.py bash m5-07-independence-final tests/engine/test_broker_snapshots.py tests/engine/test_simulated_account_book.py: 19 passed in 47.34s. Ruff passed. No retained database/schema reset.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
 
 ## 2026-10-21 — M5-05 (Codex backup implementer)
 

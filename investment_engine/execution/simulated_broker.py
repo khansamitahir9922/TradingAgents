@@ -35,9 +35,10 @@ with "no market data", and no fill is invented. The full quantity always fills
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import ROUND_HALF_EVEN, Context, Decimal
 from importlib.resources import files
+from zoneinfo import ZoneInfo
 
 from investment_engine.execution.broker_port import (
     BrokerFill,
@@ -46,9 +47,17 @@ from investment_engine.execution.broker_port import (
     CancelResult,
     SubmitResult,
 )
+from investment_engine.lineage.records import canonical_json, decode
 from investment_engine.market.availability import check_utc
+from investment_engine.market.corporate_actions import ActionType
 from investment_engine.oms.intents import Side
 from investment_engine.oms.orders import Order
+from investment_engine.reconciliation.contracts import (
+    BrokerOpenOrder,
+    BrokerPosition,
+    BrokerSnapshot,
+)
+from investment_engine.reconciliation.snapshots import SIM_CASH_BASIS, SimulatedAccountSetup
 from investment_engine.risk.decisions import exact
 from investment_engine.storage.sqlite import port
 
@@ -121,6 +130,8 @@ class SimulatedBroker:
                  "side": order.side.value, "qty": order.quantity, "limit": order.limit_price,
                  "tif": order.time_in_force, "type": order.order_type, "session": order.target_session, "at": at,
                  "status": "REJECTED" if reason else "OPEN", "account": order.account_id})
+            self._db.execute("INSERT INTO sim_broker.order_links (client_order_id,order_id) VALUES(:c,:id)",
+                             {"c":order.client_order_id,"id":order.order_id})
             if reason:
                 return SubmitResult(False, None, reason)
             self._message(order.client_order_id, "ACK", at, None, "accepted; rests from the open")
@@ -184,6 +195,163 @@ class SimulatedBroker:
                 continue
             out.append(BrokerMessage(message_id, client, kind, delivered, _fill(fill), reason))
         return out
+
+    def _unavailable_snapshot(self,account_id,at,reason):
+        raw=hashlib.sha256(canonical_json((account_id,at,reason)).encode()).hexdigest()
+        return BrokerSnapshot(account_id,"simulated",f"sim/{account_id}","simulated",at,at,at,"USD",None,None,None,
+                              SIM_CASH_BASIS,"unavailable",raw,(),False,(reason,))
+
+    def _seed_account(self,account_id,at):
+        row=self._db.fetchone("SELECT setup_id,content FROM broker_setup_requests WHERE account_id=:a",{"a":account_id})
+        if row is None:
+            return None
+        seed=SimulatedAccountSetup.from_content(row[1])
+        if seed.setup_id!=row[0] or seed.account_id!=account_id or seed.source!=self.source or seed.effective_at>at:
+            return None
+        prior=self._db.fetchone("SELECT setup_id,content FROM sim_broker.account_seeds WHERE account_id=:a",{"a":account_id})
+        if prior is not None and tuple(prior)!=(seed.setup_id,seed.content()):
+            raise ValueError("simulator seed conflicts with immutable public setup")
+        if prior is None:
+            self._db.execute("INSERT INTO sim_broker.account_seeds (account_id,setup_id,consumed_at,content) VALUES(:a,:id,:t,:c)",
+                             {"a":account_id,"id":seed.setup_id,"t":at,"c":seed.content()})
+        return seed
+
+    def _capture_executions(self,account_id,at):
+        rows=self._db.fetchall("SELECT m.fill,m.delivered_at,o.instrument_id,o.side FROM sim_broker.messages m "
+                                "JOIN sim_broker.orders o USING(client_order_id) WHERE o.account_id=:a "
+                                "AND m.kind='FILL' AND m.delivered_at<=:t ORDER BY m.delivered_at,m.message_id",{"a":account_id,"t":at})
+        for text,known,instrument,side in rows:
+            fill=_fill(text)
+            content=_fill_json(fill)
+            prior=self._db.fetchone("SELECT content FROM sim_broker.account_executions WHERE broker_fill_id=:id",{"id":fill.broker_fill_id})
+            if prior is not None:
+                if json.loads(prior[0])!=json.loads(content):
+                    raise ValueError("simulator execution identity conflict")
+                continue
+            self._db.execute("INSERT INTO sim_broker.account_executions (broker_fill_id,account_id,instrument_id,side,quantity,price,fee,currency,executed_at,known_at,content) "
+                             "VALUES(:id,:a,:i,:s,:q,:p,:f,:c,:e,:k,:raw)",{"id":fill.broker_fill_id,"a":account_id,"i":instrument,"s":side,
+                             "q":fill.quantity,"p":fill.price,"f":fill.fee,"c":fill.currency,"e":fill.executed_at,"k":known,"raw":content})
+
+    def _coverage_ok(self,seed,instrument,at):
+        """Independently check the public verification reference format; no Quant/Core math."""
+        first=seed.effective_at.astimezone(ZoneInfo(self.calendar.timezone)).date()
+        last=at.astimezone(ZoneInfo(self.calendar.timezone)).date()
+        supported=set()
+        for text in seed.coverage_evidence:
+            try:
+                prefix,*parts=text.split("|")
+                provider=prefix.removeprefix("verification:")
+                if not prefix.startswith("verification:") or parts[0]!=instrument or provider!=self.source:
+                    continue
+                kind=parts[1]
+                values=dict(p.split("=",1) for p in parts[2:])
+                low,high=(date.fromisoformat(v) for v in values["verified"].split(".."))
+                request_low,request_high=(date.fromisoformat(v) for v in values["request"].split(".."))
+                if values["status"]=="COMPLETE" and values["version"] and request_low<=low<=first<=last<=high<=request_high:
+                    supported.add(kind)
+            except (KeyError,ValueError,IndexError):
+                continue
+        return {"SPLIT","DIVIDEND"}<=supported
+
+    def _capture_actions(self,seed,at,instruments):
+        reasons=[]
+        first=seed.effective_at.astimezone(ZoneInfo(self.calendar.timezone)).date()
+        last=at.astimezone(ZoneInfo(self.calendar.timezone)).date()
+        for instrument in sorted(instruments):
+            if not self._coverage_ok(seed,instrument,at) or not hasattr(self.knowledge,"actions_between"):
+                reasons.append(f"independent broker action coverage missing for {instrument}")
+                continue
+            for action in self.knowledge.actions_between(self.source,instrument,first,last,at=at):
+                effective=self.calendar.session(action.ex_date).open
+                if action.source!=self.source or action.instrument_id!=instrument or action.available_from>at:
+                    reasons.append("broker action source/cutoff mismatch")
+                    continue
+                if not seed.effective_at<effective<=at:
+                    continue
+                key=f"{self.source}|{instrument}|{action.action_type}|{action.ex_date}"
+                raw=canonical_json(action)
+                old=self._db.fetchone("SELECT content FROM sim_broker.account_actions WHERE account_id=:a AND source_identity=:s AND revision=:r",
+                                       {"a":seed.account_id,"s":key,"r":action.revision})
+                if old is not None:
+                    if old[0]!=raw:
+                        raise ValueError("simulator action revision conflicts")
+                else:
+                    self._db.execute("INSERT INTO sim_broker.account_actions (account_id,source_identity,revision,effective_at,known_at,content) VALUES(:a,:s,:r,:e,:t,:c)",
+                                     {"a":seed.account_id,"s":key,"r":action.revision,"e":effective,"t":at,"c":raw})
+        return reasons
+
+    @exact
+    def snapshot(self,account_id,*,at):
+        """Independent broker facts; never reads internal ledger, OMS fills or projections."""
+        at=check_utc(at,"at")
+        if self.account_id is None or account_id!=self.account_id:
+            return self._unavailable_snapshot(account_id,at,"broker account is unscoped or different")
+        self.materialize(at)
+        with self._db.transaction():
+            self._db.lock(f"sim-account|{account_id}")
+            seed=self._seed_account(account_id,at)
+            if seed is None:
+                return self._unavailable_snapshot(account_id,at,"explicit RESEARCH simulator setup missing/not effective")
+            last=self._db.fetchone("SELECT max(taken_at) FROM sim_broker.account_captures WHERE account_id=:a",{"a":account_id})[0]
+            if last is not None and at<last:
+                return self._unavailable_snapshot(account_id,at,"retrograde broker capture is unavailable; read stored snapshots")
+            self._capture_executions(account_id,at)
+            executions=self._db.fetchall("SELECT broker_fill_id,instrument_id,side,quantity,price,fee,currency,executed_at,known_at,content "
+                                         "FROM sim_broker.account_executions WHERE account_id=:a AND known_at<=:t AND executed_at<=:t ORDER BY executed_at,broker_fill_id",
+                                         {"a":account_id,"t":at})
+            ever_held={i for i,_ in seed.positions}|{r[1] for r in executions}
+            reasons=self._capture_actions(seed,at,ever_held)
+            action_rows=self._db.fetchall("SELECT source_identity,revision,effective_at,known_at,content FROM sim_broker.account_actions "
+                                          "WHERE account_id=:a AND known_at<=:t AND effective_at<=:t ORDER BY source_identity,revision",
+                                          {"a":account_id,"t":at})
+            latest={}
+            for row in action_rows:
+                latest[row[0]]=row
+            timeline=[(r[7],1,r[0],r) for r in executions]
+            timeline.extend((r[2],0,r[0],decode(json.loads(r[4]))) for r in latest.values())
+            held=dict(seed.positions)
+            cash=seed.cash
+            for _effective,kind,_stable,event in sorted(timeline):
+                if kind==1:
+                    bid,instrument,side,q,p,fee,currency,_executed,_known,raw=event
+                    fill=_fill(raw)
+                    if (fill.broker_fill_id,fill.quantity,fill.price,fill.fee,fill.currency)!=(bid,q,p,fee,currency) or currency!="USD":
+                        reasons.append("broker execution payload mismatch")
+                        continue
+                    notional=q*p
+                    cash=cash-notional-fee if side=="BUY" else cash+notional-fee
+                    held[instrument]=held.get(instrument,Decimal(0))+(q if side=="BUY" else -q)
+                elif event.action_type is ActionType.SPLIT:
+                    changed=held.get(event.instrument_id,Decimal(0))*event.ratio
+                    if changed!=changed.to_integral_value():
+                        reasons.append("broker split has unsupported fractional shares")
+                    else:
+                        held[event.instrument_id]=changed
+                elif event.action_type is not ActionType.DIVIDEND:
+                    reasons.append("broker action type unsupported")
+                # Dividends remain unpaid; never invent a payment or spendable cash.
+            if not cash.is_finite() or any(not q.is_finite() or q<0 for q in held.values()):
+                reasons.append("broker facts imply unsupported cash/short position")
+            open_orders=[]
+            rows=self._db.fetchall("SELECT o.client_order_id,l.order_id,o.instrument_id,o.side,o.quantity,o.submitted_at,o.status,o.cancel_received_at "
+                                    "FROM sim_broker.orders o LEFT JOIN sim_broker.order_links l USING(client_order_id) "
+                                    "WHERE o.account_id=:a AND o.submitted_at<=:t ORDER BY o.client_order_id",{"a":account_id,"t":at})
+            for client,oid,instrument,side,quantity,_submitted,status,cancelled in rows:
+                messages=self._db.fetchall("SELECT kind,fill FROM sim_broker.messages WHERE client_order_id=:c AND delivered_at<=:t ORDER BY delivered_at,message_id",
+                                           {"c":client,"t":at})
+                if status=="REJECTED" or any(m[0] in ("FILL","EXPIRED","CANCELLED","REJECTED") for m in messages):
+                    continue
+                if oid is None:
+                    reasons.append("broker open-order link missing")
+                    continue
+                open_orders.append(BrokerOpenOrder(oid,client,instrument,side,"CANCEL_RECEIVED" if cancelled is not None and cancelled<=at else "OPEN",quantity))
+            raw_hash=hashlib.sha256(canonical_json((seed.values(),tuple(tuple(r) for r in executions),tuple(tuple(r) for r in action_rows),tuple(open_orders))).encode()).hexdigest()
+            self._db.execute("INSERT INTO sim_broker.account_captures (account_id,taken_at,raw_hash) VALUES(:a,:t,:h) ON CONFLICT DO NOTHING",
+                             {"a":account_id,"t":at,"h":raw_hash})
+            positions=None if reasons else tuple(BrokerPosition(i,q,"SHARES") for i,q in sorted(held.items()) if q)
+            return BrokerSnapshot(account_id,"simulated",seed.broker_account_id,"simulated",at,at,at,"USD",
+                                  cash if cash.is_finite() else None,positions,tuple(open_orders),SIM_CASH_BASIS,
+                                  seed.setup_id,raw_hash,tuple(r[0] for r in executions),not reasons,tuple(reasons))
 
     # ---------------------------------------------------------------- the model
 

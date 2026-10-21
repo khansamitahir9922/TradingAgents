@@ -13,6 +13,7 @@ from decimal import Decimal
 from typing import Protocol
 
 from investment_engine.oms.orders import Order
+from investment_engine.reconciliation.contracts import BrokerSnapshot
 
 BROKER_DEADLINE_SECONDS = 10  # D26: a broker call that hasn't answered by then has an unknown outcome
 
@@ -75,6 +76,8 @@ class BrokerMessage:
 
 
 class BrokerPort(Protocol):
+    def snapshot(self, account_id: str, *, at: datetime) -> BrokerSnapshot: ...
+
     def submit(self, order: Order, *, at: datetime) -> SubmitResult: ...
 
     def cancel(self, client_order_id: str, *, at: datetime) -> CancelResult: ...
