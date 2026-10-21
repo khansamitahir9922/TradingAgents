@@ -126,11 +126,17 @@ class PortfolioSnapshot:
     receivables: Decimal | None = None  # dividends earned, in equity, not spendable
     adjustments: tuple | None = None  # the splits and dividends applied (portfolio.provisional.Adjustment)
     history_hash: str | None = None  # the fills and order states the projection used
+    ledger_book_id: str | None = None
+    ledger_query_id: str | None = None
+    LINEAGE_LATER_FIELDS = ("ledger_book_id", "ledger_query_id")
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source", SnapshotSource(self.source))
         if self.source is SnapshotSource.LEDGER:
-            raise ValueError("ledger-derived snapshots arrive in M5")
+            if not self.ledger_book_id or not self.ledger_query_id or self.reservations is None or self.receivables is None:
+                raise ValueError("ledger snapshot requires pinned book/query and known reservations/receivables")
+        elif self.ledger_book_id is not None or self.ledger_query_id is not None:
+            raise ValueError("legacy snapshot cannot claim ledger provenance")
         check_utc(self.as_of, "as_of")
         object.__setattr__(self, "snapshot_id", "psn-" + hashlib.sha256(self.content().encode()).hexdigest())
 
@@ -140,7 +146,7 @@ class PortfolioSnapshot:
 
     def content(self) -> str:
         return canonical_json({f.name: getattr(self, f.name) for f in dataclasses.fields(self)
-                               if f.init and not (f.name in _M4_FIELDS and getattr(self, f.name) is None)})
+                               if f.init and not (f.name in (*_M4_FIELDS, *self.LINEAGE_LATER_FIELDS) and getattr(self, f.name) is None)})
 
     # ---- available amounts, after open-order reservations (D30); M3 snapshots have none
     @exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
@@ -190,7 +196,7 @@ def _covers(coverage, source: str, instrument_id: str, first: date, last: date) 
 @exact  # one fully specified Decimal context, whatever the caller's (Codex M4 review B2)
 def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, knowledge: Knowledge, calendar,
                    coverage, last_clear: Halt | None, history: Sequence[PortfolioSnapshot],
-                   source: str, projection=None) -> PortfolioSnapshot | Unavailable:
+                   source: str, projection=None, ledger_orders=None) -> PortfolioSnapshot | Unavailable:
     """The declared snapshot at `at`. Its peak is the highest equity since the drawdown epoch: the latest clear
     (`last_clear`, with its recorded equity as a floor) or else the declared start (D3)."""
     at = check_utc(at, "at")
@@ -199,6 +205,20 @@ def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, kn
     if at < starting.effective_at:
         return Unavailable(f"{account_id}'s declared start ({starting.effective_at.isoformat()}) is after "
                            f"{at.isoformat()}")
+    from investment_engine.ledger.contracts import AccountingUnavailable, LedgerBalances
+    from investment_engine.ledger.fingerprint import LedgerProjection, project as ledger_project
+
+    if isinstance(projection, AccountingUnavailable):
+        return Unavailable(str(projection))
+    if isinstance(projection, LedgerBalances):
+        projection = ledger_project(projection, orders=ledger_orders, account_id=account_id, at=at)
+        if isinstance(projection, Unavailable):
+            return projection
+    ledger_mode = isinstance(projection, LedgerProjection)
+    if ledger_mode and (not projection.ledger_balances.complete or
+                        projection.ledger_balances.query.account_id != account_id or
+                        projection.ledger_balances.query.effective_at != at or projection.ledger_balances.query.known_at != at):
+        return Unavailable("ledger portfolio lacks complete matching cutoffs")
     ctx = Context(prec=34)
     positions = []
     if projection is not None:  # M4-09: the provisional projection's positions, valued in compatible units
@@ -244,6 +264,13 @@ def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, kn
     if projection is None:
         return PortfolioSnapshot(account_id, at, SnapshotSource.DECLARED_STARTING_STATE, starting.currency,
                                  starting.cash, tuple(positions), equity, baseline_at, max(candidates), starting.state_id)
+    if ledger_mode:
+        return PortfolioSnapshot(account_id, at, SnapshotSource.LEDGER, starting.currency, cash, tuple(positions),
+                                 equity, baseline_at, max(candidates), starting.state_id,
+                                 reservations=projection.reservations, receivables=projection.receivables,
+                                 history_hash=projection.history_hash,
+                                 ledger_book_id=projection.ledger_balances.query.book_id,
+                                 ledger_query_id=projection.ledger_balances.query.query_id)
     return PortfolioSnapshot(account_id, at, SnapshotSource.PROVISIONAL, starting.currency, cash, tuple(positions),
                              equity, baseline_at, max(candidates), starting.state_id,
                              reservations=projection.reservations, receivables=projection.receivables,
@@ -253,12 +280,31 @@ def build_snapshot(account_id: str, *, at: datetime, starting: StartingState, kn
 def _value_projection(projection, *, knowledge, calendar, at, source, ctx):
     """Value each projected holding at its raw close, only in units compatible with the projected quantity: a close
     from before an action that has taken effect is in the old units, so valuation waits (V3)."""
+    from investment_engine.ledger.fingerprint import LedgerProjection
+    from investment_engine.market.candles import BarState, Timeframe
+
+    ledger_mode = isinstance(projection, LedgerProjection)
+    if ledger_mode and not projection.positions:
+        return []
     session = _expected_session(calendar, at)
     positions = []
     for instrument_id, quantity in projection.positions:
         bar = knowledge.latest_closed(source, instrument_id, session, at=at, calendar=calendar)
         if bar is None:
             return Unavailable(f"bar for {session} ({source} {instrument_id} D1) not known at {at.isoformat()}")
+        if ledger_mode:
+            if (bar.source != source or bar.instrument_id != instrument_id or bar.currency != projection.ledger_balances.currency
+                    or bar.timeframe is not Timeframe.D1 or bar.state is not BarState.CLOSED
+                    or bar.end_time > at or bar.available_from > at):
+                return Unavailable("ledger valuation requires compatible known raw daily marks")
+            for ref in projection.ledger_balances.sources:
+                if (ref.kind == "action" and f"/{instrument_id}/" in ref.identity
+                        and (ref.provider != source or bar.end_time < ref.effective_at <= at)):
+                    return Unavailable("ledger valuation awaits a compatible raw mark after its action")
+            ref = BarRef(bar.source, bar.instrument_id, bar.timeframe, bar.start_time, bar.revision, bar.import_id,
+                         bar.available_from, bar.availability_basis)
+            positions.append(PositionValue(instrument_id, quantity, bar.close, ref, ctx.multiply(quantity, bar.close)))
+            continue
         crossed = [a for a in projection.adjustments if a.instrument_id == instrument_id
                    and bar.start_time < a.effective_at <= at]
         if crossed:
