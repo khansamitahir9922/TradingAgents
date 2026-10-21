@@ -136,3 +136,20 @@ def test_same_total_disposal_cost_still_restates_changed_fifo_attribution(env):
     assert original_sale.transaction_id in result.reversed_transactions
     assert current(env,result.book_id).gross_realized == 500
     assert any(m.acquisition == late_fill.fill_id for m in env.ledger.get(result.book_id).lot_matches)
+
+
+def test_equal_time_fifo_correction_has_new_identity_even_when_amounts_do_not_change(env):
+    split, dividend, deliveries, first = setup(env)
+    at = env.clock.now()
+    before = canonical_json(current(env, first.book_id))
+    old_sale = next(tx for batch in env.ledger.ancestry(first.book_id) for tx in batch.transactions
+                    if any(e.account.startswith("REALIZED_PNL:") for e in tx.entries))
+    _, late = accepted(env, "BUY", "5", "100", executed=datetime(2024,5,27,15,tzinfo=at.tzinfo),
+                       recorded=at, fee="0", broker_id="same-instant-late-acquisition")
+    sources = bundle(env, (split, dividend), deliveries)
+    changed = sync_account("R1", through=at, sources=sources, ledger=env.ledger)
+    assert changed.changed and old_sale.transaction_id in changed.reversed_transactions
+    assert current(env, changed.book_id).gross_realized == 500
+    assert any(m.acquisition == late.fill_id for m in env.ledger.get(changed.book_id).lot_matches)
+    assert canonical_json(current(env, first.book_id)) == before
+    assert sync_account("R1", through=at, sources=sources, ledger=env.ledger).book_id == changed.book_id

@@ -23,6 +23,7 @@ from investment_engine.ledger.contracts import (
     SourceConflict,
     SourceRef,
     identity,
+    journal,
     reverse_transaction,
 )
 from investment_engine.ledger.lots import FifoBook, exact_decimal
@@ -57,7 +58,7 @@ def _key(ref):
 
 
 def _economic(tx):
-    return identity((tx.investment_account_id, tx.effective_at, tx.sources,
+    return identity((tx.investment_account_id, tx.effective_at, tuple(r for r in tx.sources if r.kind != "restatement"),
                      tuple((e.account, e.unit, e.debit, e.credit) for e in tx.entries)))
 
 
@@ -222,7 +223,7 @@ def sync_account(account_id, *, through, sources, ledger):
                 quantities[lot.instrument_id] += Fraction(lot.remaining_quantity)
             ownership.append((effective, {i:exact_decimal(q) for i,q in quantities.items()}))
         active = _active(ledger, head)
-        reversals, replacements, new_matches = [], [], []
+        reversals, replacements, new_matches, causal_refs = [], [], [], []
         for key in sorted(active.keys() | plans.keys()):
             old, new = active.get(key), plans.get(key)
             if old is not None and new is not None and _economic(old) == _economic(new):
@@ -237,9 +238,20 @@ def sync_account(account_id, *, through, sources, ledger):
             if old is not None:
                 reversals.append(reverse_transaction(old, posted_at=through))
             if new is not None:
+                if ledger.db.fetchone("SELECT 1 FROM ledger_transactions WHERE transaction_id=:id", {"id": new.transaction_id}):
+                    # Equal-time arrivals can change lot attribution while every
+                    # debit/credit stays identical. Bind that replacement to its
+                    # actual predecessor/evidence, never advance the clock or
+                    # reuse an already committed transaction identity.
+                    proof = identity((head.book_id, new.transaction_id, matches.get(key, ()), tuple(sorted(r.source_id for r in desired))))
+                    receipt = SourceRef("restatement", f"{account_id}/{proof}", 1, head.book_id, proof,
+                                        new.effective_at, through, through, "ledger")
+                    causal_refs.append(receipt)
+                    new = journal(account_id, new.effective_at, through, (*new.sources, receipt),
+                                  ((e.account, e.unit, e.debit if e.debit else e.credit.copy_negate()) for e in new.entries))
                 replacements.append(new)
                 new_matches.extend(matches.get(key, ()))
-        refs = {r.source_id:r for r in (*head.sources,*desired)}
+        refs = {r.source_id:r for r in (*head.sources,*desired,*causal_refs)}
         batch = BookBatch(account_id, head.book_id, head.version+1, head.policy_version, tuple(refs.values()),
                           tuple(reversals+replacements), tuple(new_matches), through)
         batch = replace(batch, lot_matches=tuple(replace(m,book_id=batch.book_id) for m in new_matches))

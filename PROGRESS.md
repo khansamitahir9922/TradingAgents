@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 11/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-10 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
+| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-05 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
 | **Checks** | Focused/affected task checks and Ruff recorded per task below. Full Bash/PowerShell suites and fresh base/engine installs are required once for the finished package; not yet run for M5. CI not run. Implementer self-review is not independent acceptance. |
@@ -157,6 +157,14 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-22 — M5-05 (Codex backup implementer)
+
+M5-11 report checks exposed an equal-time FIFO-attribution correction collision. Added a stored-source regression at the same processing cutoff. When a replacement journal ID is already committed, append a causal restatement SourceRef naming the predecessor book and complete source/lot proof; rebuild its manifest without advancing the clock. Economic comparison ignores only that internal causal receipt, so unchanged later sources remain idempotent. Preserve full reversals, old query bytes and provider-separated market evidence. This is a follow-up within M5-05 scope; M5-11 work remains uncommitted and is not included in this commit.
+
+Observed red: ROOTPY run_check.py bash m5-05-equal-time-red tests/engine/test_ledger_restatements.py::test_equal_time_fifo_correction_has_new_identity_even_when_amounts_do_not_change: 1 failed with ledger_transactions_pkey collision. Combined interim probe: M5-05/M5-10 checks passed; separate new M5-11 test-fixture/renderer errors were exposed and corrected while report work remained uncommitted. Final independent-of-M5-11 check: C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/run_check.py bash m5-05-equal-time-final tests/engine/test_ledger_restatements.py tests/engine/test_ledger_time.py: 11 passed in 28.55s. Ruff and whitespace passed. Full M5 package suites/fresh installs/CI not yet run.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
 
 ## 2026-10-22 — M5-10 (Codex backup implementer)
 
