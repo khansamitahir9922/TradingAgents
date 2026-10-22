@@ -4,16 +4,16 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 ---
 
-## Current state (2026-10-21)
+## Current state (2026-10-22)
 
 | | |
 |---|---|
 | **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 15/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. Planning commit `0f93c75`; M5-14 committed (checked), continuing the authorized M5 package. Not independently accepted or merged. |
+| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. All 15 task implementations committed (checked); code fixed at `b7e1c13`; full PowerShell in progress, fresh installs queued. Documentation-only D42 follow-up below. Not independently accepted or merged. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
-| **Checks** | Focused/affected task checks and Ruff recorded per task below. Full Bash/PowerShell suites and fresh base/engine installs are required once for the finished package; not yet run for M5. CI not run. Implementer self-review is not independent acceptance. |
+| **Checks** | All task/affected checks and Ruff passed. Full Git Bash at code `b7e1c13`: 3782 passed, only recorded cache-location failure; 7 explained skips, none for missing PostgreSQL credentials. Full PowerShell running; fresh base/engine installs pending. CI not run. Implementer self-review is not independent acceptance. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -31,7 +31,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 **Codex is backup implementer while Claude is unavailable (owner, 2026-10-21).**
 
 1. Completed: owner acceptance recorded, M4 fast-forwarded locally, planning commit `0f93c75`, isolated `m5/milestone` worktree created.
-2. Continue authorized M5: 15/15 tasks committed (checked), next package checks/self-review. Keep focused checks/local commits; full suites and fresh installs once for the finished package. No per-task approval needed.
+2. Finish authorized M5 package checks and independent-review handoff: all 15 tasks are committed (checked). Full Bash completed on `b7e1c13`; full PowerShell started 2026-10-22 09:12 Asia/Karachi. External `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/finish_checks.py` is already queued: after an acceptable final PowerShell log it runs genuinely fresh base/engine installs sequentially and read-only final evidence validation. On resuming, inspect existing processes/logs before starting duplicate heavy checks. No per-task approval needed.
 3. M4 tidy-ups remain checked but uncommitted on their separate branch; they were excluded from the authorized main fast-forward.
 4. Final M5 package needs designated independent/owner review and separate merge approval. No push, keys, downloads, owner database reset/restore, actual backup scheduling or M6.
 5. M1 hourly/PAPER/UNKNOWN and all retained architecture conditions remain. D35-D44 are now owner-accepted, not independently accepted by this implementer.
@@ -157,6 +157,14 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-22 — M5-12 (Codex backup implementer)
+
+Documentation clarification: the runbook now explicitly identifies the owner-accepted D42 default root as data_dir()/backups outside repositories, with a fresh explicit child per job. The backup CLI deliberately requires that new job directory instead of silently selecting or overwriting a location. Off-disk roots remain supported. No runtime, tests, paths on disk, schedule or database changed.
+
+Documentation-only follow-up; no executable change and no additional runtime test run. Earlier focused/native backup and restore results and the completed full Bash check stand on unchanged code b7e1c13; the package PowerShell run continues on that same code. Ruff and whitespace checked before this commit. Pending package/install results remain pending, not claimed.
+
+Evidence logs: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/`. Local task commit authorized by consolidated owner approval. Full Bash/PowerShell suites and fresh installs are package checks unless a task changes packaging. CI not run. No M5 merge/push, keys, downloads, owner database operations or M6.
 
 ## 2026-10-22 — M5-14 (Codex backup implementer)
 

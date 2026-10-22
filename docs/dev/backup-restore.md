@@ -35,6 +35,15 @@ not a signature against a malicious writer who can replace both files and hashes
 
 ## Explicit owner-operated backup
 
+Under D42, the default backup root is `<data dir>/backups`, outside the repository.
+Use the directory returned by `investment_engine.config.data_dir()` and choose a
+new child directory for each job, for example `<data dir>/backups/JOB-ID`. The
+CLI deliberately requires that explicit **new job directory** rather than
+silently reusing an existing destination. A separately chosen off-disk root is
+also supported; the example below illustrates that alternative. Confirm that a
+custom data directory and the chosen backup root are outside every checkout.
+Backups contain confidential database data and stay uncommitted.
+
 Use the installed environment's Python and an absolute **new** destination:
 
 ```powershell
