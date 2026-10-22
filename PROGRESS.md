@@ -10,10 +10,10 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 15/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | M5 complete as an implementation package: all 15 tasks committed (checked), self-review and package checks complete on `m5/milestone`. Runtime/test code is `b7e1c13`; later commits are documentation only. Codex implemented; awaiting designated independent/owner review, not independently accepted or merged. |
+| **Current work** | Claude independently reviewed `5cd9363..e0a668e`: not accepted, B1 blocking and N1-N6 non-blocking. Codex is implementing the owner-authorized B1 follow-up on `m5/milestone`; six SQL and six pre-0019 read regressions now pass. N1-N6 explicitly remain open below. No M5 acceptance or merge. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
-| **Checks** | Bash: 1 failed, 3782 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 3187.71s (0:53:07). PowerShell: 1 failed, 3782 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 3815.33s (1:03:35). Only recorded baseline failures. Ruff, fresh base/engine installs, disposable restore and scope/evidence checks passed. CI not run. |
+| **Checks** | B1 own/affected tests: 102 passed, no skips. Full two-shell suites and fresh installs must be repeated for the review-fix package; earlier `e0a668e` results below are historical, not results on this fix. CI not run. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -28,10 +28,10 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-**Codex is backup implementer while Claude is unavailable (owner, 2026-10-21).**
+**Codex implements the owner-authorized M5 review fixes; Claude independently reviews (owner, 2026-10-22).**
 
 1. Completed: owner acceptance recorded, M4 fast-forwarded locally, planning commit `0f93c75`, isolated `m5/milestone` worktree created.
-2. Give the fixed `m5/milestone` head to Claude Code/designated independent reviewer; start with `docs/reviews/implementer-m5-milestone-package.md`. Review every commit since accepted M4 `5cd9363`, including owner-accepted specs and documentation follow-ups. Address findings in follow-up commits. M5 is not done until independent acceptance and a separately owner-approved merge.
+2. Finish B1 follow-up package checks and give the fixed follow-up range after `e0a668e` back to Claude for independent re-review. Start with `docs/reviews/implementer-m5-review-fix-package.md` once finalized. M5 is not done until independent acceptance and a separately owner-approved merge.
 3. M4 tidy-ups remain checked but uncommitted on their separate branch; they were excluded from the authorized main fast-forward.
 4. Final M5 package needs designated independent/owner review and separate merge approval. No push, keys, downloads, owner database reset/restore, actual backup scheduling or M6.
 5. M1 hourly/PAPER/UNKNOWN and all retained architecture conditions remain. D35-D44 are now owner-accepted, not independently accepted by this implementer.
@@ -121,6 +121,12 @@ Report directional accuracy against the base rate, and the information coefficie
 ## Open issues and decisions
 | Item | Owner | Needed by |
 |---|---|---|
+| **M5 review N1, unresolved: specific accounting-gap reason and unposted source reference are discarded.** `ledger/service.py:synchronize` catches `AccountingUnavailable` and re-observes current state; planning-only failures (insufficient FIFO basis, fractional split, unresolved order across an action) can therefore retain only the generic unsynchronized-prefix reason. Trading remains blocked and no old book is called complete. Deferred, as the owner permits, to a separate diagnostics follow-up with regression coverage for all three outcomes, rather than coupling service/incident changes to B1's storage-integrity correction. This is a reporting gap, not a resolved finding. | Implementer + independent reviewer | Before live/PAPER readiness in M7; earlier if requested |
+| **M5 review N2, unresolved: moving-clock/freshness assumptions.** Restatement, fill consumption, PAPER CLI sync and incident/readiness comparisons use repeated `now()` calls or exact timestamp equality. Correctness demonstrated here is fixed-clock RESEARCH only; PAPER remains blocked. Specify one captured operation time and reviewed freshness policy, then test advancing clocks; no tolerance has been silently introduced. | M7 design/review | Before live/PAPER accounting |
+| **M5 review N3, unresolved: proposal accounting errors lack typed unavailability.** `StaleEvidence`, `SourceConflict`, `StaleBook` or `ValueError` can escape synchronization and stop Core instead of producing a typed missing prerequisite, including a Worker clock ahead of Core. Fails closed; catch only explicitly classified expected gaps under a reviewed M7 policy, retaining actual database faults. | M7 design/review | Before concurrent live deployment |
+| **M5 review N4, unresolved: replay growth.** Books repeat earlier receipts; `source_key` lookups are unindexed; ancestry and broker messages are reread. B1 also adds full row verification to reads. Profile long replays before choosing an additive source-key index, verified read cache or cursor; no performance improvement is claimed. | Implementer/reviewer | Before long replays or M7 scale |
+| **M5 review N5, unresolved: harness Worker receives a full Core AccountingService.** Observed Worker calls are read-only `ready`/`current_balances`, but the object also contains write-capable services. Introduce a narrow read-only verifier interface and composition-level boundary regression in a separate reviewed follow-up; AST checks are not capability isolation. | Implementer/reviewer | Before production wiring in M7 |
+| **M5 review N6, unresolved visible-result choice.** Delivered accounting demonstration is synthetic and hand-authored, not a saved-range NVDA simulation. M5-14 makes the larger offline range optional, while the roadmap still describes it. Owner may request that additional offline report before/after merge; no profitability or full historical-run claim, and no new download is authorized. | Owner | Explicit merge/visible-result decision |
 | ~~OPEN-01: package name~~ **Resolved:** `investment_engine`, confirmed by the owner on 2026-10-09 | Owner | Done |
 | **Hourly verification still blocks M1-12/M1-13 and M1 completion.** Recorded high/low differences: **169 sessions in vendor units**, **181 under raw reconstruction**, plus **35 missing expected hourly starts**. No comparable independent hourly reference yet. A proposed vendor must actually provide the needed historical, unadjusted data with matching bar/session/auction/late-trade coverage; an account alone does not establish access or settle the evidence. No additional provider integration or account purchase is authorized here. | Owner/source decision, then reviewed evidence | Hourly M1-12/M1-13 |
 | ~~Q1-2021 exact reference close~~ **Resolved for the acceptance test:** owner approved option B, **2021-07-01 <= date < 2021-07-20**, including the independently cited July 19 close $751.19 and excluding the split date. Q1 recording remains the date-filtered-history counterexample; MarketWatch archives remain supporting material only. | Owner/Codex | M1-13 |
@@ -157,6 +163,20 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-22 — Independent M5 review B1 follow-up (Codex implementer)
+
+Claude's review `C:/Users/LOQ/TradingAgents/docs/reviews/claude-m5-review-e0a668e.md` did **not** accept M5: B1 is blocking, N1-N6 non-blocking. Owner explicitly authorized additive migration 0019, read cross-checks, regression variants, follow-up commits and re-review; no merge, push or M6. N1-N6 are retained above with consequences, rationale and next gates; none is claimed fixed.
+
+B1: added 0019 without changing an applied migration. Deferred database checks tie the batch read model to transaction metadata, every ordered sealed entry, source IDs/keys/full receipts/content hashes/source-set hash and lot-match IDs/full evidence. `_load` cross-checks the same rows for old books as well. Activation must name the first account book. Existing economic IDs and codec remain unchanged; SQL canonical hashing explicitly covers Unicode, surrogate pairs and escaped controls.
+
+Claude's unchanged probe SHA-256 is `80a484d5a6f105606aca398930cc5c9c930a4c96d3c4cbd7830afb9653b4577d`. Its exploit is adapted to refusal assertions in `test_ledger_store.py`, with valid source keys, plus receipt/lot/source-hash variants. Original reviewer files/checkouts were not edited. A separate implementer-owned detached baseline checkout at `C:/Users/LOQ/TradingAgents-reviews/codex-m5-b1-red` holds only these regression tests on original runtime `e0a668e`.
+
+Exact red command: `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/run_b1_baseline.py bash m5-b1-final-red tests/engine/test_ledger_store.py::test_sql_batch_copy_must_match_its_sealed_rows tests/engine/test_ledger_store.py::test_load_refuses_pre_0019_divergent_book`: **12 failed in 20.40s**, all expected refusal assertions failed (DID NOT RAISE); no setup errors. Earlier test iterations accidentally reused the existing hash, then constructed inconsistent fake references; these test-fixture issues were corrected and this final red rerun observed on the original code.
+
+Exact green command: `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/run_check.py bash m5-b1-green-final tests/engine/test_ledger_store.py tests/engine/test_ledger_upgrade.py tests/engine/test_ledger_restatements.py tests/engine/test_ledger_time.py tests/engine/test_postgres_schema.py tests/engine/test_m5_accounting_demo.py tests/engine/test_accounting_reports.py tests/engine/test_ledger_consumer_recovery.py`: **102 passed in 237.85s**, no skips. Upgrade preserves populated 0018 rows. Earlier expanded green checks also caught two new-test fixture errors (a trailing-space validation case and expecting the wrong deferred PostgreSQL exception class); corrected fixtures, unchanged production restrictions. `ROOTPY` is `C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe`. Focused final checks/Ruff precede this follow-up commit. Full two-shell package results and fresh installed migration-0019 checks remain pending; CI not run.
+
+Final own-file check after the lint-only import sort: `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/run_check.py bash b1-focused-final tests/engine/test_ledger_store.py tests/engine/test_ledger_upgrade.py`: **42 passed in 65.03s**, no skips. `ROOTPY -m ruff check .` and `git diff --check` pass. Full package checks run once on this fixed runtime/test snapshot; no per-commit full reruns or weakened tests.
 
 ## 2026-10-22 — M5 final package checks / review handoff (Codex backup implementer)
 

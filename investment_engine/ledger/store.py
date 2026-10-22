@@ -46,6 +46,39 @@ class LedgerStore:
             raise SourceConflict("stored ledger book content/hash mismatch")
         if any(match.book_id != book.book_id for match in book.lot_matches):
             raise SourceConflict("stored lot match book reference mismatch")
+        # Read guards also cover immutable records committed before migration 0019.
+        header = self._db.fetchone(
+            "SELECT account_id,parent_id,version,posted_at,source_set_hash,source_count,transaction_count,lot_count "
+            "FROM ledger_batches WHERE book_id=:b", {"b": book.book_id})
+        if header != (book.account_id, book.parent_id, book.version, book.posted_at, book.source_set_hash,
+                      len(book.sources), len(book.transactions), len(book.lot_matches)):
+            raise SourceConflict("stored ledger batch payload/source manifest mismatch")
+        transactions = self._db.fetchall(
+            "SELECT transaction_id,account_id,effective_at,posted_at,entry_count,manifest_hash,reverses "
+            "FROM ledger_transactions WHERE book_id=:b ORDER BY transaction_id", {"b": book.book_id})
+        expected = sorted((t.transaction_id, t.investment_account_id, t.effective_at, t.posted_at,
+                           t.entry_count, t.manifest_hash, t.reverses) for t in book.transactions)
+        if list(transactions) != expected:
+            raise SourceConflict("stored ledger transaction payload/manifest mismatch")
+        entries = self._db.fetchall(
+            "SELECT transaction_id,ordinal,content FROM ledger_entries WHERE book_id=:b ORDER BY transaction_id,ordinal",
+            {"b": book.book_id})
+        if [(r[0], r[1], json.loads(r[2])) for r in entries] != [
+                (t.transaction_id, n, json.loads(canonical_json(e)))
+                for t in sorted(book.transactions, key=lambda t: t.transaction_id) for n, e in enumerate(t.entries)]:
+            raise SourceConflict("stored ledger entry payload/manifest mismatch")
+        receipts = self._db.fetchall(
+            "SELECT source_id,source_key,content_hash,content FROM ledger_source_receipts "
+            "WHERE book_id=:b ORDER BY source_id", {"b": book.book_id})
+        if [(r[0], r[1], r[2], json.loads(r[3])) for r in receipts] != [
+                (s.source_id, identity((book.account_id, s.kind, s.identity, s.revision, s.provider)),
+                 s.content_hash, json.loads(canonical_json(s))) for s in sorted(book.sources, key=lambda s: s.source_id)]:
+            raise SourceConflict("stored ledger source receipt payload/hash mismatch")
+        matches = self._db.fetchall(
+            "SELECT match_id,content FROM ledger_lot_matches WHERE book_id=:b ORDER BY match_id", {"b": book.book_id})
+        if [(r[0], json.loads(r[1])) for r in matches] != [
+                (m.match_id, json.loads(canonical_json(m))) for m in sorted(book.lot_matches, key=lambda m: m.match_id)]:
+            raise SourceConflict("stored ledger lot match payload mismatch")
         return book
 
     def get(self, book_id):
@@ -76,7 +109,12 @@ class LedgerStore:
 
     def activation(self, account_id):
         row = self._db.fetchone("SELECT book_id FROM ledger_activations WHERE account_id=:a", {"a": account_id})
-        return None if row is None else self.get(row[0])
+        if row is None:
+            return None
+        book = self.get(row[0])
+        if book.account_id != account_id or book.version != 1:
+            raise SourceConflict("stored ledger activation does not name the first account book")
+        return book
 
     def activate(self, account_id, *, opening_lots, source_bundle, by, reason):
         """Explicit Admin activation from the saved declared start; no repricing old holdings.

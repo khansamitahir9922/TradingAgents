@@ -16,7 +16,9 @@ from investment_engine.ledger.contracts import (
     LedgerEntry,
     LotMatch,
     SourceBundle,
+    SourceConflict,
     Unit,
+    identity,
     journal,
     reverse_transaction,
 )
@@ -240,3 +242,96 @@ def test_lot_match_must_point_to_its_containing_book(env):
         store.append_batch(batch)
     finalized = replace(batch, lot_matches=(replace(match, book_id=batch.book_id),))
     assert store.append_batch(finalized) == finalized
+
+
+def _divergent_sql_batch(db, first, component):
+    """Claude's P1, with valid source keys, plus independent receipt/lot variants."""
+    when = T + timedelta(hours=1)
+    refs = (*first.sources, source(identity="R1/extra", stored_record_id="x"))
+    usd = Unit("CURRENCY", "USD")
+    real = journal("R1", T, when, refs, (("CASH", usd, Decimal(5)), ("CAPITAL", usd, Decimal(-5))))
+    fake = real
+    if component == "transaction":
+        inflated = journal("R1", T, when, refs,
+                           (("CASH", usd, Decimal(1000000)), ("CAPITAL", usd, Decimal(-1000000))))
+        fake = replace(inflated, transaction_id=real.transaction_id,
+                       entries=tuple(replace(e, transaction_id=real.transaction_id) for e in inflated.entries))
+    batch_refs = refs if component != "source" else (refs[0], replace(refs[1], content_hash="b" * 64))
+    if component == "source":
+        fake = replace(fake, sources=batch_refs,
+                       entries=tuple(replace(e, sources=batch_refs) for e in fake.entries))
+    match = LotMatch("review-match", "pending", "buy", "sell", Decimal(1), Decimal(1), usd, "fifo-v1")
+    matches = (replace(match, cost=Decimal(999)),) if component == "lot" else ()
+    batch = BookBatch("R1", first.book_id, 2, first.policy_version, batch_refs, (fake,), matches, when)
+    if matches:
+        batch = replace(batch, lot_matches=(replace(matches[0], book_id=batch.book_id),))
+        match = replace(match, book_id=batch.book_id)
+    with db.transaction():
+        db.execute("INSERT INTO ledger_batches VALUES(:id,'R1',:p,2,:t,:h,:ns,1,:nl,:c)",
+                   {"id": batch.book_id, "p": first.book_id, "t": when,
+                    "h": "0" * 64 if component == "source_hash" else batch.source_set_hash,
+                    "ns": len(refs), "nl": len(matches), "c": canonical_json(batch)})
+        for ref in refs:
+            db.execute("INSERT INTO ledger_source_receipts VALUES(:b,:id,:k,:h,:c)",
+                       {"b": batch.book_id, "id": ref.source_id,
+                        "k": identity(("R1", ref.kind, ref.identity, ref.revision, ref.provider)),
+                        "h": "b" * 64 if component == "receipt_hash" else ref.content_hash,
+                        "c": canonical_json(replace(ref, stored_record_id="forged"))
+                             if component == "receipt_content" else canonical_json(ref)})
+        db.execute("INSERT INTO ledger_transactions VALUES(:id,:b,'R1',:e,:p,:n,:h,NULL)",
+                   {"id": real.transaction_id, "b": batch.book_id, "e": real.effective_at,
+                    "p": when, "n": real.entry_count, "h": real.manifest_hash})
+        for n, entry in enumerate(real.entries):
+            db.execute("INSERT INTO ledger_entries VALUES(:id,:tx,:b,'R1',:n,:chart,:unit,:d,:c,:e,:p,NULL,:content)",
+                       {"id": entry.entry_id, "tx": real.transaction_id, "b": batch.book_id, "n": n,
+                        "chart": entry.account, "unit": entry.unit.key, "d": entry.debit,
+                        "c": entry.credit, "e": entry.effective_at, "p": when, "content": canonical_json(entry)})
+        if matches:
+            db.execute("INSERT INTO ledger_lot_matches VALUES(:b,:id,:c)",
+                       {"b": batch.book_id, "id": match.match_id, "c": canonical_json(match)})
+    return batch
+
+
+@pytest.mark.parametrize("component", ["transaction", "source", "lot", "source_hash", "receipt_hash", "receipt_content"])
+def test_sql_batch_copy_must_match_its_sealed_rows(env, component):
+    """P1 red/green: reject the commit, rather than asserting the exploit succeeds."""
+    _, db, store = env
+    first = store.append_batch(make_batch())
+    before = counts(db)
+    with pytest.raises((PgError, IntegrityViolation), match="ledger.*(payload|source|manifest)"):
+        _divergent_sql_batch(db, first, component)
+    assert counts(db) == before
+    assert store.read_head("R1", known_at=T + timedelta(days=1)) == first
+
+
+@pytest.mark.parametrize("component", ["transaction", "source", "lot", "source_hash", "receipt_hash", "receipt_content"])
+def test_load_refuses_pre_0019_divergent_book(pg_database, monkeypatch, component):
+    """Legacy corruption is refused without editing history or disabling any trigger."""
+    from investment_engine.storage import postgres as pg
+
+    scripts = pg._pg_schema_scripts()
+    monkeypatch.setattr(pg, "_pg_schema_scripts", lambda: [(n, s) for n, s in scripts if n <= 18])
+    conn, db, store = open_store(pg_database)
+    try:
+        first = store.append_batch(make_batch())
+        bad = _divergent_sql_batch(db, first, component)
+        with pytest.raises(SourceConflict, match="stored ledger.*(payload|source|manifest)"):
+            store.get(bad.book_id)
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("text", ['normal', '\x7f', 'é漢😀', 'quote" slash\\ newline\n', '\b\f\t\r\x01'])
+def test_sql_canonical_codec_matches_existing_identity_bytes(env, text):
+    _, db, _ = env
+    value = (source(identity="x" + text + "x"), {"z": text, "a": (None, 17, True)})
+    encoded = canonical_json(value)
+    assert db.fetchone("SELECT ledger_canonical_json(CAST(:value AS jsonb))", {"value": encoded})[0] == encoded
+
+
+def test_sql_activation_cannot_name_a_later_book(env):
+    _, db, store = env
+    first = store.append_batch(make_batch())
+    second = store.append_batch(make_batch(parent=first.book_id, version=2, when=T + timedelta(hours=1)))
+    with pytest.raises((PgError, IntegrityViolation), match="first account book"), db.transaction():
+        db.execute("INSERT INTO ledger_activations VALUES ('R1',:b,:t,'[]')", {"b": second.book_id, "t": T})
