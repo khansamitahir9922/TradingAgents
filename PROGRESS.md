@@ -10,10 +10,10 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 15/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Codex backup implementer; `m5/milestone`, worktree `C:/Users/LOQ/TradingAgents-m5`. All 15 task implementations committed (checked); code fixed at `b7e1c13`; full PowerShell in progress, fresh installs queued. Documentation-only D42 follow-up below. Not independently accepted or merged. |
+| **Current work** | M5 complete as an implementation package: all 15 tasks committed (checked), self-review and package checks complete on `m5/milestone`. Runtime/test code is `b7e1c13`; later commits are documentation only. Codex implemented; awaiting designated independent/owner review, not independently accepted or merged. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
-| **Checks** | All task/affected checks and Ruff passed. Full Git Bash at code `b7e1c13`: 3782 passed, only recorded cache-location failure; 7 explained skips, none for missing PostgreSQL credentials. Full PowerShell running; fresh base/engine installs pending. CI not run. Implementer self-review is not independent acceptance. |
+| **Checks** | Bash: 1 failed, 3782 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 3187.71s (0:53:07). PowerShell: 1 failed, 3782 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 3815.33s (1:03:35). Only recorded baseline failures. Ruff, fresh base/engine installs, disposable restore and scope/evidence checks passed. CI not run. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -31,7 +31,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 **Codex is backup implementer while Claude is unavailable (owner, 2026-10-21).**
 
 1. Completed: owner acceptance recorded, M4 fast-forwarded locally, planning commit `0f93c75`, isolated `m5/milestone` worktree created.
-2. Finish authorized M5 package checks and independent-review handoff: all 15 tasks are committed (checked). Full Bash completed on `b7e1c13`; full PowerShell started 2026-10-22 09:12 Asia/Karachi. External `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/finish_checks.py` is already queued: after an acceptable final PowerShell log it runs genuinely fresh base/engine installs sequentially and read-only final evidence validation. On resuming, inspect existing processes/logs before starting duplicate heavy checks. No per-task approval needed.
+2. Give the fixed `m5/milestone` head to Claude Code/designated independent reviewer; start with `docs/reviews/implementer-m5-milestone-package.md`. Review every commit since accepted M4 `5cd9363`, including owner-accepted specs and documentation follow-ups. Address findings in follow-up commits. M5 is not done until independent acceptance and a separately owner-approved merge.
 3. M4 tidy-ups remain checked but uncommitted on their separate branch; they were excluded from the authorized main fast-forward.
 4. Final M5 package needs designated independent/owner review and separate merge approval. No push, keys, downloads, owner database reset/restore, actual backup scheduling or M6.
 5. M1 hourly/PAPER/UNKNOWN and all retained architecture conditions remain. D35-D44 are now owner-accepted, not independently accepted by this implementer.
@@ -157,6 +157,23 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-22 — M5 final package checks / review handoff (Codex backup implementer)
+
+Final package checks on unchanged runtime/test code `b7e1c13`:
+
+- `C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/run_check.py bash full-git-bash`: **1 failed, 3782 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 3187.71s (0:53:07)**.
+- Same runner, `powershell full-powershell`: **1 failed, 3782 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 3815.33s (1:03:35)**.
+- Failure IDs: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`. These are recorded baseline cases; the cache failure's original Windows-temp-inside-home cause was checked against M1-00. No new test failure or missing-PostgreSQL-DSN skip. Seven skips are the three SQLite concurrency variants, three POSIX permission cases and the optional `langchain_aws` import; three integration cases are deselected. PostgreSQL branches ran.
+- The first PowerShell run was **not accepted**: 3781 passed with the cache baseline plus NEW `tests/engine/test_limits.py::test_concurrent_restriction_changes_both_survive[add-remove]`, a PostgreSQL connection-establishment timeout before race logic. Its complete log is retained as `full-powershell-connection-timeout.log`, SHA-256 `26d6178def92fe03077efe67c3e1bf26240c66f69c68296d8df4cc6ff8be7065`. Windows recorded sleep/resume during that run. The unchanged complete limits module rerun passed all **25 tests in 50.53s**, then the full suite was repeated. No code, test, repetition or timeout changed; the passing package result above comes from the complete repeat, not from discounting a new failure. The repeat/install sequence used a thread-scoped Windows awake request, cleared on helper exit, without editing power-plan settings.
+- `C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation/fresh_installs.py`: **PASS**, genuinely new base and engine environments retained at `C:\Users\LOQ\AppData\Local\Temp\ie-m5-install-6xzftcgf`. The base has no pyarrow/duckdb/psycopg; the engine has them. Both import the installed M5 modules from outside the repository without eagerly loading those libraries, and include schema resources 0016-0018. Both also pass the root CI-style imports. Exact commands and output: `fresh-installs.log`; completion proof: `fresh-installs-result.json`.
+- Read-only `final_evidence.py`: code/test tree unchanged, main clean at `5cd9363`, old SQL migrations/diagrams/dependencies/CI/original TradingAgents paths preserved, AGENTS/CLAUDE shared rules identical, artifact hash/size/equity bridge verified. Per-commit exact-path checker passed all 22 task/fix commits before this final documentation record; rerun after this commit for the full review head.
+- Synthetic demo JSON: **9540 bytes**, SHA-256 `0e4a6db39a54e7beb4b9952add0a406a2e519e74901ac0796bb5717f019dfbf0`. Source/code hashes, book/query IDs and the raw product-output hash are in `docs/reviews/m5-accounting-demo.md` and the external artifact manifest. The separate explicit annotation says data and views are hand-constructed; the artifact is not a historical NVDA backtest or profitability evidence.
+- Actual exported-snapshot dump/disposable restore, exact table hashes, per-unit balance and synthetic P&L 228 bridge passed in task M5-12 and the full suites. No owner database restore/reset or backup schedule installation.
+- CI not run; no push, M5 merge, API keys, market downloads or M6. Independent review is still required; Codex implemented and self-reviewed, and does not independently accept its own work.
+
+Full logs/hashes and helper commands are retained outside the repository at `C:/Users/LOQ/TradingAgents-proposals/codex-m5-implementation`. Git Bash log SHA-256 `5d305e0e410474fadfaeacb5d19cfcfc79ea151cddae4f69558e0100d74246ec`; PowerShell log SHA-256 `07959dd03b37c746fd4d56279b2cd7bc6aec8e988b4d44372b927e27b3500621`; fresh-install log SHA-256 `d3e6e1c0b5bde58269cd0ea76581c2158f19cd4c8e9e7ee312a93cf2fd0b14d0`.
+
 
 ## 2026-10-22 — M5-12 (Codex backup implementer)
 
