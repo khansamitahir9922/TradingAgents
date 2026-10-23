@@ -10,10 +10,10 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 15/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Claude independently reviewed `5cd9363..e0a668e`: not accepted. B1's additive 0019/read guards are implemented; self-review also corrected a collation assumption in the read comparisons. Final own/affected check: 104 passed. Full package verification must run on that corrected follow-up snapshot. N1-N6 remain explicitly open; no M5 acceptance or merge. |
+| **Current work** | B1 follow-ups committed and checked at `1700ced`; full package checks complete, awaiting Claude independent re-review of the follow-up range after `e0a668e`. N1-N6 remain explicitly open. No M5 acceptance or merge. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
-| **Checks** | B1 original red: 12 failures; collation follow-up red: 2 failures; final own/affected green: 104 passed, no skips. Full two-shell suites and fresh installs remain pending for the corrected follow-up code. Failed/partial intermediate runs are retained below, not accepted. CI not run. |
+| **Checks** | B1 final own/affected: 104 passed; original red: 12 failures, collation follow-up red: 2 failures. Bash: 1 failed, 3803 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4476.75s (1:14:36). PowerShell: 1 failed, 3803 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 23073.07s (6:24:33). Only recorded baseline failures. Ruff, scope and fresh base/engine installs with SQL 0019 passed. CI not run. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -31,7 +31,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 **Codex implements the owner-authorized M5 review fixes; Claude independently reviews (owner, 2026-10-22).**
 
 1. Completed: owner acceptance recorded, M4 fast-forwarded locally, planning commit `0f93c75`, isolated `m5/milestone` worktree created.
-2. Finish B1 follow-up package checks and give the fixed follow-up range after `e0a668e` back to Claude for independent re-review. Start with `docs/reviews/implementer-m5-review-fix-package.md` once finalized. Run `C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/package_checks.py` on the corrected committed source; inspect `package-status.json` in that folder and existing processes before starting duplicate heavy checks. Earlier failed/partial runs do not establish package completion. M5 is not done until independent acceptance and a separately owner-approved merge.
+2. Give the fixed follow-up range after `e0a668e` back to Claude for independent re-review. Start with `docs/reviews/implementer-m5-review-fix-package.md`. M5 is not done until independent acceptance and a separately owner-approved merge.
 3. M4 tidy-ups remain checked but uncommitted on their separate branch; they were excluded from the authorized main fast-forward.
 4. Final M5 package needs designated independent/owner review and separate merge approval. No push, keys, downloads, owner database reset/restore, actual backup scheduling or M6.
 5. M1 hourly/PAPER/UNKNOWN and all retained architecture conditions remain. D35-D44 are now owner-accepted, not independently accepted by this implementer.
@@ -163,6 +163,22 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-23 — M5 independent-review fix package checks (Codex implementer)
+
+Verification on unchanged runtime/test commit `1700ced`:
+
+- `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/run_check.py bash full-git-bash`: **1 failed, 3803 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4476.75s (1:14:36)**.
+- `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/run_check.py powershell full-powershell`: **1 failed, 3803 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 23073.07s (6:24:33)**.
+- Actual failure IDs: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`. These are recorded baseline failures, not new findings. No setup errors or PostgreSQL credential skips. See complete logs for all skip reasons; no test was weakened or excluded for this fix.
+- `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/fresh_installs.py`: **PASS**, genuinely fresh base and engine installations retained at `C:\Users\LOQ\AppData\Local\Temp\ie-m5-install-0jtcxxzf`. Installed SQL resources include **0019**. Root CI-style imports and outside-repository installed imports passed; optional engine libraries remain lazy and are absent from base, present in engine.
+- The helper `package_checks.py` ran the complete suites sequentially on unchanged code. The earlier failed date-boundary run and the interrupted intermediate-collation run are retained below; full checks were repeated only after those unresolved concerns, not per commit. A temporary thread-scoped Windows system-awake request was cleared on exit; no power-plan setting changed.
+- `ROOTPY -m ruff check .`, whitespace and exact task-path checks passed before handoff; final scope check is repeated after the documentation commit. Main remains clean at `5cd9363`. Old migrations 0001-0018, architecture/diagrams, original TradingAgents paths, dependencies, CI and shared-rules files are unchanged from `e0a668e`.
+- The original synthetic demonstration artifacts were not regenerated or relabelled as a historical run. New-code end-to-end accounting/demo assertions passed in the focused and full checks. No new data source, keys, owner database restore/reset or backup schedule.
+- CI not run; no M5 merge, push or M6. B1 awaits Claude's independent re-review; N1-N6 remain open, not fixed by this package.
+
+`ROOTPY` = `C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe`. Full evidence root: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes`. Git Bash log SHA-256 `4c21a19ac22f5bc70cd97bb80e5faf5f981adcf3697a88202a50acb349ebce42`; PowerShell log SHA-256 `cd13d41d293e1a08324a5a2d8b79ea057df94cbf2cdb38787cb4e111386ed6b2`; fresh-install log SHA-256 `ca9448a0ed301ebadcbcbf9d1ca4cc34f117d3cfb970aa7971896dc0ed20e93e`.
+
 
 ## 2026-10-23 — B1 self-review read-order correction (Codex implementer)
 

@@ -1,5 +1,7 @@
 # M5 milestone review package
 
+**Follow-up after independent review:** Claude did not accept `e0a668e` (B1 blocking; N1-N6 non-blocking). The owner authorized follow-up corrections. Use [the review-fix package](implementer-m5-review-fix-package.md) and current PROGRESS for the new commit range, checks and unresolved issues; the evidence below records the original milestone snapshot.
+
 **Implementer: Codex, backing up unavailable Claude Code. Not independent acceptance.** Owner authorized the entire local M5 package by answer `1` on 2026-10-21 to `C:/Users/LOQ/TradingAgents-proposals/codex-m5-specs/approval-package.md`. This accepted ADR-010 v0.2, D35-D44, 15 task commits / 55-hour planning estimate and eight task-size exceptions. It authorized local M4 fast-forward, planning and implementation commits, not an M5 merge or push.
 
 **Status: all 15 task implementations committed (checked); package checks complete, awaiting independent review.** See the final supplement and PROGRESS for observed results before requesting independent review. Never treat implementer self-review as reviewer acceptance.
