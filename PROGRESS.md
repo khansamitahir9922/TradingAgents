@@ -4,16 +4,16 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 ---
 
-## Current state (2026-10-22)
+## Current state (2026-10-23)
 
 | | |
 |---|---|
 | **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 15/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Claude independently reviewed `5cd9363..e0a668e`: not accepted, B1 blocking and N1-N6 non-blocking. Codex is implementing the owner-authorized B1 follow-up on `m5/milestone`; six SQL and six pre-0019 read regressions now pass. N1-N6 explicitly remain open below. No M5 acceptance or merge. |
+| **Current work** | Claude independently reviewed `5cd9363..e0a668e`: not accepted. B1's additive 0019/read guards are implemented; self-review also corrected a collation assumption in the read comparisons. Final own/affected check: 104 passed. Full package verification must run on that corrected follow-up snapshot. N1-N6 remain explicitly open; no M5 acceptance or merge. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
-| **Checks** | B1 own/affected tests: 102 passed, no skips. Full two-shell suites and fresh installs must be repeated for the review-fix package; earlier `e0a668e` results below are historical, not results on this fix. CI not run. |
+| **Checks** | B1 original red: 12 failures; collation follow-up red: 2 failures; final own/affected green: 104 passed, no skips. Full two-shell suites and fresh installs remain pending for the corrected follow-up code. Failed/partial intermediate runs are retained below, not accepted. CI not run. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -31,7 +31,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 **Codex implements the owner-authorized M5 review fixes; Claude independently reviews (owner, 2026-10-22).**
 
 1. Completed: owner acceptance recorded, M4 fast-forwarded locally, planning commit `0f93c75`, isolated `m5/milestone` worktree created.
-2. Finish B1 follow-up package checks and give the fixed follow-up range after `e0a668e` back to Claude for independent re-review. Start with `docs/reviews/implementer-m5-review-fix-package.md` once finalized. M5 is not done until independent acceptance and a separately owner-approved merge.
+2. Finish B1 follow-up package checks and give the fixed follow-up range after `e0a668e` back to Claude for independent re-review. Start with `docs/reviews/implementer-m5-review-fix-package.md` once finalized. Run `C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/package_checks.py` on the corrected committed source; inspect `package-status.json` in that folder and existing processes before starting duplicate heavy checks. Earlier failed/partial runs do not establish package completion. M5 is not done until independent acceptance and a separately owner-approved merge.
 3. M4 tidy-ups remain checked but uncommitted on their separate branch; they were excluded from the authorized main fast-forward.
 4. Final M5 package needs designated independent/owner review and separate merge approval. No push, keys, downloads, owner database reset/restore, actual backup scheduling or M6.
 5. M1 hourly/PAPER/UNKNOWN and all retained architecture conditions remain. D35-D44 are now owner-accepted, not independently accepted by this implementer.
@@ -163,6 +163,38 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+## 2026-10-23 — B1 self-review read-order correction (Codex implementer)
+
+Found and reproduced an assumption in my first read guard: PostgreSQL's default locale orders valid opaque IDs differently from Python. On the actual cluster, `a` sorts before `B`; Python sorts `B` before `a`. Native sealing accepted two valid books, but the read comparison falsely raised `SourceConflict`. This is my follow-up correction, not a new Claude finding or an independent acceptance.
+
+Red: `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/run_collation_baseline.py bash b1-collation-red tests/engine/test_ledger_store.py::test_valid_opaque_ids_load_independently_of_database_collation`, in an implementer-owned detached `c2a2b5e` checkout: **2 failed in 14.16s**, transaction and lot cases at the intended read assertion. Green: `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/run_check.py bash b1-collation-green tests/engine/test_ledger_store.py tests/engine/test_ledger_upgrade.py tests/engine/test_ledger_restatements.py tests/engine/test_ledger_time.py tests/engine/test_postgres_schema.py tests/engine/test_m5_accounting_demo.py tests/engine/test_accounting_reports.py tests/engine/test_ledger_consumer_recovery.py`: **104 passed in 283.32s**, no skips. `ROOTPY` remains the root Python 3.11 venv. Ruff passed. Read queries now explicitly use `COLLATE "C"`; all manifest/receipt/entry/lot comparisons remain intact, and no migration or economic ID changed.
+
+Stopped the intermediate `c2a2b5e` daytime full check after reproducing the defect, before implementation changes, by verifying its pytest command and parent PID and stopping only that owned pytest process. PostgreSQL/other processes were not stopped. Partial output is retained as `C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/full-git-bash-interrupted-collation-fix.log`, SHA-256 `cef4cda780cb9bffa39911d0c313b4c76340d0099883eba098763f984a532f43`. It has no final summary and is not a passing check. Full checks restart on the corrected committed source; no mixed-code run is accepted. The earlier overnight failed run and unchanged 61-test diagnostic pass remain below. No merge, push or M6; N1-N6 remain open as permitted.
+
+## 2026-10-23 ? M5 full-package date-boundary stop and unchanged diagnostic rerun
+
+### Unaccepted first full Bash run: collection date crossed midnight
+
+The first full run crossed from 2026-10-22 into 2026-10-23: **13 failed, 3789 passed, 7 skipped, 3 deselected, 99 subtests passed in 35766.41s (9:56:06)**. One failure is the cache-location baseline; the other twelve are **new for this run, not baseline failures**. The runner stopped before PowerShell/install checks. The trace shows `2026-10-22` cached by parameter construction at collection, while unchanged vendor point-in-time guards compare against the actual execution date and withhold past-date live data. All affected code/tests are unchanged from `e0a668e`; no date was frozen, test excluded or behavior changed.
+
+Failed IDs:
+
+- `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`
+- `tests/test_undated_tools_as_of.py::test_a_yfinance_failure_is_a_vendor_error_not_a_report[get_balance_sheet-args1]`
+- `tests/test_undated_tools_as_of.py::test_a_yfinance_failure_is_a_vendor_error_not_a_report[get_cashflow-args2]`
+- `tests/test_undated_tools_as_of.py::test_a_yfinance_failure_is_a_vendor_error_not_a_report[get_income_statement-args3]`
+- `tests/test_undated_tools_as_of.py::test_a_yfinance_failure_is_a_vendor_error_not_a_report[get_insider_transactions-args4]`
+- `tests/test_yahoo_rate_limit.py::test_a_yahoo_request_that_fails_is_unavailable_not_absent[fundamentals]`
+- `tests/test_yahoo_rate_limit.py::test_a_yahoo_request_that_fails_is_unavailable_not_absent[statement]`
+- `tests/test_yahoo_rate_limit.py::test_a_yahoo_request_that_fails_is_unavailable_not_absent[insider]`
+- `tests/test_yahoo_rate_limit.py::test_a_request_that_yfinance_would_swallow_is_unavailable[fundamentals]`
+- `tests/test_yahoo_rate_limit.py::test_a_request_that_yfinance_would_swallow_is_unavailable[statement]`
+- `tests/test_yahoo_rate_limit.py::test_a_request_that_yfinance_would_swallow_is_unavailable[insider]`
+- `tests/test_yahoo_rate_limit.py::test_yahoo_answering_not_found_is_no_data[fundamentals]`
+- `tests/test_yahoo_rate_limit.py::test_yahoo_answering_not_found_is_no_data[insider]`
+
+The complete redacted log is retained as `C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/full-git-bash-midnight-crossing.log`, SHA-256 `1396a9494892339946d816b17135d184024a43e7fda81554b58fba72689efb29`. Exact diagnostic rerun: `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-review-fixes/run_check.py bash date-failures-rerun tests/test_undated_tools_as_of.py tests/test_yahoo_rate_limit.py`: **61 passed in 8.70s** on unchanged code. The passing focused rerun does not replace the full check: repeat the complete package during daytime. Source and tests remain fixed at `c2a2b5e`; full results remain pending until that repeat finishes. The existing upstream midnight-test debt is not fixed by B1.
 
 ## 2026-10-22 — Independent M5 review B1 follow-up (Codex implementer)
 

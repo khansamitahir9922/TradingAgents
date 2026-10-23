@@ -55,13 +55,14 @@ class LedgerStore:
             raise SourceConflict("stored ledger batch payload/source manifest mismatch")
         transactions = self._db.fetchall(
             "SELECT transaction_id,account_id,effective_at,posted_at,entry_count,manifest_hash,reverses "
-            "FROM ledger_transactions WHERE book_id=:b ORDER BY transaction_id", {"b": book.book_id})
+            'FROM ledger_transactions WHERE book_id=:b ORDER BY transaction_id COLLATE "C"', {"b": book.book_id})
         expected = sorted((t.transaction_id, t.investment_account_id, t.effective_at, t.posted_at,
                            t.entry_count, t.manifest_hash, t.reverses) for t in book.transactions)
         if list(transactions) != expected:
             raise SourceConflict("stored ledger transaction payload/manifest mismatch")
         entries = self._db.fetchall(
-            "SELECT transaction_id,ordinal,content FROM ledger_entries WHERE book_id=:b ORDER BY transaction_id,ordinal",
+            'SELECT transaction_id,ordinal,content FROM ledger_entries WHERE book_id=:b '
+            'ORDER BY transaction_id COLLATE "C",ordinal',
             {"b": book.book_id})
         if [(r[0], r[1], json.loads(r[2])) for r in entries] != [
                 (t.transaction_id, n, json.loads(canonical_json(e)))
@@ -69,13 +70,14 @@ class LedgerStore:
             raise SourceConflict("stored ledger entry payload/manifest mismatch")
         receipts = self._db.fetchall(
             "SELECT source_id,source_key,content_hash,content FROM ledger_source_receipts "
-            "WHERE book_id=:b ORDER BY source_id", {"b": book.book_id})
+            'WHERE book_id=:b ORDER BY source_id COLLATE "C"', {"b": book.book_id})
         if [(r[0], r[1], r[2], json.loads(r[3])) for r in receipts] != [
                 (s.source_id, identity((book.account_id, s.kind, s.identity, s.revision, s.provider)),
                  s.content_hash, json.loads(canonical_json(s))) for s in sorted(book.sources, key=lambda s: s.source_id)]:
             raise SourceConflict("stored ledger source receipt payload/hash mismatch")
         matches = self._db.fetchall(
-            "SELECT match_id,content FROM ledger_lot_matches WHERE book_id=:b ORDER BY match_id", {"b": book.book_id})
+            'SELECT match_id,content FROM ledger_lot_matches WHERE book_id=:b ORDER BY match_id COLLATE "C"',
+            {"b": book.book_id})
         if [(r[0], json.loads(r[1])) for r in matches] != [
                 (m.match_id, json.loads(canonical_json(m))) for m in sorted(book.lot_matches, key=lambda m: m.match_id)]:
             raise SourceConflict("stored ledger lot match payload mismatch")

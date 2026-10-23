@@ -335,3 +335,26 @@ def test_sql_activation_cannot_name_a_later_book(env):
     second = store.append_batch(make_batch(parent=first.book_id, version=2, when=T + timedelta(hours=1)))
     with pytest.raises((PgError, IntegrityViolation), match="first account book"), db.transaction():
         db.execute("INSERT INTO ledger_activations VALUES ('R1',:b,:t,'[]')", {"b": second.book_id, "t": T})
+
+
+@pytest.mark.parametrize("component", ["transactions", "lot_matches"])
+def test_valid_opaque_ids_load_independently_of_database_collation(env, component):
+    _, _, store = env
+    batch = make_batch()
+    if component == "transactions":
+        values = []
+        for name, cash in (("B", "100"), ("a", "5")):
+            tx = journal("R1", T, T, batch.sources,
+                         (("CASH", Unit("CURRENCY", "USD"), Decimal(cash)),
+                          ("CAPITAL", Unit("CURRENCY", "USD"), -Decimal(cash))))
+            values.append(replace(tx, transaction_id=name,
+                                  entries=tuple(replace(e, transaction_id=name) for e in tx.entries)))
+        batch = replace(batch, transactions=tuple(values))
+    else:
+        batch = replace(batch, lot_matches=tuple(
+            LotMatch(name, "pending", "buy", "sell", Decimal(1), Decimal(cost), Unit("CURRENCY", "USD"), "fifo-v1")
+            for name, cost in (("B", "1"), ("a", "2"))))
+        batch = replace(batch, lot_matches=tuple(replace(m, book_id=batch.book_id) for m in batch.lot_matches))
+    assert store.append_batch(batch) == batch
+    assert store.get(batch.book_id) == batch
+    assert store.append_batch(batch) == batch  # idempotent reads use the same guard
