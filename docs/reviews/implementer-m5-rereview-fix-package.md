@@ -2,7 +2,17 @@
 
 **Implementer: Codex. Independent reviewer: Claude Code. Not independently accepted.**
 
-Review base: `93559f9`. Runtime fix: `6b3fab68d54021b3683fd6308396d0002675c3e3`. The final documentation commit adds package results; it changes no runtime code or tests. No merge, push, M6, API keys or market downloads. Main remains `5cd9363`; the owner's root checkout is untouched.
+**Current status:** the approved test-only follow-up at `29ee1a0` completed both full suites and fresh installs with baseline failures only. This supersedes the stopped check status at `4ebbf41`; the earlier failure evidence is preserved below as history. Claude's independent acceptance remains pending.
+
+| Commit | Contents |
+|---|---|
+| `6b3fab6` | R1/R2: additive SQL 0020, one full seal per book, immutable-ID reuse, regressions and scope/check records |
+| `4ebbf41` | Records the initially stopped package and pending test-only proposal honestly; no runtime/test edits |
+| `29ee1a0` | Owner-approved deadline test and exact file-scope extension; focused green and two rejected faulty controls; production code unchanged |
+| Final handoff documentation commit | Successful package evidence and final state only; no runtime/test edits |
+
+
+Review base: `93559f9`. Runtime fix: `6b3fab68d54021b3683fd6308396d0002675c3e3`. Approved test-only follow-up: `29ee1a04e78473be45901a33d5b5d8fd92c3037f`. Commit `4ebbf41` preserves the stopped package; the final documentation commit adds the successful follow-up results; it changes no runtime code or tests. No merge, push, M6, API keys or market downloads. Main remains `5cd9363`; the owner's root checkout is untouched.
 
 Claude's review: `C:/Users/LOQ/TradingAgents/docs/reviews/claude-m5-rereview-93559f9.md`. B1 was accepted for correctness, R1 blocked acceptance, R2/R3 were non-blocking. The owner authorized follow-up commits, a red/green timing regression, preservation of B1, optional R2 and recording R3, followed by package checks and re-review.
 
@@ -33,7 +43,7 @@ During the slow red run, other tests/imports were added to the same file, shifti
 
 The 111 passing tests include every prior B1 tampering/read/codec/collation case, all committed/early-flushed late-child cases, and populated 0018-to-0019 and 0019-to-0020 upgrade tests. Existing tests were not weakened to accept corrupt data.
 
-## Package checks
+## Earlier package stopped at `6b3fab6` (preserved history)
 
 **Package blocked by a newly observed M4 test failure; no passing package verdict.**
 
@@ -54,6 +64,31 @@ All ledger-focused checks, including B1, R1 and R2, remain green (111 tests); bo
 
 AGENTS.md section 4 requires a stop for a new check failure and for a file outside the task's allowed files. `test_broker_deadline.py` is outside M5-01's scope; no exception was inferred. R3 and N1-N6 remain open. No merge, push or M6. Scope check before final documentation: 27 commits, zero problems; applied SQL 0016-0019 and runtime/tests stay unchanged after `6b3fab6`.
 
+
+## Approved deadline-test correction and final package checks
+
+Owner explicitly answered **"Approve the test-only fix and checks"** on 2026-10-24. Commit `29ee1a0` applies the exact prepared patch, records `tests/engine/test_broker_deadline.py` in M5-01's allowed-file list and preserves D26; production worker code is unchanged. The prior proposal/pending-approval statements above describe the earlier stopped snapshot only.
+
+Checked immutable test-fix commit: `29ee1a04e78473be45901a33d5b5d8fd92c3037f`. No runtime/test edits during the runs.
+
+| Check | Observed result | Sanitized log SHA-256 |
+|---|---|---|
+| Git Bash | **1 failed, 3810 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4638.99s (1:17:18)** | `9659fc07fa580e01a3c47431c59f9bf5312d64fb3e404c5ed6b7a01b3c78f1f9` |
+| PowerShell | **1 failed, 3810 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4549.85s (1:15:49)** | `759d0085cc20aa96310dd2b9a86a767289b8bdece66b79d9f3a8555e45562d7f` |
+| Fresh base and engine installs | **PASS**, installed SQL 0016-0020, exact installed 0020 hash, outside-repository imports and lazy optional libraries | `09502ec7d75c4c2542def3c40fb2d7eb2d633d0dda2234a3c19b6440c1680cb2` |
+
+Evidence: `C:/Users/LOQ/TradingAgents-proposals/codex-m5-deadline-checks/`. `ROOTPY` is `C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe`. Exact package command: `ROOTPY <evidence>/package_checks.py`; it sequentially invokes `ROOTPY <evidence>/run_check.py bash full-git-bash`, `ROOTPY <evidence>/run_check.py powershell full-powershell`, then `ROOTPY <evidence>/fresh_installs.py`. Each shell runs `ROOTPY -m pytest -q -p no:cacheprovider -rfEs`. Fresh environments use their own `Scripts/python.exe` for installation and imports, including imports outside the repository. Their installed migration 0020 byte hash matches the tested source. Private test DSN is inherited/redacted, never passed in argv. Only disposable local test databases are created/dropped.
+
+Failures (recorded baseline only):
+
+- Git Bash: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`
+- PowerShell: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`
+
+The cache baseline is this Windows temporary directory being inside home. The PowerShell command baseline, if present, is the previously recorded console-encoding case. No missing-DSN PostgreSQL skip or new failure is accepted. CI not run (nothing pushed). The earlier 10.203s/10.219s deadline-test failures remain in the preserved stopped-package records as failed runs, not baseline exemptions or passing evidence.
+
+Focused green: `ROOTPY <evidence>/run_check.py powershell deadline-focused-green tests/engine/test_broker_deadline.py tests/engine/test_worker_submission.py tests/engine/test_worker_resilience.py`: **20 passed in 105.42s**, no skips. The approved test observes the actual 10s join timeout and withholds the answer until UNKNOWN/stalled state is asserted, then releases the callback in finally. `ROOTPY <evidence>/run_controls.py`: wrong 0.01s timeout rejected (**1 intentional failure, 9.07s**); incorrectly accepted ACK rejected (**1 intentional failure, 9.15s**). These are negative controls in isolated processes, not normal tests that passed. No production file was changed by them.
+
+Ruff/whitespace passed before the test-only commit; final documentation checks run before the handoff commit. Before final documentation, the scope check found 29 task/fix/documentation commits, zero problems. Applied migrations 0016-0019, production code after `6b3fab6`, architecture, dependencies, CI and shared instruction files are unchanged. Main remains `5cd9363`; owner checkout/databases are preserved. R3 and N1-N6 remain explicitly open. No independent acceptance, merge, push or M6.
 
 ## Review request
 
