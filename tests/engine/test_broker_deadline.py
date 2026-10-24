@@ -37,19 +37,32 @@ def stall(release, answer):
 
 
 @pytest.mark.unit
-def test_the_default_deadline_is_d26s_ten_seconds_and_a_late_ack_gives_unknown(env):
+def test_the_default_deadline_is_d26s_ten_seconds_and_a_late_ack_gives_unknown(env, monkeypatch):
     assert BROKER_DEADLINE_SECONDS == 10
     order, view = env.convert(DAY)
     worker = env.worker(pre_open(order, view))
+    release, answered = threading.Event(), threading.Event()
+    timeouts = []
+    join = threading.Thread.join
+
+    def observed_join(thread, timeout=None):
+        timeouts.append(timeout)
+        return join(thread, timeout)
 
     def late(order, *, at):
-        time.sleep(10.2)
+        release.wait(30)
+        answered.set()
         return SubmitResult(True, "late-ack", "answered after the deadline")
 
     worker.broker.submit = late
-    started = time.monotonic()
-    assert worker.submit(order.order_id) == "UNKNOWN"
-    assert 10 <= time.monotonic() - started < 10.2  # the deadline, not the late answer, ended the wait
+    monkeypatch.setattr(threading.Thread, "join", observed_join)
+    try:
+        assert worker.submit(order.order_id) == "UNKNOWN"
+        assert timeouts == [BROKER_DEADLINE_SECONDS]
+        assert not answered.is_set()  # the deadline returned before any broker answer
+        assert worker.broker_stalled()
+    finally:
+        release.set()
 
 
 @pytest.mark.unit
