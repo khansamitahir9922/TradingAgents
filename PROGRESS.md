@@ -10,10 +10,10 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 15/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
 | **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Claude accepted B1 correctness at `93559f9`, but R1 (locked append cost) blocks acceptance. Codex is implementing the owner-authorized R1/R2 follow-up with additive migration 0020; full package reruns pending. R3 and N1-N6 remain explicitly open. No M5 acceptance or merge. |
+| **Current work** | R1/R2 fix committed at `6b3fab6`; 111 focused tests pass, 400-source append 369.463s to 1.296s. Package stopped on new M4 deadline-test wall-time failure in PowerShell; owner approval pending for a prepared test-only scope extension. R3/N1-N6 remain open. No M5 acceptance or merge. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
-| **Checks** | B1 final own/affected: 104 passed; original red: 12 failures, collation follow-up red: 2 failures. Bash: 1 failed, 3803 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4476.75s (1:14:36). PowerShell: 1 failed, 3803 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 23073.07s (6:24:33). Only recorded baseline failures. Ruff, scope and fresh base/engine installs with SQL 0019 passed. CI not run. |
+| **Checks** | R1/R2 focused: 111 passed. Bash: 3810 passed, 1 baseline failure. PowerShell: 3809 passed, 1 baseline failure plus 1 NEW deadline-test failure. Fresh installs stopped/not run; CI not run. Ruff/scope passed before the runtime commit; final documentation checks recorded separately. No package pass. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -31,7 +31,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 **Codex implements the owner-authorized M5 review fixes; Claude independently reviews (owner, 2026-10-22).**
 
 1. Completed: owner acceptance recorded, M4 fast-forwarded locally, planning commit `0f93c75`, isolated `m5/milestone` worktree created.
-2. Finish R1/R2 focused and package checks, then give the fixed follow-up range after `93559f9` back to Claude for independent re-review. Start with `docs/reviews/implementer-m5-rereview-fix-package.md`. M5 is not done until independent acceptance and a separately owner-approved merge.
+2. Await the owner decision on the proposed M4 deadline-test scope extension; otherwise return the R1/R2 follow-up range after `93559f9` to Claude with the package-check blocker explicitly unresolved. Start with `docs/reviews/implementer-m5-rereview-fix-package.md`. M5 is not done until independent acceptance and a separately owner-approved merge.
 3. M4 tidy-ups remain checked but uncommitted on their separate branch; they were excluded from the authorized main fast-forward.
 4. Final M5 package needs designated independent/owner review and separate merge approval. No push, keys, downloads, owner database reset/restore, actual backup scheduling or M6.
 5. M1 hourly/PAPER/UNKNOWN and all retained architecture conditions remain. D35-D44 are now owner-accepted, not independently accepted by this implementer.
@@ -121,6 +121,7 @@ Report directional accuracy against the base rate, and the information coefficie
 ## Open issues and decisions
 | Item | Owner | Needed by |
 |---|---|---|
+| **CHECK-1, new package failure:** the existing M4 default broker-deadline test returned UNKNOWN but exceeded its whole-command `<10.2s` assertion (10.203s full PowerShell; 10.219s isolated). Parent samples pass; source of the latency is not established as a regression or baseline exemption. Test-only correction prepared outside the repository; owner scope approval pending. No test weakened/changed, no package pass or fresh-install claim. | Owner scope decision, then implementer/Claude review | Before this M5 package can pass |
 | **M5 re-review R3, unresolved: SQL does not recompute the book ID from the complete batch content.** Non-manifest fields such as policy_version remain bound to the book ID by `LedgerStore._load`, which refuses any content/ID mismatch. Claude accepts this as defence in depth, not an acceptance blocker. No SQL-only consumer may treat unchecked content as a validated book; any future database-side identity guard requires an additive migration and codec/legacy regressions. | Implementer + independent reviewer | Before introducing a consumer that bypasses the read guard |
 | **M5 review N1, unresolved: specific accounting-gap reason and unposted source reference are discarded.** `ledger/service.py:synchronize` catches `AccountingUnavailable` and re-observes current state; planning-only failures (insufficient FIFO basis, fractional split, unresolved order across an action) can therefore retain only the generic unsynchronized-prefix reason. Trading remains blocked and no old book is called complete. Deferred, as the owner permits, to a separate diagnostics follow-up with regression coverage for all three outcomes, rather than coupling service/incident changes to B1's storage-integrity correction. This is a reporting gap, not a resolved finding. | Implementer + independent reviewer | Before live/PAPER readiness in M7; earlier if requested |
 | **M5 review N2, unresolved: moving-clock/freshness assumptions.** Restatement, fill consumption, PAPER CLI sync and incident/readiness comparisons use repeated `now()` calls or exact timestamp equality. Correctness demonstrated here is fixed-clock RESEARCH only; PAPER remains blocked. Specify one captured operation time and reviewed freshness policy, then test advancing clocks; no tolerance has been silently introduced. | M7 design/review | Before live/PAPER accounting |
@@ -165,6 +166,28 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-24: package stopped on new deadline-test failure (Codex)
+
+**Package blocked by a newly observed M4 test failure; no passing package verdict.**
+
+Runtime/test commit: `6b3fab68d54021b3683fd6308396d0002675c3e3`. Exact commands use `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-r1-fixes/package_checks.py`, which invokes the shell helpers below with `ROOTPY -m pytest -q -p no:cacheprovider -rfEs` through the actual named shell. Private DSN inherited/redacted, never in argv.
+
+| Check | Observed result | Sanitized log SHA-256 |
+|---|---|---|
+| `run_check.py bash full-git-bash` | 1 failed, 3810 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4926.46s (1:22:06) | `a7e7f7eb7316ee8a51f4de7d0cbab46895a1bc30a6b6c685b63255e5ac73f952` |
+| `run_check.py powershell full-powershell` | 2 failed, 3809 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4711.46s (1:18:31) | `57e7c777ce7c596eff7a26657229bd056951a72f06389f3c067382180ea243c0` |
+
+- Recorded baseline failure, both shells: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home` (this Windows temp directory is inside home).
+- **New failure, PowerShell only:** `tests/engine/test_broker_deadline.py::test_the_default_deadline_is_d26s_ten_seconds_and_a_late_ack_gives_unknown`. UNKNOWN was returned correctly; the following whole-command wall-time assertion failed at **10.203s** against `<10.2s`. This is **not** relabelled as a baseline failure.
+- The package runner stopped automatically before fresh installs and cleared its temporary system-awake request. **Fresh base/engine installs: not run for this follow-up. CI: not run.** No final package pass is claimed.
+- Unchanged-code diagnostic: `run_check.py powershell deadline-diagnostic tests/engine/test_broker_deadline.py`: **1 failed, 4 passed in 50.87s**. Same assertion failed at **10.219s**, with UNKNOWN again correct.
+- Own detached parent checkout `C:/Users/LOQ/TradingAgents-reviews/codex-m5-r1-parent`, at `93559f9`: the original deadline node passed twice, **1 passed in 23.77s**, then **1 passed in 17.96s**. The second command supplied duplicate node arguments with `--keep-duplicates`, but pytest collected only one: **not four runs**. These passing samples do not establish the source of the current failure. Worker/test/fixture bytes are unchanged between the parent and fix; the fixture has no activated ledger and the timed worker path does not append a ledger batch. Whole-command/database scheduling overhead is a hypothesis, not a proven baseline exemption.
+
+All ledger-focused checks, including B1, R1 and R2, remain green (111 tests); both full suites passed the new 400-source budget test. No execution code or deadline test has been changed. A concrete test-only proposal is at `C:/Users/LOQ/TradingAgents-proposals/codex-m5-r1-fixes/deadline-test-proposal.patch`; `git apply --check` passes. It observes the actual 10-second thread-wait argument and withholds the broker answer until UNKNOWN and stalled-call state have been checked, rather than making all database work fit into a 200ms margin. The proposal is **not applied or tested as a fix**. Its scope extension, local follow-up commit and required reruns await the owner's answer to the pending approval question.
+
+AGENTS.md section 4 requires a stop for a new check failure and for a file outside the task's allowed files. `test_broker_deadline.py` is outside M5-01's scope; no exception was inferred. R3 and N1-N6 remain open. No merge, push or M6. Scope check before final documentation: 27 commits, zero problems; applied SQL 0016-0019 and runtime/tests stay unchanged after `6b3fab6`.
+
+
 ### 2026-10-24: M5 R1/R2 follow-up implementation (Codex; independent review pending)
 
 Owner instruction: fix Claude's blocking R1 after `93559f9`, red then green, preserve B1, optionally fix R2 and record R3; local follow-up commits and package checks authorized. No merge, push or M6. Claude's independent review is `C:/Users/LOQ/TradingAgents/docs/reviews/claude-m5-rereview-93559f9.md`: B1 correctness accepted, R1 blocking, R2/R3 non-blocking. No prior independent acceptance is claimed for M5 as a whole.
@@ -181,6 +204,8 @@ Additive `0020_ledger_seal_cost.sql` retains 0019's full payload/hash checks on 
 Affected ledger/upgrade/seal/recovery tests, Ruff, package suites and fresh installs are recorded below after observation. R3 and N1-N6 remain open as stated above. No M5 acceptance, merge, push or M6.
 
 Observed affected checks on the final fix: `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-r1-fixes/run_check.py bash r1-affected-green tests/engine/test_ledger_store.py tests/engine/test_ledger_upgrade.py tests/engine/test_ledger_restatements.py tests/engine/test_ledger_time.py tests/engine/test_postgres_schema.py tests/engine/test_m5_accounting_demo.py tests/engine/test_accounting_reports.py tests/engine/test_ledger_consumer_recovery.py`: **111 passed in 263.24s**, no skips. All original B1 tampering/read/codec/collation tests remain green, with committed and early-flushed child-seal checks and both populated upgrade paths. `ROOTPY -m ruff check .` and `git diff --check` passed. Full two-shell suites and fresh installs must run on the committed fix before handoff.
+
+Package checks in progress on committed runtime `6b3fab6`: `ROOTPY C:/Users/LOQ/TradingAgents-proposals/codex-m5-r1-fixes/package_checks.py` sequentially runs the named checks. Git Bash completed: `ROOTPY <evidence>/run_check.py bash full-git-bash`, **1 failed, 3810 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4926.46s (1:22:06)**. Only failure: `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`, recorded in the baseline because this Windows temp directory is inside home. No missing-DSN PostgreSQL skip. PowerShell and fresh installs are still pending at this intermediate observation; the final handoff entry will report their actual results. Runtime code/tests have not changed during verification.
 
 
 ## 2026-10-23 — M5 independent-review fix package checks (Codex implementer)
