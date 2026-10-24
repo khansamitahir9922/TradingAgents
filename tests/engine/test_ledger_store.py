@@ -1,8 +1,11 @@
 """M5-01: deferred SQL invariants, atomic effects, idempotence and parent races."""
+import json
 import threading
+import time
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from hashlib import sha256
 
 import pytest
 from psycopg import Error as PgError
@@ -358,3 +361,77 @@ def test_valid_opaque_ids_load_independently_of_database_collation(env, componen
     assert store.append_batch(batch) == batch
     assert store.get(batch.book_id) == batch
     assert store.append_batch(batch) == batch  # idempotent reads use the same guard
+
+
+def test_400_source_append_stays_within_lock_time_budget(env):
+    """R1: include the deferred commit checks in the account-lock time budget."""
+    _, db, store = env
+    refs = tuple(source(identity=f"R1/s{i}", stored_record_id=f"x{i}") for i in range(400))
+    tx = journal("R1", T, T, refs[:1], (("CASH", Unit("CURRENCY", "USD"), Decimal(1)),
+                                      ("CAPITAL", Unit("CURRENCY", "USD"), Decimal(-1))))
+    batch = make_batch(refs=refs, transactions=(tx,))
+    started = time.perf_counter()
+    assert store.append_batch(batch) == batch
+    elapsed = time.perf_counter() - started
+    print(f"400-source append including deferred commit: {elapsed:.3f}s")
+    assert elapsed < 5, f"400-source append held the account lock for {elapsed:.3f}s (budget: 5s)"
+    assert store.get(batch.book_id) == batch
+
+
+@pytest.mark.parametrize("table", ["ledger_source_receipts", "ledger_lot_matches"])
+@pytest.mark.parametrize("early_flush", [False, True])
+def test_child_count_guards_refuse_additions_after_batch_seal(env, table, early_flush):
+    """Protect both committed books and books sealed early in the same transaction."""
+    _, db, store = env
+    batch = make_batch()
+    if not early_flush:
+        store.append_batch(batch)
+    before = counts(db)
+    with pytest.raises((PgError, IntegrityViolation), match="manifest/count"), db.transaction():
+        if early_flush:
+            store.append_batch(batch)
+            db.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        if table == "ledger_source_receipts":
+            db.execute("INSERT INTO ledger_source_receipts VALUES(:b,'late','late','late','{}')",
+                       {"b": batch.book_id})
+        else:
+            db.execute("INSERT INTO ledger_lot_matches VALUES(:b,'late','{}')", {"b": batch.book_id})
+    assert counts(db) == before
+    if not early_flush:
+        assert store.get(batch.book_id) == batch
+    else:
+        with pytest.raises(KeyError):
+            store.get(batch.book_id)
+
+
+def test_transaction_source_must_equal_a_complete_batch_source(env, monkeypatch):
+    """R2: a strict sub-object is contained in a source, but is not that source."""
+    _, db, store = env
+    batch = make_batch()
+    payload = json.loads(canonical_json(batch))
+    tx = payload["fields"]["transactions"][0]
+    del tx["fields"]["sources"][0]["fields"]["stored_record_id"]
+    for entry in tx["fields"]["entries"]:
+        del entry["fields"]["sources"][0]["fields"]["stored_record_id"]
+
+    def encode(value):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+    entries = tx["fields"]["entries"]
+    manifest = sha256(encode(entries).encode()).hexdigest()
+    execute = db.execute
+
+    def insert_forged_copy(sql, params=None):
+        params = dict(params or {})
+        if sql.startswith("INSERT INTO ledger_batches "):
+            params["c"] = encode(payload)
+        elif sql.startswith("INSERT INTO ledger_transactions "):
+            params["h"] = manifest
+        elif sql.startswith("INSERT INTO ledger_entries "):
+            params["content"] = encode(entries[params["n"]])
+        return execute(sql, params)
+
+    monkeypatch.setattr(db, "execute", insert_forged_copy)
+    with pytest.raises((PgError, IntegrityViolation), match="transaction source payload"):
+        store.append_batch(batch)
+    assert counts(db) == (0, 0, 0, 0, 0, 0)

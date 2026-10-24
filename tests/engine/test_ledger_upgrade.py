@@ -26,20 +26,22 @@ def test_upgrade_from_populated_0015_preserves_existing_rows(pg_database, monkey
 
 
 @pytest.mark.postgres
-def test_0019_preserves_valid_0018_books_and_enforces_future_batches(pg_database, monkeypatch):
+@pytest.mark.parametrize("old_version,new_version", [(18, 19), (19, 20)])
+def test_payload_seal_upgrades_preserve_books_and_enforce_future_batches(
+        pg_database, monkeypatch, old_version, new_version):
     from psycopg import Error as PgError
 
     from tests.engine.test_ledger_store import _divergent_sql_batch, make_batch, open_store
 
     scripts = pg._pg_schema_scripts()
-    monkeypatch.setattr(pg, "_pg_schema_scripts", lambda: [(n, s) for n, s in scripts if n <= 18])
+    monkeypatch.setattr(pg, "_pg_schema_scripts", lambda: [(n, s) for n, s in scripts if n <= old_version])
     conn, db, store = open_store(pg_database)
     try:
         first = store.append_batch(make_batch())
         tables = ("ledger_batches", "ledger_transactions", "ledger_entries", "ledger_source_receipts")
         before = {table: db.fetchall(f"SELECT * FROM {table} ORDER BY 1") for table in tables}
-        monkeypatch.setattr(pg, "_pg_schema_scripts", lambda: scripts)
-        assert pg.apply_pg_schema(conn) == 19
+        monkeypatch.setattr(pg, "_pg_schema_scripts", lambda: [(n, s) for n, s in scripts if n <= new_version])
+        assert pg.apply_pg_schema(conn) == new_version
         assert {table: db.fetchall(f"SELECT * FROM {table} ORDER BY 1") for table in tables} == before
         assert store.get(first.book_id) == first
         from investment_engine.storage.database import IntegrityViolation

@@ -189,12 +189,15 @@ class LedgerStore:
     def append_batch(self, batch):
         if not isinstance(batch, BookBatch):
             raise TypeError("BookBatch required")
-        if any(match.book_id != batch.book_id for match in batch.lot_matches):
+        # The frozen batch's identity is constant throughout this append. Re-hashing
+        # its complete source history for every receipt makes the locked work quadratic.
+        book_id = batch.book_id
+        if any(match.book_id != book_id for match in batch.lot_matches):
             raise ValueError("lot match must refer to its containing book")
         with self._db.transaction():
             self._db.lock(f"account-control|{batch.account_id}")
             self._db.lock(f"ledger|{batch.account_id}")
-            saved = self._db.fetchone("SELECT book_id,content FROM ledger_batches WHERE book_id=:id", {"id": batch.book_id})
+            saved = self._db.fetchone("SELECT book_id,content FROM ledger_batches WHERE book_id=:id", {"id": book_id})
             if saved is not None:
                 if self._load(saved) != batch:
                     raise SourceConflict("book identity conflict")
@@ -206,7 +209,7 @@ class LedgerStore:
                 raise StaleBook("ledger parent/version is stale")
             self._db.execute("INSERT INTO ledger_batches (book_id,account_id,parent_id,version,posted_at,source_set_hash,"
                              "source_count,transaction_count,lot_count,content) VALUES(:id,:a,:parent,:v,:t,:hash,:ns,:nt,:nl,:c)",
-                             {"id": batch.book_id, "a": batch.account_id, "parent": batch.parent_id, "v": batch.version,
+                             {"id": book_id, "a": batch.account_id, "parent": batch.parent_id, "v": batch.version,
                               "t": batch.posted_at, "hash": batch.source_set_hash, "ns": len(batch.sources),
                               "nt": len(batch.transactions), "nl": len(batch.lot_matches), "c": canonical_json(batch)})
             for ref in batch.sources:
@@ -215,27 +218,27 @@ class LedgerStore:
                 if previous is not None and previous[0] != canonical_json(ref):
                     raise SourceConflict("immutable source revision has different content")
                 self._db.execute("INSERT INTO ledger_source_receipts (book_id,source_id,source_key,content_hash,content) "
-                                 "VALUES(:b,:id,:key,:hash,:c)", {"b": batch.book_id, "id": ref.source_id,
+                                 "VALUES(:b,:id,:key,:hash,:c)", {"b": book_id, "id": ref.source_id,
                                  "key": key, "hash": ref.content_hash, "c": canonical_json(ref)})
             for tx in batch.transactions:
                 self._db.execute("INSERT INTO ledger_transactions (transaction_id,book_id,account_id,effective_at,posted_at,"
                                  "entry_count,manifest_hash,reverses) VALUES(:id,:b,:a,:e,:p,:n,:h,:r)",
-                                 {"id": tx.transaction_id, "b": batch.book_id, "a": batch.account_id, "e": tx.effective_at,
+                                 {"id": tx.transaction_id, "b": book_id, "a": batch.account_id, "e": tx.effective_at,
                                   "p": tx.posted_at, "n": tx.entry_count, "h": tx.manifest_hash, "r": tx.reverses})
                 for ordinal, entry in enumerate(tx.entries):
                     self._db.execute("INSERT INTO ledger_entries (entry_id,transaction_id,book_id,account_id,ordinal,"
                                      "chart_account,unit,debit,credit,effective_at,posted_at,reverses,content) "
                                      "VALUES(:id,:tx,:b,:a,:n,:chart,:unit,:d,:c,:e,:p,:r,:content)",
-                                     {"id": entry.entry_id, "tx": tx.transaction_id, "b": batch.book_id,
+                                     {"id": entry.entry_id, "tx": tx.transaction_id, "b": book_id,
                                       "a": batch.account_id, "n": ordinal, "chart": entry.account, "unit": entry.unit.key,
                                       "d": entry.debit, "c": entry.credit, "e": entry.effective_at, "p": entry.posted_at,
                                       "r": entry.reverses, "content": canonical_json(entry)})
             for match in batch.lot_matches:
                 self._db.execute("INSERT INTO ledger_lot_matches (book_id,match_id,content) VALUES(:b,:id,:c)",
-                                 {"b": batch.book_id, "id": match.match_id, "c": canonical_json(match)})
+                                 {"b": book_id, "id": match.match_id, "c": canonical_json(match)})
             self._audit.append(AuditEvent(Actor(ActorKind.PROCESS, "core-engine", None, None), "ledger.append",
                                "ledger", batch.account_id, head[0] if head else None, batch,
-                               self._command_clock.now(), batch.posted_at, "validated source batch", batch.book_id, batch.book_id))
+                               self._command_clock.now(), batch.posted_at, "validated source batch", book_id, book_id))
             self._outbox.add(EventEnvelope("ledger.book_appended", 1, "ledger", batch.account_id, batch.version,
-                             batch.posted_at, batch.posted_at, batch.book_id, None, canonical_json(batch)))
+                             batch.posted_at, batch.posted_at, book_id, None, canonical_json(batch)))
         return batch
