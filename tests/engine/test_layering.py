@@ -220,3 +220,20 @@ def test_no_module_of_the_package_asks_for_the_declared_only_portfolio():
     users = sorted(path.relative_to(PACKAGE).as_posix() for path in PACKAGE.rglob("*.py")
                    if "declared_only=True" in path.read_text(encoding="utf-8"))
     assert users == []
+
+
+FORBIDDEN_FOR_RESEARCH = ("investment_engine.execution", "investment_engine.killswitch", "investment_engine.ledger",
+                          "investment_engine.reconciliation", "investment_engine.risk", "investment_engine.portfolio",
+                          "investment_engine.oms.order_store", "investment_engine.oms.pipeline",
+                          "investment_engine.oms.conversion", "investment_engine.oms.approvals",
+                          "investment_engine.oms.intent_store")
+RESEARCH_ALLOWED_LEDGER = {"investment_engine.ledger.contracts"}  # only its pure identity() hash
+
+
+@pytest.mark.unit
+def test_the_research_worker_reaches_no_broker_order_ledger_risk_or_kill_switch_code():
+    # M6-07; Laws 1-2: research is advisory and holds no execution capability.
+    offenders = sorted(f"{path.relative_to(ROOT)}: {m}" for path in RESEARCH.rglob("*.py")
+                       for m in _module_imports(path) if m not in RESEARCH_ALLOWED_LEDGER and
+                       any(m == f or m.startswith(f + ".") for f in FORBIDDEN_FOR_RESEARCH))
+    assert offenders == []

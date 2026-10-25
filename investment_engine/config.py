@@ -51,6 +51,11 @@ def worker_secrets_path() -> Path:
     return data_dir() / "secrets" / "execution_worker.env"
 
 
+def research_worker_secrets_path() -> Path:
+    """The Research Worker's LLM/research-data keys, read only by its entry point (D48; ADR-002 section 5)."""
+    return data_dir() / "secrets" / "research_worker.env"
+
+
 def control_dir() -> Path:
     """Where the kill-switch flag, its journal and its lock live, outside the database (ADR-006; D27)."""
     return data_dir() / "control"
