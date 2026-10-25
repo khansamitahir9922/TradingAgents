@@ -4,13 +4,14 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 ---
 
-## Current state (2026-10-24)
+## Current state (2026-10-25)
 
 | | |
 |---|---|
-| **Milestone** | M0/M2/M3 complete locally; M4 merged at `5cd9363`. M5 owner-authorized, 15/15 tasks committed (checked), not independently accepted or merged. M1 15/18, hourly blocked. |
-| **`main`** | `5cd93637cfa0a820102196b2da31294c5f908b0c`; owner-approved clean fast-forward from `4c56ac1`; not pushed. |
-| **Current work** | Approved deadline-test correction committed at `29ee1a0`; final full Bash/PowerShell suites and fresh base/engine installs completed with baseline failures only. R1/R2 ready for Claude independent re-review of `93559f9..HEAD`; R3/N1-N6 remain open. No M5 acceptance or merge. |
+| **Milestone** | M0/M2/M3/M4/**M5 complete locally**. Claude independently accepted M5 at `d277440` (`docs/reviews/claude-m5-rereview2-d277440.md`, root checkout); the owner approved the merge. **M6 accepted for implementation** (D45–D54, 2026-10-25). M1 15/18, hourly blocked. |
+| **`main`** | `d27744094bf9cb69247a612fbb08338fbd892870`; owner-approved fast-forward from `5cd9363` (2026-10-25); not pushed. |
+| **Current work** | M6 spec pack committed on `docs/m6-specs`; implementation of M6-00 to M6-10 on `m6/milestone` by Claude Code. M5 open issues R3 and N1–N6 carried forward below. The M6-11 live run awaits separate approval and the owner's removal of the user-level `GOOGLE_API_KEY`. |
+| **Previous state (2026-10-24)** | M5 deadline-test correction at `29ee1a0`; both full suites and fresh installs passed with baseline failures only; R1/R2 then accepted by Claude's re-review. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
 | **Checks** | Deadline-focused: 20 passed; both deliberate fault controls rejected. Git Bash: 1 failed, 3810 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4638.99s (1:17:18). PowerShell: 1 failed, 3810 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4549.85s (1:15:49). Only baseline failures; fresh base/engine installs with exact SQL-0020 hash, Ruff, scope and whitespace passed. CI not run. |

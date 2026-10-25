@@ -14,6 +14,8 @@ Each task has one spec here (`M1-00.md` … `M1-17.md`). A spec is the contract 
 
 **M4:** [M4 pack](M4-README.md), M4-00 – M4-13: **accepted for implementation** (owner, 2026-10-18, after Codex accepted the specs at `c59a863`), with D19–D34 accepted as recommended; in implementation on `m4/milestone`. History: **draft v0.4 for Codex review** (2026-10-18; v0.1 and v0.2 preliminarily reviewed, v0.3 reviewed at `43bd95d`; B1–B9, R1–R4 and V1–V3 applied), with owner decisions D19–D34, ≈ 74 h. Not accepted for implementation; no M4 code.
 
+**M6:** [M6 pack](M6-README.md), M6-00 – M6-11, **owner-accepted v0.1 and authorized for implementation, 2026-10-25** (D45–D54 as recommended, monthly budget USD 0). Twelve tasks / 38 h. Claude Code implements on `m6/milestone`; Codex reviews the finished milestone. The M6-11 live LLM run needs separate approval.
+
 **M5:** [M5 pack](M5-README.md), M5-00 - M5-14, **owner-accepted v0.2 and authorized for implementation, 2026-10-21**. Fifteen tasks / 55 h, eight task-size exceptions; ADR-010 and D35-D44 accepted. Local M4 main fast-forward completed at `5cd9363`. Codex is backup implementer; final M5 review and merge remain separate. M4 S1/S2 tidy-ups remain uncommitted on their own branch.
 
 **Roles restored (owner, 2026-10-14):** Claude Code implements; Codex reviews. The temporary Copilot assignment has ended; accepted snapshot reviews are retained as history. See `docs/reviews/claude-return-handoff.md`. **Current exception (owner, 2026-10-21):** Codex is backup implementer while Claude is unavailable. Codex's M5 self-review is not independent acceptance.
