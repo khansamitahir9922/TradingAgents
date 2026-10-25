@@ -131,7 +131,10 @@ def _chart(prices: Sequence[AdjustedBar], marks: Sequence[tuple]) -> str:
 
 def render_research_report(views: Sequence[MarketView], runs: Sequence[EvaluationRecord], *,
                            lineage_store: LineageStore, generated_at: datetime, source: str, instrument_id: str,
-                           calendars: Mapping[str, object], adjusted_closes: Sequence[AdjustedBar] = ()) -> str:
+                           calendars: Mapping[str, object], adjusted_closes: Sequence[AdjustedBar] = (),
+                           research=None) -> str:
+    """`research`, when given, is a reporting.research_view.ResearchEvidence: an advisory panel is added after the
+    latest view (M6-09). Without it the report is exactly as before."""
     generated_at = check_utc(generated_at, "generated_at")
     entries = []
     for v in sorted(views, key=lambda v: v.generated_at):
@@ -209,6 +212,13 @@ def render_research_report(views: Sequence[MarketView], runs: Sequence[Evaluatio
     else:
         out.append('<p class="muted">No views supplied.</p>')
     out.append("</section>")
+    if research is not None:
+        from investment_engine.reporting.research_view import ResearchEvidence, panel_html
+
+        if not isinstance(research, ResearchEvidence) or (
+                research.context is not None and research.context.instrument_id != instrument_id):
+            raise ValueError("research must be this instrument's ResearchEvidence")
+        out.append(panel_html(research))
 
     # ---------------------------------------------------------------- chart and counts
     out.append('<section class="panel"><h2>Price and views</h2>')

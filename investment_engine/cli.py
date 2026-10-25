@@ -389,3 +389,29 @@ app.add_typer(_accounting_app, name="accounting")
 from investment_engine.research_cli import research_app as _research_app  # noqa: E402
 
 app.add_typer(_research_app, name="research")
+
+
+@_research_app.command("view")
+def research_view(instrument: str = typer.Argument(..., help="instrument id, e.g. EQ_US_NVDA")) -> None:
+    """Read-only: the latest MarketView with the latest advisory research beside it (M6-09)."""
+    from dataclasses import replace
+
+    from investment_engine.clock import LiveClock
+    from investment_engine.lineage.records import LineageStore
+    from investment_engine.reporting.research_view import latest_evidence, view_with_research_text
+
+    conn = None
+    try:
+        conn, db = _open_db(read_only=True)
+        now = LiveClock().now()
+        store = LineageStore(db)
+        records = [store.get(i) for i in store.ids(instrument)]
+        latest = max((r for r in records if r.generated_at <= now), key=lambda r: r.generated_at, default=None)
+        view = None if latest is None else replace(latest.decision, evidence_refs=(latest.lineage_id,))
+        _print(view_with_research_text(view, latest_evidence(db, instrument, at=now)))
+    except Exception as exc:
+        _fail(exc)
+        raise typer.Exit(1) from None
+    finally:
+        if conn is not None:
+            conn.close()
