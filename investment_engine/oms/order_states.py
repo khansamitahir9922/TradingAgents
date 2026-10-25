@@ -36,6 +36,7 @@ class OrderState(StrEnum):
 class ProcessRole(StrEnum):
     CORE = "core-engine"
     EXECUTION = "execution-worker"
+    RESEARCH = "research-worker"  # M6: writes research tables only; owns no order edge
 
 
 register(OrderState)
