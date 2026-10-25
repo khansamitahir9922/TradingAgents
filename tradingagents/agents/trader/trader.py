@@ -13,7 +13,7 @@ from tradingagents.agents.schemas import TraderProposal, render_trader_proposal
 from tradingagents.agents.structured import (
     NO_EXTERNAL_TOOLS,
     bind_structured,
-    invoke_structured_or_freetext,
+    invoke_structured,
 )
 
 
@@ -82,17 +82,15 @@ def create_trader(llm):
             },
         ]
 
-        trader_plan = invoke_structured_or_freetext(
-            structured_llm,
-            llm,
-            messages,
-            render_trader_proposal,
-            "Trader",
-        )
+        # Same structured-then-free-text path as invoke_structured_or_freetext, keeping
+        # the parsed proposal for callers that need typed fields (docs/dev/upstream-changes.md).
+        proposal = invoke_structured(structured_llm, messages, "Trader")
+        trader_plan = render_trader_proposal(proposal) if proposal is not None else llm.invoke(messages).content
 
         return {
             "messages": [AIMessage(content=trader_plan)],
             "trader_investment_plan": trader_plan,
+            "trader_proposal_structured": None if proposal is None else proposal.model_dump(mode="json"),
         }
 
     return trader_node

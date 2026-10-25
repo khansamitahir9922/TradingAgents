@@ -101,6 +101,8 @@ Write these sections, in this order, starting with the rating on its own line:
             "risk_debate_state": new_risk_debate_state,
             "final_trade_decision": final_trade_decision,
             "final_rating": final_rating,
+            # The parsed decision, for callers that need typed fields (docs/dev/upstream-changes.md).
+            "final_decision_structured": None if decision is None else decision.model_dump(mode="json"),
         }
 
     return portfolio_manager_node
