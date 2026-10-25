@@ -1,7 +1,8 @@
 """Import boundaries of the investment_engine package.
 
 The platform beside TradingAgents keeps its layers apart (architecture Part I;
-docs/tasks/M1-00.md): it never imports TradingAgents or its CLI, the yfinance
+docs/tasks/M1-00.md): it imports TradingAgents only in the Research Worker's one adapter
+(ADR-001; M6-04) and never its CLI, the yfinance
 vendor library is confined to the importers, and the storage libraries to the
 market-data store. The rules are checked now, while the package is empty, so
 they guard it from its first line of code.
@@ -40,9 +41,41 @@ def test_the_scan_covers_the_package():
     assert (PACKAGE / "__init__.py").is_file()
 
 
+def _module_imports(path: Path) -> set[str]:
+    """Full dotted module names a file imports (absolute imports only)."""
+    names = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            names |= {a.name for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            names.add(node.module)
+    return names
+
+
+RESEARCH = PACKAGE / "research"
+ADAPTER = RESEARCH / "adapter.py"
+RUNTIME_ONLY = ("investment_engine.research.adapter", "investment_engine.research.capture",
+                "investment_engine.research.usage")
+
+
 @pytest.mark.unit
-def test_the_package_never_imports_tradingagents_or_its_cli():
-    assert _offenders({"tradingagents", "cli"}) == []
+def test_the_package_imports_tradingagents_only_in_the_research_adapter_and_never_its_cli():
+    # ADR-001 / architecture Part I: TradingAgents runs only in the Research Worker, behind one
+    # adapter (M6-04, owner-approved scope extension 2026-10-26). Everything else stays forbidden.
+    assert _offenders({"cli"}) == []
+    assert [o for o in _offenders({"tradingagents"}) if Path(ROOT / o) != ADAPTER] == []
+
+
+@pytest.mark.unit
+def test_llm_runtime_code_stays_inside_the_research_package():
+    # LangChain/LangGraph and the research runtime modules are Research Worker code: no Core,
+    # execution, OMS, ledger, policy, risk or reporting module may load them.
+    assert _offenders({"langchain_core", "langgraph", "langchain_google_genai", "langchain_openai",
+                       "langchain_anthropic"}, RESEARCH) == []
+    offenders = sorted(str(path.relative_to(ROOT)) for path in PACKAGE.rglob("*.py")
+                       if RESEARCH not in path.parents and
+                       any(m == r or m.startswith(r + ".") for m in _module_imports(path) for r in RUNTIME_ONLY))
+    assert offenders == []
 
 
 @pytest.mark.unit
