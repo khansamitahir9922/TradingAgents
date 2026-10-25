@@ -126,3 +126,5 @@ Per shared rules §6 and your 2026-10-20 cadence:
 - **Not authorized:** the M6-11 live LLM run and any use of the API key (separate approval), merge, push, M7.
 - **Owner action:** remove the user-level `GOOGLE_API_KEY` (D48). It is needed before M6-11, not before the offline tasks.
 - This is owner acceptance, not independent review. Codex reviews every commit of the finished milestone, and the specs with it.
+
+**M6-00 — committed (checked), not done:** Offline usage counter for OPEN-10: a thread-safe LangChain callback handler counts every model request and tool call of one TradingAgents run, attributed to the top-level agent node (analyst sub-graphs report their own node through the checkpoint namespace). Token counts come only from provider-reported usage; one silent call makes the run's tokens unknown, never 0. Each run ID counts once even when the handler is attached at both model and graph level. Times come from the injected clock. Shared offline fakes in tests/engine/research_fakes.py drive the real upstream graph with a scripted model whose structured calls pass through the model's own invoke, so callbacks see them.

@@ -167,6 +167,11 @@ Report directional accuracy against the base rate, and the information coefficie
 
 ## Session log
 
+### 2026-10-25: Claude Code (M6-00)
+- Offline usage counter for OPEN-10: a thread-safe LangChain callback handler counts every model request and tool call of one TradingAgents run, attributed to the top-level agent node (analyst sub-graphs report their own node through the checkpoint namespace). Token counts come only from provider-reported usage; one silent call makes the run's tokens unknown, never 0. Each run ID counts once even when the handler is attached at both model and graph level. Times come from the injected clock. Shared offline fakes in tests/engine/research_fakes.py drive the real upstream graph with a scripted model whose structured calls pass through the model's own invoke, so callbacks see them.
+- Finding for M6-04: upstream `propagate()` passes no callbacks in the graph config, so tool calls are invisible to it. The adapter will invoke the compiled graph with `propagator.get_graph_args(callbacks=...)` itself; no extra upstream change. With one debate round and one risk round, the scripted run makes 15 model requests (two per tool-using analyst) and 12 tool calls.
+- Observed red: `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider tests/engine/test_usage_counter.py`: collection error, missing `investment_engine.research.usage`. Then one assertion failed on my own wrong expectation of analyst node names (sub-graph node "agent"; upstream names the sentiment node "Sentiment Analyst"); fixed by namespace attribution and the corrected name, with the test tightened to equality. Final: `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider tests/engine/test_usage_counter.py tests/test_graph_end_to_end.py tests/engine/test_layering.py`: 38 passed in 13.18s. `python -m ruff check .`: passed. No network, no API key.
+
 ### Final approved deadline-test package checks (Codex, 2026-10-24 start)
 
 Checked immutable test-fix commit: `29ee1a04e78473be45901a33d5b5d8fd92c3037f`. No runtime/test edits during the runs.
