@@ -86,6 +86,9 @@ def child(spec: dict) -> None:
     if spec["role"].startswith("m5_"):
         child_m5(spec)
         return
+    if spec["role"] == "research":
+        child_research(spec)
+        return
     from investment_engine.clock import ReplayClock
     from investment_engine.events.outbox import Outbox
     from investment_engine.execution.reads import StoreGateReads
@@ -198,6 +201,31 @@ def child_m5(spec):
         broker_conn.close()
     conn.close()
     print("M5 child done")
+
+
+def child_research(spec):
+    """M6-10: a real Research Worker process that claims a job and is hard-killed inside its run."""
+    from datetime import timedelta
+
+    from psycopg.conninfo import make_conninfo
+
+    from investment_engine.clock import ReplayClock
+    from investment_engine.market.calendar.us_equities import load_us_equities_calendar
+    from investment_engine.research.worker import ResearchWorker
+    from investment_engine.storage.database import PostgresDatabase
+    from investment_engine.storage.postgres import open_operational_pg
+    from tests.conftest import pg_effective_params
+
+    class BlockingPort:
+        def run(self, job, *, attempt, clock):
+            _block(spec["marker"])  # killed here, mid-run, holding a claim and a reservation
+
+    conn = open_operational_pg(make_conninfo("", **pg_effective_params(os.environ["IE_HARNESS_DSN"])))
+    worker = ResearchWorker(PostgresDatabase(conn), worker_id="research-child",
+                            clock=ReplayClock(datetime.fromisoformat(spec["at"])), port=BlockingPort(),
+                            calendar=load_us_equities_calendar(), deadline=timedelta(minutes=10))
+    worker.step()
+    conn.close()
 
 
 def start(spec: dict, *, dsn: str, tmp: Path):
