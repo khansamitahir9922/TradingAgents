@@ -385,3 +385,7 @@ app.add_typer(_intents_cli.views_app, name="views")
 from investment_engine.accounting_cli import accounting_app as _accounting_app  # noqa: E402
 
 app.add_typer(_accounting_app, name="accounting")
+
+from investment_engine.research_cli import research_app as _research_app  # noqa: E402
+
+app.add_typer(_research_app, name="research")
