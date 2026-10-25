@@ -201,7 +201,8 @@ def budget_set_command(operator: str = typer.Option(..., "--operator"), reason: 
 @budget_app.command("show")
 def budget_show_command():
     """Read-only: today's (UTC) caps and usage."""
-    from datetime import UTC, datetime
+    from datetime import UTC
 
     from investment_engine.cli import _print
-    _with_db(lambda db: _print(budget_text(db, day=datetime.now(UTC).date())), read_only=True)
+    from investment_engine.clock import LiveClock
+    _with_db(lambda db: _print(budget_text(db, day=LiveClock().now().astimezone(UTC).date())), read_only=True)
