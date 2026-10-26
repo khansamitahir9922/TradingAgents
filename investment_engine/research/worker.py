@@ -111,6 +111,20 @@ class ResearchWorker:
             return StepReport(claimed=1, refused=1, published=self.outbox.publish_pending())
         job = self.store.job(job_id)
         started = check_utc(self.clock.now(), "start")
+        # Fence (Codex M6 review B8): lock waits since the claim count against the lease. Start only while the
+        # claim is still ours and the lease outlasts the whole deadline, so no other worker can take the job
+        # while this run might still be talking to the provider.
+        current = self.store.current(job_id)
+        if current.version != expected or current.actor != self.worker_id:
+            return StepReport(claimed=1, published=self.outbox.publish_pending())  # taken over: write nothing
+        if started + self.deadline > current.lease_until:
+            record = self._failed_record(job, claim.attempt, started,
+                                         f"not started: the lease (until {current.lease_until.isoformat()}) would "
+                                         f"expire before the run's {self.deadline.total_seconds():g}s deadline")
+            record = replace(record, usage=UsageTotals(0, 0, 0, 0), warnings=("no model call was made",))
+            self.store.finish(job_id, expected_version=expected, worker_id=self.worker_id, record=record,
+                              context=None, usage=actual_usage(reservation, record.usage, at=started))
+            return StepReport(claimed=1, failed=1, published=self.outbox.publish_pending())
         output = self._bounded_run(job, claim.attempt)
         context, usage = None, None
         if output is None:

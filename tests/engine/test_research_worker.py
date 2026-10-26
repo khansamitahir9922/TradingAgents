@@ -214,3 +214,42 @@ def test_startup_refuses_ambient_switches_that_change_upstream_providers(paths, 
     assert entry.main(["run", "--once"]) == 2
     out = capsys.readouterr().out
     assert name in out and "ambient-switch-555" not in out and "file-value-123" not in out
+
+
+def _slow_reservation(monkeypatch, env, delay, during=None):
+    """The budget-day lock wait takes `delay` on the worker's clock; `during` runs while it waits."""
+    from investment_engine.research.budget import ResearchBudget as RB
+
+    real = RB.reserve
+
+    def slow(self, run_id):
+        env.clock.advance_by(delay)
+        if during is not None:
+            during()
+        return real(self, run_id)
+
+    monkeypatch.setattr(RB, "reserve", slow)
+
+
+def test_a_run_that_could_outlive_its_lease_is_never_started(env, monkeypatch):
+    port = FakePort()
+    _slow_reservation(monkeypatch, env, timedelta(minutes=6))  # lease = deadline + 5 min
+    report = worker(env, port, deadline=timedelta(minutes=30)).step()
+    assert port.runs == [] and report.failed == 1
+    final = env.store(ProcessRole.RESEARCH).current(job().job_id)
+    assert final.state is JobState.FAILED and "lease" in final.reason and "not started" in final.reason
+
+
+def test_a_worker_whose_claim_was_taken_starts_nothing_and_writes_nothing(env, monkeypatch):
+    port = FakePort()
+
+    def taken():  # the lease expires while A waits; B re-claims
+        env.clock.advance_by(timedelta(minutes=40))
+        env.store(ProcessRole.RESEARCH).claim(job().job_id, expected_version=2, worker_id="rw-B",
+                                              lease=timedelta(minutes=35))
+
+    _slow_reservation(monkeypatch, env, timedelta(0), during=taken)
+    report = worker(env, port, worker_id="rw-A", deadline=timedelta(minutes=30)).step()
+    assert port.runs == [] and report.claimed == 1 and report.succeeded == report.failed == 0
+    current = env.store(ProcessRole.RESEARCH).current(job().job_id)
+    assert (current.state, current.actor) == (JobState.CLAIMED, "rw-B")
