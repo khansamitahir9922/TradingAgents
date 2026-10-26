@@ -9,6 +9,7 @@ It never writes to the database; the worker saves the result.
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.metadata
 import json
 import logging
@@ -37,7 +38,6 @@ from investment_engine.research.secrets import ambient_switches
 from investment_engine.research.usage import UsageCounter
 
 EXCHANGE_ZONE = ZoneInfo("America/New_York")
-ROUTER_VENDOR = "tradingagents-router"  # upstream routes each tool to its configured vendor
 STATE_KEYS = ("company_of_interest", "trade_date", "market_report", "sentiment_report", "news_report",
               "fundamentals_report", "investment_debate_state", "investment_plan", "trader_investment_plan",
               "trader_proposal_structured", "risk_debate_state", "final_trade_decision", "final_rating",
@@ -89,6 +89,85 @@ class ProviderFailureGuard(BaseCallbackHandler):
 
     def on_llm_start(self, serialized, prompts, *, run_id, **kwargs) -> None:
         self._refuse_if_failed()
+
+
+CACHE_NOTE = ("data sources record each vendor function that ran; whether it answered from upstream's disk cache "
+              "under the run's cache directory, or the instrument identity from the in-process cache, is not "
+              "distinguished")
+
+
+class SourceRecorder:
+    """Records the research-data fetch that actually served each call (Codex M6 review B6).
+
+    Upstream routes every data tool through `router.VENDOR_METHODS` (looked up per call, with fallbacks); the
+    sentiment node also calls its social fetchers directly, and the run resolves the instrument identity before
+    the graph starts. Each of these functions is wrapped for the run only, in this dedicated process, and
+    restored afterwards. Arguments are hashed, results measured; nothing is altered.
+    """
+
+    def __init__(self, clock) -> None:
+        self._clock, self._lock = clock, threading.Lock()
+        self._refs: list[DataSourceRef] = []
+        self._restore: list = []
+
+    def _wrap(self, vendor: str, method: str, func):
+        recorder = self
+
+        def recorded(*args, **kwargs):
+            started = check_utc(recorder._clock.now(), "fetch start")
+            digest = hashlib.sha256(repr((args, sorted(kwargs.items()))).encode("utf-8", "replace")).hexdigest()
+            try:
+                result = func(*args, **kwargs)
+            except Exception as exc:
+                recorder._add(DataSourceRef(vendor, method, started, digest, recorder._clock.now(),
+                                            type(exc).__name__, None))
+                raise
+            recorder._add(DataSourceRef(vendor, method, started, digest, recorder._clock.now(), None,
+                                        len(str(result))))
+            return result
+
+        return recorded
+
+    def _add(self, ref: DataSourceRef) -> None:
+        with self._lock:
+            self._refs.append(ref)
+
+    def _replace(self, owner, name, value) -> None:
+        self._restore.append((owner, name, owner[name] if isinstance(owner, dict) else getattr(owner, name)))
+        if isinstance(owner, dict):
+            owner[name] = value
+        else:
+            setattr(owner, name, value)
+
+    def __enter__(self):
+        from tradingagents.agents import context
+        from tradingagents.agents.analysts import sentiment_analyst
+        from tradingagents.dataflows import router
+
+        for method, vendors in router.VENDOR_METHODS.items():
+            for vendor, impl in list(vendors.items()):
+                if isinstance(impl, list):
+                    self._replace(vendors, vendor, [self._wrap(vendor, method, impl[0]), *impl[1:]])
+                else:
+                    self._replace(vendors, vendor, self._wrap(vendor, method, impl))
+        self._replace(sentiment_analyst, "fetch_stocktwits_messages",
+                      self._wrap("stocktwits", "stocktwits_messages", sentiment_analyst.fetch_stocktwits_messages))
+        self._replace(sentiment_analyst, "fetch_reddit_posts",
+                      self._wrap("reddit", "reddit_posts", sentiment_analyst.fetch_reddit_posts))
+        self._replace(context, "_identity", self._wrap("yfinance", "instrument_identity", context._identity))
+        return self
+
+    def __exit__(self, *exc) -> None:
+        for owner, name, original in reversed(self._restore):
+            if isinstance(owner, dict):
+                owner[name] = original
+            else:
+                setattr(owner, name, original)
+        self._restore.clear()
+
+    def refs(self) -> tuple[DataSourceRef, ...]:
+        with self._lock:
+            return tuple(self._refs)
 
 
 @dataclass(frozen=True)
@@ -153,11 +232,14 @@ class TradingAgentsAdapter:
         cfg = self.config(job)
         log_factory = logging.getLogRecordFactory()
         logging.setLogRecordFactory(self._redacting_records(log_factory))
+        sources = SourceRecorder(clock)
         try:
-            failure, final_state, state_text = self._run_graph(job, cfg, handlers, guard, today)
+            with sources:
+                failure, final_state, state_text = self._run_graph(job, cfg, handlers, guard, today)
         finally:
             logging.setLogRecordFactory(log_factory)
-        return self._output(job, attempt, clock, started, counter, capture, cfg, failure, final_state, state_text)
+        return self._output(job, attempt, clock, started, counter, capture, cfg, failure, final_state, state_text,
+                            sources.refs())
 
     def _redacting_records(self, make):
         """Every log record created during a run (upstream's warnings included) carries redacted text only."""
@@ -209,14 +291,16 @@ class TradingAgentsAdapter:
                 final_state = None
         return failure, final_state, state_text
 
-    def _output(self, job, attempt, clock, started, counter, capture, cfg, failure, final_state, state_text):
+    def _output(self, job, attempt, clock, started, counter, capture, cfg, failure, final_state, state_text,
+                sources):
         summary = counter.summary()
         warnings = list(summary.warnings)
         calls = tuple(CallRecord(c.run_id, c.node, c.model, c.started_at, c.ended_at, c.input_tokens, c.output_tokens,
                                  c.error) for c in counter.calls())
         tools = tuple(ToolRecord(t.run_id, t.node, t.name, t.input_sha256, t.result_chars, t.started_at, t.ended_at,
                                  t.error) for t in counter.tools())
-        sources = tuple(DataSourceRef(ROUTER_VENDOR, t.name, t.started_at, t.input_sha256) for t in tools)
+        if sources:
+            warnings.append(CACHE_NOTE)
         record = ResearchRecord(job.job_id, attempt, job.settings, importlib.metadata.version("tradingagents"),
                                 self.code_version, calls, tools, capture.texts(), sources, state_text,
                                 UsageTotals.of(calls, len(tools)), tuple(warnings), started,

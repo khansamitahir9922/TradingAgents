@@ -46,7 +46,8 @@ def test_a_full_run_is_captured_and_reconstructable(tmp_path, monkeypatch):
     assert rec.outcome is RunOutcome.SUCCEEDED and rec.failure is None
     assert rec.usage.requests == len(model.calls) == len(rec.calls)
     assert rec.usage.input_tokens == 7 * len(model.calls)
-    assert rec.usage.tool_calls == len(rec.tools) == len(rec.data_sources) >= 12
+    assert rec.usage.tool_calls == len(rec.tools) >= 12
+    assert len(rec.data_sources) > len(rec.tools)  # direct social and identity fetches recorded too
     prompts = [t for t in rec.texts if t.role == "prompt"]
     assert len(prompts) == len(model.calls)  # every agent's prompt, once
     assert {t.node for t in prompts} >= {"Market Analyst", "Trader", "Portfolio Manager"}
@@ -291,3 +292,47 @@ class EchoModel(ScriptedModel):
                                         "FINAL TRANSACTION PROPOSAL: **BUY**")
             return ChatResult(generations=[ChatGeneration(message=message)])
         return super()._generate(messages, stop, run_manager, **kwargs)
+
+
+def test_every_data_fetch_records_the_vendor_that_served_it(tmp_path, monkeypatch):
+    use_model(monkeypatch, ScriptedModel(structured=True))
+    out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
+    refs = out.record.data_sources
+    vendors = {v for vendors in router.VENDOR_METHODS.values() for v in vendors}
+    assert refs and all(r.vendor in vendors | {"stocktwits", "reddit", "yfinance"} for r in refs)
+    assert "tradingagents-router" not in {r.vendor for r in refs}  # no placeholder claims to be the source
+    methods = {r.method for r in refs}
+    assert {"get_news", "stocktwits_messages", "reddit_posts", "instrument_identity"} <= methods
+    assert all(r.ended_at is not None and r.ended_at >= r.fetched_at for r in refs)
+    assert any("cache" in w for w in out.record.warnings)  # what the records cannot tell apart is stated
+
+
+def test_a_failing_vendor_is_recorded_with_its_error(tmp_path, monkeypatch):
+    from tradingagents.default_config import DEFAULT_CONFIG
+
+    method = "get_news"
+    configured = DEFAULT_CONFIG["data_vendors"][router.get_category_for_method(method)]
+    vendor = configured.split(",")[0].strip()  # the vendor upstream actually calls first
+    assert vendor in router.VENDOR_METHODS[method]
+
+    def broken(*a, **k):
+        raise RuntimeError("vendor down")
+
+    monkeypatch.setitem(router.VENDOR_METHODS[method], vendor, broken)
+    use_model(monkeypatch, ScriptedModel(structured=True))
+    out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
+    failed = [r for r in out.record.data_sources if r.method == method and r.vendor == vendor and r.error]
+    assert failed and failed[0].error == "RuntimeError"
+
+
+def test_the_recorder_restores_upstream_after_the_run(tmp_path, monkeypatch):
+    from tradingagents.agents import context
+    from tradingagents.agents.analysts import sentiment_analyst
+
+    before = ({m: dict(v) for m, v in router.VENDOR_METHODS.items()}, sentiment_analyst.fetch_stocktwits_messages,
+              sentiment_analyst.fetch_reddit_posts, context._identity)
+    use_model(monkeypatch, ScriptedModel(structured=True))
+    adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
+    after = ({m: dict(v) for m, v in router.VENDOR_METHODS.items()}, sentiment_analyst.fetch_stocktwits_messages,
+             sentiment_analyst.fetch_reddit_posts, context._identity)
+    assert after == before

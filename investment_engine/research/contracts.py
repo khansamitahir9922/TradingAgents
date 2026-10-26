@@ -264,10 +264,14 @@ class CapturedText:
 
 @dataclass(frozen=True)
 class DataSourceRef:
+    """One research-data fetch: the vendor function that actually ran (fallbacks each recorded)."""
     vendor: str
     method: str
     fetched_at: datetime
     args_sha256: str
+    ended_at: datetime | None = None
+    error: str | None = None  # the exception type when this vendor failed
+    result_chars: int | None = None
 
     def __post_init__(self) -> None:
         check_name(self.vendor, "vendor")
@@ -275,6 +279,10 @@ class DataSourceRef:
         check_utc(self.fetched_at, "fetched_at")
         if len(self.args_sha256) != 64:
             raise ValueError("args_sha256 must be a SHA-256 hex digest")
+        if self.ended_at is not None and check_utc(self.ended_at, "ended_at") < self.fetched_at:
+            raise ValueError("a fetch cannot end before it starts")
+        _optional_text(self.error, "error")
+        _optional_count(self.result_chars, "result_chars")
 
 
 @dataclass(frozen=True)
