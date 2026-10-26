@@ -13,7 +13,7 @@ from datetime import datetime
 from html import escape
 
 from investment_engine.market.availability import check_utc
-from investment_engine.research.contracts import ResearchContext, ResearchRecord
+from investment_engine.research.contracts import ResearchContext, ResearchRecord, RunOutcome
 
 ADVISORY = "ADVISORY research: not used by sizing, risk or orders"
 NOT_REPRODUCIBLE = "Reconstructable from its stored record, not reproducible: a new run can answer differently"
@@ -27,8 +27,16 @@ class ResearchEvidence:
 
     def __post_init__(self) -> None:
         check_utc(self.at, "at")
-        if self.context is not None and (self.record is None or self.record.run_id != self.context.run_id):
+        if self.record is not None and self.record.finished_at > self.at:
+            raise ValueError("research evidence cannot come from a run that finished after its assessment time")
+        if self.context is None:
+            return
+        if self.record is None or self.record.run_id != self.context.run_id:
             raise ValueError("a shown research context needs its own run record")
+        if self.record.outcome is not RunOutcome.SUCCEEDED or self.context.generated_at != self.record.finished_at:
+            raise ValueError("a shown research context must come from its succeeded run, generated when it finished")
+        if self.context.generated_at > self.at:
+            raise ValueError("research cannot be shown before it was generated")
 
 
 def _lines(e: ResearchEvidence) -> list[str]:

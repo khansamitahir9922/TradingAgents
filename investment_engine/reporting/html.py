@@ -218,6 +218,8 @@ def render_research_report(views: Sequence[MarketView], runs: Sequence[Evaluatio
         if not isinstance(research, ResearchEvidence) or (
                 research.context is not None and research.context.instrument_id != instrument_id):
             raise ValueError("research must be this instrument's ResearchEvidence")
+        if research.at != generated_at:  # no look-ahead: assessed exactly as of the report, like every input
+            raise ValueError("research must be assessed at the report's own time")
         out.append(panel_html(research))
 
     # ---------------------------------------------------------------- chart and counts

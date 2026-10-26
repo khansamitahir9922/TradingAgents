@@ -375,7 +375,9 @@ class ResearchContext:
         object.__setattr__(self, "source", ContextSource(self.source))
 
     def status(self, at: datetime) -> str:
-        return "VALID" if check_utc(at, "at") < self.valid_until else "EXPIRED"
+        if check_utc(at, "at") < self.generated_at:
+            raise ValueError("research cannot be assessed before it was generated")
+        return "VALID" if at < self.valid_until else "EXPIRED"
 
 
 @dataclass(frozen=True)

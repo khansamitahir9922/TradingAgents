@@ -26,8 +26,9 @@ pytestmark = pytest.mark.unit
 
 
 def evidence(at=T + timedelta(hours=1), **changes):
+    """A consistent bundle: the context is generated when its run (T-3min .. T) finished."""
     ctx = context(generated_at=T, valid_until=T + timedelta(days=7), **changes)
-    return ResearchEvidence(ctx, record(), at)
+    return ResearchEvidence(ctx, replace(record(), started_at=T - timedelta(minutes=3), finished_at=T), at)
 
 
 def test_a_valid_context_shows_everything_labelled_advisory():
@@ -62,10 +63,15 @@ def test_html_escapes_untrusted_text_and_status_is_not_colour_only():
 
 
 def test_m2_report_bytes_are_unchanged_without_research_and_gain_the_panel_with_it(inputs):  # noqa: F811
-    plain, with_panel = render(inputs), render(inputs, research=evidence())
+    from tests.engine.test_html_report import GENERATED
+
+    ctx = context(generated_at=GENERATED - timedelta(days=1), valid_until=GENERATED + timedelta(days=5))
+    rec = replace(record(), started_at=ctx.generated_at - timedelta(minutes=3), finished_at=ctx.generated_at)
+    shown = ResearchEvidence(ctx, rec, GENERATED)
+    plain, with_panel = render(inputs), render(inputs, research=shown)
     assert render(inputs) == plain
     assert ADVISORY not in plain and ADVISORY in with_panel
-    assert with_panel.replace(panel_html(evidence()), "") == plain
+    assert with_panel.replace(panel_html(shown), "") == plain
 
 
 def test_levels_are_shown_exactly_and_never_rounded():
@@ -75,7 +81,8 @@ def test_levels_are_shown_exactly_and_never_rounded():
 
 
 def test_record_failures_cannot_masquerade_as_research():
-    text = panel_text(ResearchEvidence(None, replace(record(), outcome="FAILED", failure="provider 429"), T))
+    text = panel_text(ResearchEvidence(None, replace(record(), outcome="FAILED", failure="provider 429"),
+                                       T + timedelta(hours=1)))
     assert "No research" in text and "provider 429" in text
 
 
@@ -116,3 +123,40 @@ def test_latest_evidence_reads_the_stored_context_or_the_failed_run_and_the_comm
         assert "Latest view: none stored" in result.output and ADVISORY in result.output and "Hold" in result.output
     finally:
         env.conn.close()
+
+
+@pytest.mark.parametrize("case", ["context-after-assessment", "record-after-assessment", "failed-record-with-context"])
+def test_future_or_unsuccessful_evidence_is_refused(case):
+    from investment_engine.research.contracts import RunOutcome
+
+    ctx = context(generated_at=T, valid_until=T + timedelta(days=7))
+    rec = replace(record(), finished_at=T, started_at=T - timedelta(minutes=3))
+    at = T + timedelta(hours=1)
+    if case == "context-after-assessment":
+        at = T - timedelta(seconds=1)
+    elif case == "record-after-assessment":
+        rec = replace(rec, finished_at=at + timedelta(seconds=1))
+    else:
+        rec = replace(rec, outcome=RunOutcome.FAILED, failure="provider 429")
+    with pytest.raises(ValueError):
+        ResearchEvidence(ctx, rec, at)
+
+
+def test_status_cannot_be_assessed_before_generation():
+    ctx = context(generated_at=T, valid_until=T + timedelta(days=7))
+    with pytest.raises(ValueError, match="before it was generated"):
+        ctx.status(T - timedelta(seconds=1))
+
+
+def test_a_report_shows_research_only_as_assessed_at_its_own_time(inputs):  # noqa: F811
+    from tests.engine.test_html_report import GENERATED
+
+    ctx = context(generated_at=GENERATED - timedelta(days=1), valid_until=GENERATED + timedelta(days=5))
+    rec = replace(record(), started_at=ctx.generated_at - timedelta(minutes=3), finished_at=ctx.generated_at)
+    assert ADVISORY in render(inputs, research=ResearchEvidence(ctx, rec, GENERATED))
+    with pytest.raises(ValueError, match="report's own time"):
+        render(inputs, research=ResearchEvidence(ctx, rec, GENERATED + timedelta(days=1)))
+    later = context(generated_at=GENERATED + timedelta(hours=1), valid_until=GENERATED + timedelta(days=5))
+    later_rec = replace(rec, finished_at=later.generated_at)
+    with pytest.raises(ValueError):
+        render(inputs, research=ResearchEvidence(later, later_rec, GENERATED + timedelta(hours=2)))
