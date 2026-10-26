@@ -97,7 +97,7 @@ def test_a_provider_error_is_a_failed_record_without_context_or_secret(tmp_path,
     out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
     rec = out.record
     assert rec.outcome is RunOutcome.FAILED and out.final_state is None
-    assert rec.failure.startswith("RuntimeError") and SECRET not in rec.failure and REDACTED in rec.failure
+    assert "RuntimeError" in rec.failure and SECRET not in rec.failure and REDACTED in rec.failure
     assert len(rec.calls) == len(model.calls)  # the failed call is counted too
     assert any(c.error for c in rec.calls)
 
@@ -161,3 +161,50 @@ def test_an_ambient_upstream_switch_refuses_the_run_before_any_call(tmp_path, mo
     out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
     assert out.record.outcome is RunOutcome.FAILED and name in out.record.failure
     assert "ambient-value-xyz" not in out.record.failure and model.calls == []
+
+
+class QuotaOnce(ScriptedModel):
+    """The Trader's structured call hits one 429; any later call would have succeeded."""
+
+    raise_quota: bool = False
+    failed_at: list = []
+
+    def with_structured_output(self, schema, **kwargs):
+        from langchain_core.runnables import RunnableLambda
+
+        from tests.engine.research_fakes import STRUCTURED
+        from tradingagents.agents import schemas
+
+        plain = self.model_copy(update={"tools": ()})
+
+        def call(value, config):
+            if schema is schemas.TraderProposal and not self.failed_at:
+                return plain.model_copy(update={"raise_quota": True}).invoke(value, config=config)
+            plain.invoke(value, config=config)
+            return STRUCTURED[schema]
+
+        return RunnableLambda(call)
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        if self.raise_quota:
+            self.calls.append(1)
+            self.failed_at.append(len(self.calls))
+            raise RuntimeError("429 RESOURCE_EXHAUSTED: quota exceeded")
+        return super()._generate(messages, stop, run_manager, **kwargs)
+
+
+def test_a_quota_error_is_never_retried_by_the_upstream_fallback(tmp_path, monkeypatch):
+    model = QuotaOnce(structured=True, failed_at=[])
+    use_model(monkeypatch, model)
+    out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
+    assert model.failed_at, "the scenario must reach the Trader's structured call"
+    assert len(model.calls) == model.failed_at[0]  # no model call reached the provider after the 429
+    assert out.record.outcome is RunOutcome.FAILED and out.final_state is None
+    assert "RESOURCE_EXHAUSTED" in out.record.failure and "no further" in out.record.failure
+
+
+def test_malformed_structured_output_still_falls_back_to_free_text(tmp_path, monkeypatch):
+    model = ScriptedModel(structured=False)  # structured output unsupported: upstream's allowed fallback
+    use_model(monkeypatch, model)
+    out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
+    assert out.record.outcome is RunOutcome.SUCCEEDED

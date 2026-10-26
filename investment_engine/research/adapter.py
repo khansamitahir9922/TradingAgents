@@ -12,10 +12,13 @@ import copy
 import importlib.metadata
 import json
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
+
+from langchain_core.callbacks import BaseCallbackHandler
 
 from investment_engine.market.availability import check_utc
 from investment_engine.research.capture import Redactor, TextCapture
@@ -45,6 +48,45 @@ RECORDED_CONFIG = ("llm_provider", "quick_think_provider", "deep_think_provider"
                    "temperature", "max_tokens", "llm_max_retries", "checkpoint_enabled", "output_language",
                    "google_thinking_level", "openai_reasoning_effort", "anthropic_effort", "benchmark_ticker",
                    "data_vendors", "tool_vendors")
+
+
+class ProviderCallRefused(RuntimeError):
+    """Raised before a model request once the provider has failed in this run (D46: no retries)."""
+
+
+class ProviderFailureGuard(BaseCallbackHandler):
+    """After the provider's first error, refuse every later model call before it is sent.
+
+    Upstream catches a failed structured call and asks the plain model again; with
+    `llm_max_retries=0` that is still a second paid request after a quota/429 error.
+    Raising in the start callback stops that request before the provider sees it,
+    and the run is recorded FAILED. Malformed structured output is a parser error,
+    not a provider error, so upstream's free-text fallback for it is untouched.
+    """
+
+    raise_error = True
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.first_error: BaseException | None = None
+
+    def on_llm_error(self, error, *, run_id, **kwargs) -> None:
+        with self._lock:
+            if self.first_error is None and not isinstance(error, ProviderCallRefused):
+                self.first_error = error
+
+    def _refuse_if_failed(self) -> None:
+        with self._lock:
+            failed = self.first_error
+        if failed is not None:
+            raise ProviderCallRefused(f"provider failed earlier in this run ({type(failed).__name__}); "
+                                      "no further model calls are made")
+
+    def on_chat_model_start(self, serialized, messages, *, run_id, **kwargs) -> None:
+        self._refuse_if_failed()
+
+    def on_llm_start(self, serialized, prompts, *, run_id, **kwargs) -> None:
+        self._refuse_if_failed()
 
 
 @dataclass(frozen=True)
@@ -103,6 +145,8 @@ class TradingAgentsAdapter:
     def run(self, job: ResearchJob, *, attempt: int, clock) -> RunOutput:
         started = check_utc(clock.now(), "start")
         counter, capture = UsageCounter(clock=clock), TextCapture(redact=self._redact)
+        guard = ProviderFailureGuard()
+        handlers = [guard, counter, capture]  # the guard first: a refused call never reaches the others
         final_state, state_text, failure, warnings = None, "{}", None, []
         today = started.astimezone(EXCHANGE_ZONE).date()
         switches = ambient_switches(os.environ)
@@ -118,15 +162,19 @@ class TradingAgentsAdapter:
         else:
             try:
                 graph = self._graph_factory(selected_analysts=job.settings.analysts, config=cfg,
-                                            callbacks=[counter, capture])
+                                            callbacks=handlers)
                 state = graph.create_run_state(job.ticker, job.research_date.isoformat())
-                result = graph.graph.invoke(state, **graph.propagator.get_graph_args(callbacks=[counter, capture]))
+                result = graph.graph.invoke(state, **graph.propagator.get_graph_args(callbacks=handlers))
                 graph.record_decision(job.ticker, job.research_date.isoformat(), result)
                 final_state, state_text = _state_json(result)
                 state_text = self._redact(state_text)
                 final_state = json.loads(state_text)
             except Exception as exc:  # recorded as a failed run, never a partial context
                 failure, final_state = _failure(exc, self._redact), None
+            if guard.first_error is not None:  # even when upstream swallowed it and carried on
+                failure = self._redact(f"provider error: {type(guard.first_error).__name__}: {guard.first_error}; "
+                                       "no further model calls were made")[:FAILURE_CHARS]
+                final_state = None
         summary = counter.summary()
         warnings.extend(summary.warnings)
         calls = tuple(CallRecord(c.run_id, c.node, c.model, c.started_at, c.ended_at, c.input_tokens, c.output_tokens,
