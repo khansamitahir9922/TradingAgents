@@ -16,6 +16,7 @@ from types import MappingProxyType
 # Keys this worker may load into its own process environment for upstream TradingAgents.
 LLM_KEYS = frozenset({"GOOGLE_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "XAI_API_KEY", "DEEPSEEK_API_KEY",
                       "OPENROUTER_API_KEY", "ALPHA_VANTAGE_API_KEY", "FRED_API_KEY", "FINNHUB_API_KEY"})
+MIN_SECRET_CHARS = 8  # shorter values would make redaction erase ordinary text
 # Environment names that look like broker credentials: the Research Worker must never see one.
 BROKER_MARKERS = ("ALPACA", "BROKER", "IBKR", "INTERACTIVE_BROKERS", "TRADIER", "SCHWAB", "TASTYTRADE", "OANDA")
 
@@ -57,6 +58,8 @@ def load_research_secrets(path: Path) -> Mapping[str, str]:
             raise ResearchSecretsError(f"{path.name} line {number} is not KEY=VALUE")
         if key not in LLM_KEYS:
             raise ResearchSecretsError(f"{path.name} line {number}: {key} is not an LLM or research-data key")
+        if len(value.strip()) < MIN_SECRET_CHARS:
+            raise ResearchSecretsError(f"{path.name} line {number}: the {key} value is too short to redact safely")
         values[key] = value.strip()
     if not values:
         raise ResearchSecretsError(f"{path.name} holds no key")

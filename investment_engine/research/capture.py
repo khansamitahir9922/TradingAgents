@@ -8,6 +8,7 @@ cut length recorded. Nothing is parsed or acted on here.
 from __future__ import annotations
 
 import json
+import re
 import threading
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -19,14 +20,33 @@ REDACTED = "[REDACTED SECRET]"
 
 
 class Redactor:
+    """Replaces every configured secret, and its JSON-escaped forms, in one pass.
+
+    One regular-expression pass (longest alternative first) means a replacement
+    marker is never itself matched again, however short a secret is. Escaped forms
+    cover text that was serialized before it reached the redactor.
+    """
+
     def __init__(self, secrets=()) -> None:
-        # Longest first, so a secret containing another is replaced whole.
-        self._secrets = tuple(sorted({s for s in secrets if isinstance(s, str) and len(s) >= 4}, key=len, reverse=True))
+        forms = set()
+        for secret in secrets:
+            if isinstance(secret, str) and secret:
+                forms |= {secret, json.dumps(secret)[1:-1], json.dumps(secret, ensure_ascii=False)[1:-1]}
+        ordered = sorted(forms, key=len, reverse=True)
+        self._pattern = re.compile("|".join(re.escape(f) for f in ordered)) if ordered else None
 
     def __call__(self, text: str) -> str:
-        for secret in self._secrets:
-            text = text.replace(secret, REDACTED)
-        return text
+        return text if self._pattern is None else self._pattern.sub(REDACTED, text)
+
+    def deep(self, value):
+        """A copy of plain JSON-like data (str, dict, list, tuple) with every string redacted."""
+        if isinstance(value, str):
+            return self(value)
+        if isinstance(value, dict):
+            return {self.deep(k): self.deep(v) for k, v in value.items()}
+        if isinstance(value, list | tuple):
+            return type(value)(self.deep(v) for v in value)
+        return value
 
 
 def _message_text(message) -> str:

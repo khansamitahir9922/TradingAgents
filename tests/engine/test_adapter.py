@@ -2,6 +2,7 @@
 import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -168,6 +169,7 @@ class QuotaOnce(ScriptedModel):
 
     raise_quota: bool = False
     failed_at: list = []
+    message: str = "429 RESOURCE_EXHAUSTED: quota exceeded"
 
     def with_structured_output(self, schema, **kwargs):
         from langchain_core.runnables import RunnableLambda
@@ -189,7 +191,7 @@ class QuotaOnce(ScriptedModel):
         if self.raise_quota:
             self.calls.append(1)
             self.failed_at.append(len(self.calls))
-            raise RuntimeError("429 RESOURCE_EXHAUSTED: quota exceeded")
+            raise RuntimeError(self.message)
         return super()._generate(messages, stop, run_manager, **kwargs)
 
 
@@ -208,3 +210,84 @@ def test_malformed_structured_output_still_falls_back_to_free_text(tmp_path, mon
     use_model(monkeypatch, model)
     out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
     assert out.record.outcome is RunOutcome.SUCCEEDED
+
+
+ESCAPED_SECRET = 'AIzaFAKE"quote\\back-0123456789'  # a quote and a backslash: escaped forms differ from the literal
+
+
+def _every_output(tmp_path, capsys, caplog):
+    texts = [path.read_text(encoding="utf-8", errors="replace") for path in (tmp_path / "work").rglob("*")
+             if path.is_file()]
+    captured = capsys.readouterr()
+    return "\n".join(texts + [captured.out, captured.err, caplog.text])
+
+
+@pytest.mark.parametrize("secret", [SECRET, ESCAPED_SECRET])
+def test_an_echoed_secret_reaches_no_file_log_or_stream(tmp_path, monkeypatch, capsys, caplog, secret):
+    import logging
+
+    caplog.set_level(logging.DEBUG)
+    for vendors in router.VENDOR_METHODS.values():
+        for vendor in vendors:
+            monkeypatch.setitem(vendors, vendor, lambda *a, _s=secret, **k: f"vendor echoed {_s}")
+    use_model(monkeypatch, EchoModel(structured=True))  # reports quote the tool output, as real models do
+    out = TradingAgentsAdapter(work_dir=tmp_path / "work", code_version="abc", secrets=(secret,)).run(
+        job(), attempt=1, clock=ReplayClock(T))
+    assert secret in "".join(EchoModel.echoed), "the scenario must put the secret into model output"
+    assert out.record.outcome is RunOutcome.SUCCEEDED
+    escaped = json.dumps(secret)[1:-1]
+    stored = json.dumps([t.text for t in out.record.texts]) + out.record.final_state_json
+    everywhere = _every_output(tmp_path, capsys, caplog) + stored
+    assert secret not in everywhere and escaped not in everywhere
+    assert any(p.suffix == ".json" for p in (tmp_path / "work").rglob("*")), "upstream wrote its state log"
+
+
+def test_a_secret_in_a_provider_error_is_never_logged(tmp_path, monkeypatch, capsys, caplog):
+    import logging
+
+    caplog.set_level(logging.DEBUG)
+    model = QuotaOnce(structured=True, failed_at=[], message=f"429 quota exceeded for key {SECRET}")
+    use_model(monkeypatch, model)
+    out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
+    assert out.record.outcome is RunOutcome.FAILED and model.failed_at
+    assert "structured-output invocation failed" in caplog.text  # upstream did log the error
+    assert SECRET not in _every_output(tmp_path, capsys, caplog) + out.record.failure
+
+
+def test_redaction_is_single_pass_and_covers_escaped_forms():
+    from investment_engine.research.capture import Redactor
+
+    redact = Redactor(("abcd1234", "zz"))
+    assert redact("x abcd1234 y") == f"x {REDACTED} y"
+    assert "zz" not in redact("zz and zz") and redact("zz").count("REDACTED") == 1
+    tricky = 'k"q\\x-123456'
+    assert tricky not in redact(json.dumps({"v": tricky})) and json.dumps(tricky)[1:-1] not in Redactor((tricky,))(
+        json.dumps({"v": tricky}))
+
+
+def test_secrets_too_short_to_redact_safely_are_refused(tmp_path):
+    from investment_engine.research.secrets import ResearchSecretsError, load_research_secrets
+
+    path = tmp_path / "research_worker.env"
+    path.write_text("GOOGLE_API_KEY=abc\n", encoding="utf-8")
+    with pytest.raises(ResearchSecretsError, match="too short"):
+        load_research_secrets(path)
+
+
+class EchoModel(ScriptedModel):
+    """Like a real model, its answer after a tool call quotes the tool's output into the report."""
+
+    echoed: ClassVar[list] = []
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        from langchain_core.messages import AIMessage, ToolMessage
+        from langchain_core.outputs import ChatGeneration, ChatResult
+
+        if messages and isinstance(messages[-1], ToolMessage):
+            quoted = " ".join(str(m.content) for m in messages if isinstance(m, ToolMessage))
+            EchoModel.echoed.append(quoted)
+            self.calls.append(1)
+            message = AIMessage(content=f"Report quoting sources: {quoted}\n\n**Rating**: Overweight\n\n"
+                                        "FINAL TRANSACTION PROPOSAL: **BUY**")
+            return ChatResult(generations=[ChatGeneration(message=message)])
+        return super()._generate(messages, stop, run_manager, **kwargs)

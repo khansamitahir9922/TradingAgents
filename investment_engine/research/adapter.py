@@ -11,8 +11,10 @@ from __future__ import annotations
 import copy
 import importlib.metadata
 import json
+import logging
 import os
 import threading
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -147,10 +149,37 @@ class TradingAgentsAdapter:
         counter, capture = UsageCounter(clock=clock), TextCapture(redact=self._redact)
         guard = ProviderFailureGuard()
         handlers = [guard, counter, capture]  # the guard first: a refused call never reaches the others
-        final_state, state_text, failure, warnings = None, "{}", None, []
         today = started.astimezone(EXCHANGE_ZONE).date()
-        switches = ambient_switches(os.environ)
         cfg = self.config(job)
+        log_factory = logging.getLogRecordFactory()
+        logging.setLogRecordFactory(self._redacting_records(log_factory))
+        try:
+            failure, final_state, state_text = self._run_graph(job, cfg, handlers, guard, today)
+        finally:
+            logging.setLogRecordFactory(log_factory)
+        return self._output(job, attempt, clock, started, counter, capture, cfg, failure, final_state, state_text)
+
+    def _redacting_records(self, make):
+        """Every log record created during a run (upstream's warnings included) carries redacted text only."""
+        redact = self._redact
+
+        def factory(*args, **kwargs):
+            record = make(*args, **kwargs)
+            try:
+                message = record.getMessage()
+            except Exception:  # a malformed log call keeps its own error path
+                return record
+            record.msg, record.args = redact(message), ()
+            if record.exc_info and record.exc_info[1] is not None:
+                record.exc_text = redact("".join(traceback.format_exception(*record.exc_info)))
+                record.exc_info = None
+            return record
+
+        return factory
+
+    def _run_graph(self, job, cfg, handlers, guard, today):
+        failure, final_state, state_text = None, None, "{}"
+        switches = ambient_switches(os.environ)
         if job.settings.provider not in PROVIDERS:
             failure = f"provider {job.settings.provider} is not approved: M6 runs Google only (D45)"
         elif switches:
@@ -165,8 +194,11 @@ class TradingAgentsAdapter:
                                             callbacks=handlers)
                 state = graph.create_run_state(job.ticker, job.research_date.isoformat())
                 result = graph.graph.invoke(state, **graph.propagator.get_graph_args(callbacks=handlers))
-                graph.record_decision(job.ticker, job.research_date.isoformat(), result)
-                final_state, state_text = _state_json(result)
+                # Upstream writes its state log and memory entry from what it is given: the redacted state.
+                safe = {k: self._redact.deep(v) if isinstance(v, str | dict | list | tuple) else v
+                        for k, v in result.items()}
+                graph.record_decision(job.ticker, job.research_date.isoformat(), safe)
+                final_state, state_text = _state_json(safe)
                 state_text = self._redact(state_text)
                 final_state = json.loads(state_text)
             except Exception as exc:  # recorded as a failed run, never a partial context
@@ -175,8 +207,11 @@ class TradingAgentsAdapter:
                 failure = self._redact(f"provider error: {type(guard.first_error).__name__}: {guard.first_error}; "
                                        "no further model calls were made")[:FAILURE_CHARS]
                 final_state = None
+        return failure, final_state, state_text
+
+    def _output(self, job, attempt, clock, started, counter, capture, cfg, failure, final_state, state_text):
         summary = counter.summary()
-        warnings.extend(summary.warnings)
+        warnings = list(summary.warnings)
         calls = tuple(CallRecord(c.run_id, c.node, c.model, c.started_at, c.ended_at, c.input_tokens, c.output_tokens,
                                  c.error) for c in counter.calls())
         tools = tuple(ToolRecord(t.run_id, t.node, t.name, t.input_sha256, t.result_chars, t.started_at, t.ended_at,
