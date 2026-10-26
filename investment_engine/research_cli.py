@@ -57,8 +57,19 @@ def request_research(db, *, instrument_id: str, operator: str, reason: str, prov
         actor = _actor(accounts, operator)
         accounts.authorize(actor, (Role.TRADER, Role.ADMIN), live_clock.now())
         version = store.request(ResearchJob(instrument_id, ticker, today, operator, now, reason, settings), by=actor)
-    store.outbox.publish_pending()  # after the commit: the request's event does not wait for a Core process
+    # After the commit, publish page by page until this request's own event is out (Codex M6 re-review R1):
+    # pages go in the outbox's own per-aggregate order, so nothing is skipped or marked out of turn.
+    while not request_published(db, version.job_id):
+        if store.outbox.publish_pending() == 0:
+            break  # nothing more can be published now; the caller reports the request as pending delivery
     return version
+
+
+def request_published(db, job_id: str) -> bool:
+    """Whether the request's own event (version 1 of its job) has reached the event log."""
+    row = db.fetchone("SELECT published_at FROM outbox WHERE aggregate_type = 'research-job' AND aggregate_id = :j "
+                      "AND aggregate_version = 1", {"j": job_id})
+    return row is not None and row[0] is not None
 
 
 def set_budget(db, *, operator: str, reason: str, daily_requests: int, daily_tokens: int, reserve_requests: int,
@@ -181,6 +192,8 @@ def request_command(instrument: str, operator: str = typer.Option(..., "--operat
                                    research_date=None if research_date is None else date.fromisoformat(research_date))
         _print(f"Research requested: job {version.job_id}. It is ADVISORY and runs in the Research Worker; "
                "nothing is traded.")
+        if not request_published(db, version.job_id):
+            _print("Its event is recorded but not yet published; it is delivered when the outbox is next drained.")
     _with_db(action, read_only=False)
 
 

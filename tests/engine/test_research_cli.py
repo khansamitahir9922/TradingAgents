@@ -10,6 +10,7 @@ from investment_engine import research_cli as cli
 from investment_engine.audit.events import Actor, ActorKind, AuditStore
 from investment_engine.cli import app
 from investment_engine.clock import ReplayClock
+from investment_engine.market.calendar.us_equities import load_us_equities_calendar
 from investment_engine.market.instruments import AssetClass, Instrument, InstrumentStatus
 from investment_engine.market.symbols import SymbolMapping
 from investment_engine.oms.order_states import ProcessRole
@@ -117,3 +118,31 @@ def test_the_research_group_is_registered_and_never_loads_tradingagents():
             " or m.startswith('investment_engine.research.adapter')))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
     assert out == "[]"
+
+
+@pytest.mark.postgres
+def test_the_request_is_published_behind_a_backlog_larger_than_one_page(env):
+    from datetime import timedelta
+
+    from investment_engine.events.consumer import Consumer
+    from investment_engine.events.envelope import EventEnvelope
+    from investment_engine.events.outbox import Outbox
+    from investment_engine.research.worker import ResearchWorker
+    from tests.engine.test_research_worker import FakePort
+
+    core_outbox = Outbox(env.db, writer=ProcessRole.CORE, clock=env.clock)
+    with env.db.transaction():  # 150 unpublished Core events that sort before the research job
+        for n in range(150):
+            core_outbox.add(EventEnvelope("test.backlog", 1, "aaa-backlog", f"a{n:03d}", 1, T, T, "backlog", None,
+                                          "{}"))
+    cli.set_budget(env.db, operator="owner", reason="test", daily_requests=5, daily_tokens=10**6,
+                   reserve_requests=1, reserve_tokens=100, live_clock=ReplayClock(T))
+    version = request(env, "trader")
+    assert cli.request_published(env.db, version.job_id)
+    worker = ResearchWorker(env.db, worker_id="rw-1", clock=env.clock, port=FakePort(),
+                            calendar=load_us_equities_calendar(), deadline=timedelta(minutes=5))
+    assert worker.step().succeeded == 1
+    seen = []
+    report = Consumer(env.db, name="research-backlog-test", clock=env.clock,
+                      handles={"research.completed": lambda e: seen.append(e.aggregate_version)}).run_once(limit=1000)
+    assert seen == [3] and report.held == 0
