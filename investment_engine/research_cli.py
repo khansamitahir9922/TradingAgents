@@ -62,14 +62,28 @@ def request_research(db, *, instrument_id: str, operator: str, reason: str, prov
 
 
 def set_budget(db, *, operator: str, reason: str, daily_requests: int, daily_tokens: int, reserve_requests: int,
-               reserve_tokens: int, live_clock):
+               reserve_tokens: int, live_clock, daily_usd=None):
+    """Admin only, authorized at live command time under the operator's lock; versioned and audited (D46)."""
     from investment_engine.admin_cli import _actor
-    from investment_engine.research.budget import ResearchBudget
+    from investment_engine.audit.events import AuditEvent
+    from investment_engine.market.availability import check_utc
+    from investment_engine.policy.accounts import Role
+    from investment_engine.research.contracts import BudgetPolicy
 
     store, accounts = _stores(db, live_clock)
-    return ResearchBudget(store, accounts=accounts, clock=live_clock, command_clock=live_clock).set_policy(
-        daily_requests=daily_requests, daily_tokens=daily_tokens, daily_usd=None, reserve_requests=reserve_requests,
-        reserve_tokens=reserve_tokens, by=_actor(accounts, operator), reason=reason)
+    with db.transaction():
+        db.lock(f"operator|{operator}")
+        actor = _actor(accounts, operator)
+        now = check_utc(live_clock.now(), "command time")
+        accounts.authorize(actor, (Role.ADMIN,), now)
+        latest = store.latest_policy()
+        policy = BudgetPolicy(1 if latest is None else latest.version + 1, daily_requests, daily_tokens, daily_usd,
+                              reserve_requests, reserve_tokens, actor.actor_id, now, reason)
+        store.set_policy(policy)
+        key = f"research.budget_policy:{policy.version}"
+        store.audit.append(AuditEvent(actor, "research.budget_policy", "research-budget", "daily", latest, policy,
+                                      now, None, reason, key, key))
+        return policy
 
 
 def status_text(db, job_id: str) -> str:

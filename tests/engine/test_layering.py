@@ -224,6 +224,7 @@ def test_no_module_of_the_package_asks_for_the_declared_only_portfolio():
 
 FORBIDDEN_FOR_RESEARCH = ("investment_engine.execution", "investment_engine.killswitch", "investment_engine.ledger",
                           "investment_engine.reconciliation", "investment_engine.risk", "investment_engine.portfolio",
+                          "investment_engine.policy",
                           "investment_engine.oms.order_store", "investment_engine.oms.pipeline",
                           "investment_engine.oms.conversion", "investment_engine.oms.approvals",
                           "investment_engine.oms.intent_store")

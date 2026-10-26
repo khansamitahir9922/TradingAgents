@@ -12,10 +12,10 @@ from investment_engine.oms.order_states import ProcessRole
 from investment_engine.policy.accounts import AccountRegistry
 from investment_engine.research import __main__ as entry
 from investment_engine.research.adapter import RunOutput
-from investment_engine.research.budget import ResearchBudget
 from investment_engine.research.contracts import JobState, RunOutcome
 from investment_engine.research.store import StaleJob
 from investment_engine.research.worker import ResearchWorker
+from investment_engine.research_cli import set_budget
 from tests.engine.test_research_contracts import job, record
 from tests.engine.test_research_store import TRADER, Env
 
@@ -48,9 +48,8 @@ def env(pg_database):
     e = Env(pg_database)
     e.accounts = AccountRegistry(e.db, AuditStore(e.db), e.clock)
     e.accounts.bootstrap_admin("owner", os_user="test")
-    ResearchBudget(e.store(ProcessRole.CORE), accounts=e.accounts, clock=e.clock, command_clock=e.clock).set_policy(
-        daily_requests=10, daily_tokens=10_000, daily_usd=None, reserve_requests=1, reserve_tokens=100,
-        by=OWNER, reason="test policy")
+    set_budget(e.db, operator="owner", reason="test policy", daily_requests=10, daily_tokens=10_000,
+               reserve_requests=1, reserve_tokens=100, live_clock=e.clock)
     e.store(ProcessRole.CORE).request(job(), by=TRADER)
     yield e
     e.conn.close()
@@ -75,9 +74,8 @@ def test_a_requested_job_is_run_saved_and_published(env):
 
 
 def test_budget_refusal_is_recorded_without_running(env):
-    ResearchBudget(env.store(ProcessRole.CORE), accounts=env.accounts, clock=env.clock,
-                   command_clock=env.clock).set_policy(daily_requests=1, daily_tokens=50, daily_usd=None,
-                                                       reserve_requests=1, reserve_tokens=100, by=OWNER, reason="low")
+    set_budget(env.db, operator="owner", reason="low", daily_requests=1, daily_tokens=50, reserve_requests=1,
+               reserve_tokens=100, live_clock=env.clock)
     port = FakePort()
     report = worker(env, port).step()
     assert report.refused == 1 and port.runs == []
@@ -253,3 +251,36 @@ def test_a_worker_whose_claim_was_taken_starts_nothing_and_writes_nothing(env, m
     assert port.runs == [] and report.claimed == 1 and report.succeeded == report.failed == 0
     current = env.store(ProcessRole.RESEARCH).current(job().job_id)
     assert (current.state, current.actor) == (JobState.CLAIMED, "rw-B")
+
+
+WRITER_DOMAINS = ("investment_engine.execution", "investment_engine.killswitch", "investment_engine.ledger.store",
+                  "investment_engine.ledger.service", "investment_engine.ledger.postings", "investment_engine.reconciliation",
+                  "investment_engine.risk", "investment_engine.portfolio", "investment_engine.policy",
+                  "investment_engine.oms.order_store", "investment_engine.oms.pipeline", "investment_engine.oms.conversion",
+                  "investment_engine.oms.approvals", "investment_engine.oms.intent_store")
+
+
+@pytest.mark.postgres
+def test_a_constructed_worker_has_loaded_no_other_domains_writer_code(pg_database):
+    import subprocess
+    import sys
+
+    code = (
+        "import sys\n"
+        "from datetime import UTC, datetime, timedelta\n"
+        "from investment_engine.clock import ReplayClock\n"
+        "from investment_engine.market.calendar.us_equities import load_us_equities_calendar\n"
+        "from investment_engine.research.worker import ResearchWorker\n"
+        "from investment_engine.storage.database import PostgresDatabase\n"
+        "from investment_engine.storage.postgres import open_operational_pg\n"
+        "from investment_engine.storage.postgres import apply_pg_schema\n"
+        "conn = open_operational_pg(sys.stdin.readline().strip())\n"
+        "apply_pg_schema(conn)\n"
+        "w = ResearchWorker(PostgresDatabase(conn), worker_id='probe', clock=ReplayClock(datetime(2026, 1, 9, tzinfo=UTC)),\n"
+        "                   port=object(), calendar=load_us_equities_calendar(), deadline=timedelta(minutes=1))\n"
+        "w.store.claimable(at=datetime(2026, 1, 9, tzinfo=UTC))\n"
+        "print('\\n'.join(sorted(sys.modules)))\n")
+    done = subprocess.run([sys.executable, "-c", code], input=pg_database + "\n", capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr[-2000:]
+    loaded = done.stdout.split()
+    assert [m for m in loaded if any(m == d or m.startswith(d + ".") for d in WRITER_DOMAINS)] == []

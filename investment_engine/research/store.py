@@ -58,7 +58,11 @@ class ResearchStore:
         self.role = ProcessRole(role)
         if self.role not in (ProcessRole.CORE, ProcessRole.RESEARCH):
             raise PermissionError("research evidence is written by the Core or the Research Worker only")
-        if getattr(audit, "_db", None) is not self.db or getattr(outbox, "_db", None) is not self.db:
+        if self.role is ProcessRole.CORE and audit is None:
+            raise ValueError("Core-side research writes are audited: an audit store is required")
+        # The Research Worker writes no audit events, so it gets none: constructing an AuditStore imports every
+        # domain's registered writer modules (Codex M6 review B9).
+        if (audit is not None and getattr(audit, "_db", None) is not self.db) or getattr(outbox, "_db", None) is not self.db:
             raise ValueError("research, audit and outbox stores must share one database port")
         if outbox.writer is not self.role:
             raise ValueError("the outbox must write as this store's role")

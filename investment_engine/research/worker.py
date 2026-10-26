@@ -18,7 +18,6 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 from decimal import Decimal
 
-from investment_engine.audit.events import AuditStore
 from investment_engine.events.outbox import Outbox
 from investment_engine.market.availability import check_utc
 from investment_engine.oms.order_states import ProcessRole
@@ -46,9 +45,8 @@ class ResearchWorker:
         self.port, self.calendar, self.deadline = port, calendar, deadline
         self.code_version = code_version
         self.outbox = Outbox(db, writer=ProcessRole.RESEARCH, clock=clock)
-        self.store = ResearchStore(db, role=ProcessRole.RESEARCH, audit=AuditStore(db), outbox=self.outbox,
-                                   clock=clock)
-        self.budget = ResearchBudget(self.store, accounts=None, clock=clock, command_clock=clock)
+        self.store = ResearchStore(db, role=ProcessRole.RESEARCH, audit=None, outbox=self.outbox, clock=clock)
+        self.budget = ResearchBudget(self.store, clock=clock)
         self._stalled: threading.Thread | None = None
 
     def stalled(self) -> bool:

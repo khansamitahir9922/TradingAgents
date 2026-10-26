@@ -29,13 +29,18 @@ def env(pg_database):
 
 
 def budget(env, role, clock=None):
-    return ResearchBudget(env.store(role), accounts=env.accounts, clock=clock or env.clock, command_clock=env.clock)
+    return ResearchBudget(env.store(role), clock=clock or env.clock)
+
+
+def set_policy(env, operator, **kw):
+    from investment_engine.research_cli import set_budget
+
+    return set_budget(env.db, operator=operator, live_clock=env.clock, **kw)
 
 
 def policy(env, requests=3, tokens=300, usd=None, reserve_requests=1, reserve_tokens=100):
-    return budget(env, ProcessRole.CORE).set_policy(daily_requests=requests, daily_tokens=tokens, daily_usd=usd,
-                                                    reserve_requests=reserve_requests, reserve_tokens=reserve_tokens,
-                                                    by=OWNER, reason="provisional D46")
+    return set_policy(env, "owner", daily_requests=requests, daily_tokens=tokens, daily_usd=usd,
+                      reserve_requests=reserve_requests, reserve_tokens=reserve_tokens, reason="provisional D46")
 
 
 def test_no_policy_refuses_every_run(env):
@@ -121,16 +126,13 @@ def test_concurrent_reservations_cannot_both_take_the_last_slot(env, pg_database
 @pytest.mark.parametrize("role", [Role.TRADER, Role.VIEWER])
 def test_only_a_current_admin_sets_the_policy(env, role):
     env.accounts.add_operator("someone", role, by=OWNER, reason="test role")
+    caps = {"daily_requests": 3, "daily_tokens": 300, "reserve_requests": 1, "reserve_tokens": 100, "reason": "x"}
     with pytest.raises(NotAuthorized):
-        budget(env, ProcessRole.CORE).set_policy(daily_requests=3, daily_tokens=300, daily_usd=None,
-                                                 reserve_requests=1, reserve_tokens=100,
-                                                 by=Actor(ActorKind.OPERATOR, "someone", role.value, None), reason="x")
+        set_policy(env, "someone", **caps)
     env.accounts.add_operator("admin2", Role.ADMIN, by=OWNER, reason="second admin")
     env.accounts.deactivate_operator("admin2", by=OWNER, reason="left")
     with pytest.raises(NotAuthorized):
-        budget(env, ProcessRole.CORE).set_policy(daily_requests=3, daily_tokens=300, daily_usd=None,
-                                                 reserve_requests=1, reserve_tokens=100,
-                                                 by=Actor(ActorKind.OPERATOR, "admin2", "ADMIN", None), reason="x")
+        set_policy(env, "admin2", **caps)
     assert env.store(ProcessRole.CORE).latest_policy() is None
 
 

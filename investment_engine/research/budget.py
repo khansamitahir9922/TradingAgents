@@ -10,12 +10,9 @@ until per-run prices are measured (M6-11), so a policy with one refuses runs.
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
 
-from investment_engine.audit.events import AuditEvent
 from investment_engine.market.availability import check_utc
-from investment_engine.policy.accounts import Role
-from investment_engine.research.contracts import BudgetPolicy, BudgetUsage, UsageTotals
+from investment_engine.research.contracts import BudgetUsage, UsageTotals
 
 
 class BudgetRefused(Exception):
@@ -39,26 +36,11 @@ def day_totals(usages) -> tuple[int, int]:
 
 
 class ResearchBudget:
-    def __init__(self, store, *, accounts, clock, command_clock) -> None:
-        self.store, self.accounts = store, accounts
-        self.clock, self.command_clock = clock, command_clock
+    """The worker's side of the budget: reserve before a run. Setting the policy is an Admin command on the
+    Core side (`research_cli.set_budget`), so this module loads no operator-registry code (B9)."""
 
-    def set_policy(self, *, daily_requests: int, daily_tokens: int, daily_usd: Decimal | None, reserve_requests: int,
-                   reserve_tokens: int, by, reason: str) -> BudgetPolicy:
-        """Admin only, authorized at live command time under the operator's lock."""
-        db = self.store.db
-        with db.transaction():
-            db.lock(f"operator|{getattr(by, 'actor_id', '')}")
-            now = check_utc(self.command_clock.now(), "command time")
-            self.accounts.authorize(by, (Role.ADMIN,), now)
-            latest = self.store.latest_policy()
-            policy = BudgetPolicy(1 if latest is None else latest.version + 1, daily_requests, daily_tokens, daily_usd,
-                                  reserve_requests, reserve_tokens, by.actor_id, now, reason)
-            self.store.set_policy(policy)
-            self.store.audit.append(AuditEvent(by, "research.budget_policy", "research-budget", "daily", latest, policy,
-                                               now, None, reason, f"research.budget_policy:{policy.version}",
-                                               f"research.budget_policy:{policy.version}"))
-            return policy
+    def __init__(self, store, *, clock) -> None:
+        self.store, self.clock = store, clock
 
     def reserve(self, run_id: str) -> BudgetUsage:
         """Reserve one run's allowance for today (UTC), or raise BudgetRefused. Idempotent per run."""
