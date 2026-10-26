@@ -4,13 +4,13 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 ---
 
-## Current state (2026-10-25)
+## Current state (2026-10-26)
 
 | | |
 |---|---|
 | **Milestone** | M0/M2/M3/M4/**M5 complete locally**. Claude independently accepted M5 at `d277440` (`docs/reviews/claude-m5-rereview2-d277440.md`, root checkout); the owner approved the merge. **M6 accepted for implementation** (D45–D54, 2026-10-25). M1 15/18, hourly blocked. |
 | **`main`** | `d27744094bf9cb69247a612fbb08338fbd892870`; owner-approved fast-forward from `5cd9363` (2026-10-25); not pushed. |
-| **Current work** | **M6-00 to M6-10 committed (checked) on `m6/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m6`); package checks passed on `06c1161` (Git Bash and PowerShell 3925 passed, baseline failure only; fresh installs passed). Review package `docs/reviews/claude-m6-milestone-package.md` awaits Codex's review of every commit. M6-11 (live LLM run) awaits the owner's key-use approval and removal of the user-level `GOOGLE_API_KEY`. Nothing merged or pushed. |
+| **Current work** | **M6-00 to M6-10 committed (checked) on `m6/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m6`), **plus 14 review-fix commits `e312999..e5c3169`** answering Codex's M6 review (B1–B11, N1–N6) and re-review (R1–R3). Package checks passed on `e5c3169`: both shells 3968 passed, baseline failure only; fresh installs passed. Fix package `docs/reviews/claude-m6-review-fix-package.md` awaits Codex's re-review. Owner approved the M6-only scope extensions, including migration 0022 (2026-10-26). M6-11 (live LLM run) awaits Codex acceptance, then the owner's key-use approval and removal of the user-level `GOOGLE_API_KEY`. Nothing merged or pushed. |
 | **Previous state (2026-10-24)** | M5 deadline-test correction at `29ee1a0`; both full suites and fresh installs passed with baseline failures only; R1/R2 then accepted by Claude's re-review. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
@@ -29,7 +29,13 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-**Codex implements the owner-authorized M5 review fixes; Claude independently reviews (owner, 2026-10-22).**
+**M6 (2026-10-26): Claude implements; Codex reviews.**
+
+1. Codex re-reviews `e312999..` the fix-package commit, starting with `docs/reviews/claude-m6-review-fix-package.md`. Any finding returns to Claude as follow-up commits.
+2. After Codex accepts: M6-11, the one measured live run, only with the owner's explicit key-use approval, the user-level `GOOGLE_API_KEY` removed by the owner, and `research_worker.env` created by the owner.
+3. Then the M6 merge, which needs its own owner approval. No push without explicit instruction.
+
+**Earlier (M5, completed): Codex implemented the owner-authorized M5 review fixes; Claude independently reviewed (owner, 2026-10-22).**
 
 1. Completed: owner acceptance recorded, M4 fast-forwarded locally, planning commit `0f93c75`, isolated `m5/milestone` worktree created.
 2. Return the checked complete follow-up range after `93559f9` to Claude for independent re-review. Start with `docs/reviews/implementer-m5-rereview-fix-package.md`. M5 is not done until independent acceptance and a separately owner-approved merge.
@@ -169,6 +175,11 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-26: Claude Code (M6 review-fix package)
+- Package checks on `e5c3169` (script run sequentially from the M6 worktree): Git Bash `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider -rfEs`: 1 failed, 3968 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4051.24s (1:07:31). PowerShell, same command: 1 failed, 3968 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 3390.72s (0:56:30). The only failure in both is the baseline `tests/test_suite_isolation.py::test_yfinance_keeps_its_cache_out_of_the_users_home`. `ruff check .`: passed. `git diff --check d277440 HEAD`: clean. Tree unchanged after the checks. Fresh base and `[engine]` venvs installed `e5c3169`: modules from site-packages, base loads no pyarrow/duckdb/psycopg, U1 state keys present, schemas 0001–0022, research worker entry point, CI-style imports passed. CI not run.
+- Process note: stopping an earlier check run at about 06:00 stopped only its wrapper; its child kept running an unused PowerShell suite and install step until 08:00:40, overlapping the R1–R3 focused tests (which passed) and the first hour of this run. None of its output is counted.
+- Owner approved the M6-only scope extensions, including migration 0022 and the cross-task M6 file changes (2026-10-26); recorded in the fix package.
 
 ### 2026-10-26: Claude Code (M6-07)
 - Codex re-review R3 (the lease fence used a start time read before its final ownership read, and allowed no finish margin), fixed. The worker now reads the clock after its final ownership read and starts only if that time plus the run deadline plus a defined one-minute finish margin (for timeout handling and the terminal write) fits inside the lease; equality is allowed, one second more is not. A refused start is recorded FAILED "not started", with known-zero usage, as before.
