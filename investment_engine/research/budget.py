@@ -43,12 +43,18 @@ class ResearchBudget:
         self.store, self.clock = store, clock
 
     def reserve(self, run_id: str) -> BudgetUsage:
-        """Reserve one run's allowance for today (UTC), or raise BudgetRefused. Idempotent per run."""
+        """Reserve one run's allowance for today (UTC), or raise BudgetRefused. Idempotent per run.
+
+        Accounting policy (Codex M6 review N1): a run's usage is booked on the UTC day of its reservation, even
+        if its calls continue past midnight. The caps therefore bound reservation-day totals, not per-call
+        provider days; a provider cap counted per call needs a margin for runs that cross midnight (M6-11).
+        The day is read after the budget lock, so a lock wait across midnight books the new day.
+        """
         db = self.store.db
-        now = check_utc(self.clock.now(), "now")
-        day = now.date()
         with db.transaction():
-            db.lock(f"research-budget|{day.isoformat()}")
+            db.lock("research-budget")
+            now = check_utc(self.clock.now(), "now")
+            day = now.date()
             usages = self.store.usage_on(day)
             existing = next((u for u in usages if u.run_id == run_id and u.kind == "RESERVED"), None)
             if existing is not None:

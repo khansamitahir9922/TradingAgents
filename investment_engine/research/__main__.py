@@ -15,14 +15,31 @@ import subprocess
 import sys
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
 
 
-def _code_version() -> str:
+def _code_version(package_dir: Path | None = None) -> str:
+    """The commit of the checkout this package runs from, else "unversioned" (Codex M6 review N4).
+
+    Asked of the package's own directory, never the caller's working directory, and only accepted when
+    that checkout's top level holds this very package (an installed copy elsewhere is unversioned)."""
+    import investment_engine
+
+    package = (package_dir or Path(investment_engine.__file__).parent).resolve()
+
+    def git(*args):
+        out = subprocess.run(["git", "-C", str(package), *args], capture_output=True, text=True, timeout=10,
+                             check=False)
+        return out.stdout.strip() if out.returncode == 0 else ""
+
     try:
-        out = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10, check=False)
-        return out.stdout.strip() if out.returncode == 0 and out.stdout.strip() else "unversioned"
+        top = git("rev-parse", "--show-toplevel")
+        head = git("rev-parse", "HEAD")
     except (OSError, subprocess.SubprocessError):
         return "unversioned"
+    if top and head and (Path(top) / "investment_engine").resolve() == package:
+        return head
+    return "unversioned"
 
 
 def main(argv: list[str] | None = None) -> int:

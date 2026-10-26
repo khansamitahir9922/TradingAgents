@@ -26,7 +26,8 @@ from investment_engine.research.context import NoResearchContext, build_context
 from investment_engine.research.contracts import JobState, ResearchRecord, RunOutcome, UsageTotals
 from investment_engine.research.store import ResearchStore, StaleJob
 
-LEASE_MARGIN = timedelta(minutes=5)  # the lease outlives the deadline, so a live run is never re-claimed
+LEASE_MARGIN = timedelta(minutes=5)
+NOT_MEASURED = "the run's calls were not captured: request and tool counts are not measured"  # the lease outlives the deadline, so a live run is never re-claimed
 
 
 @dataclass(frozen=True)
@@ -77,13 +78,19 @@ class ResearchWorker:
             raise result["error"]
         return result["output"]
 
-    def _failed_record(self, job, attempt, started, reason) -> ResearchRecord:
+    def _failed_record(self, job, attempt, started, reason, *, partial=False) -> ResearchRecord:
         try:
             upstream = importlib.metadata.version("tradingagents")
         except importlib.metadata.PackageNotFoundError:
             upstream = "unknown"
-        return ResearchRecord(job.job_id, attempt, job.settings, upstream, self.code_version, (), (), (), (), "{}",
-                              UsageTotals(0, None, None, 0), ("the run's calls were not captured",), started,
+        calls, tools, texts, sources = (), (), (), ()
+        snapshot = getattr(self.port, "partial", None) if partial else None
+        if callable(snapshot):
+            calls, tools, texts, sources = snapshot()
+        warnings = (NOT_MEASURED,) if not (calls or tools) else (
+            "partial capture at abandonment: the run may have made further calls afterwards",)
+        return ResearchRecord(job.job_id, attempt, job.settings, upstream, self.code_version, calls, tools, texts,
+                              sources, "{}", UsageTotals.of(calls, len(tools)), warnings, started,
                               max(started, check_utc(self.clock.now(), "now")), RunOutcome.FAILED, reason)
 
     def step(self) -> StepReport:
@@ -128,7 +135,7 @@ class ResearchWorker:
         if output is None:
             record = self._failed_record(job, claim.attempt, started,
                                          f"deadline exceeded after {self.deadline.total_seconds():g}s; "
-                                         "the run is abandoned and its reservation stays counted")
+                                         "the run is abandoned and its reservation stays counted", partial=True)
         else:
             record = output.record
             usage = actual_usage(reservation, record.usage, at=check_utc(self.clock.now(), "now"))

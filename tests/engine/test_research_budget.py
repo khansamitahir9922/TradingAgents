@@ -140,3 +140,17 @@ def test_policies_are_versioned_and_audited(env):
     first, second = policy(env), policy(env, requests=5)
     assert (first.version, second.version, second.daily_requests) == (1, 2, 5)
     assert env.db.fetchone("SELECT count(*) FROM audit_events WHERE action='research.budget_policy'")[0] == 2
+
+
+def test_a_lock_wait_across_midnight_books_the_day_read_after_the_lock(env, monkeypatch):
+    policy(env, requests=1)
+    clock = ReplayClock(datetime(2026, 1, 9, 23, 59, 30, tzinfo=UTC))
+    worker = budget(env, ProcessRole.RESEARCH, clock)
+    real_lock = env.db.lock
+
+    def slow_lock(*names):
+        clock.advance_by(timedelta(minutes=1))  # waited past midnight UTC for the budget lock
+        return real_lock(*names)
+
+    monkeypatch.setattr(env.db, "lock", slow_lock)
+    assert worker.reserve("run-1").day == date(2026, 1, 10)

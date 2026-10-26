@@ -233,6 +233,7 @@ class TradingAgentsAdapter:
         log_factory = logging.getLogRecordFactory()
         logging.setLogRecordFactory(self._redacting_records(log_factory))
         sources = SourceRecorder(clock)
+        self._live = (counter, capture, sources)
         try:
             with sources:
                 failure, final_state, state_text = self._run_graph(job, cfg, handlers, guard, today)
@@ -240,6 +241,20 @@ class TradingAgentsAdapter:
             logging.setLogRecordFactory(log_factory)
         return self._output(job, attempt, clock, started, counter, capture, cfg, failure, final_state, state_text,
                             sources.refs())
+
+    def partial(self):
+        """What the current (or last) run has captured so far: (calls, tools, texts, data sources).
+
+        Thread-safe snapshot, for a worker abandoning a run at its deadline (Codex M6 review N2)."""
+        live = getattr(self, "_live", None)
+        if live is None:
+            return (), (), (), ()
+        counter, capture, sources = live
+        calls = tuple(CallRecord(c.run_id, c.node, c.model, c.started_at, c.ended_at, c.input_tokens,
+                                 c.output_tokens, c.error) for c in counter.calls())
+        tools = tuple(ToolRecord(t.run_id, t.node, t.name, t.input_sha256, t.result_chars, t.started_at, t.ended_at,
+                                 t.error) for t in counter.tools())
+        return calls, tools, capture.texts(), sources.refs()
 
     def _redacting_records(self, make):
         """Every log record created during a run (upstream's warnings included) carries redacted text only."""

@@ -284,3 +284,63 @@ def test_a_constructed_worker_has_loaded_no_other_domains_writer_code(pg_databas
     assert done.returncode == 0, done.stderr[-2000:]
     loaded = done.stdout.split()
     assert [m for m in loaded if any(m == d or m.startswith(d + ".") for d in WRITER_DOMAINS)] == []
+
+
+class PartialPort(FakePort):
+    """Makes one recorded call, then stalls: what was captured must survive abandonment."""
+
+    def __init__(self, block):
+        super().__init__(block=block)
+        self.captured = ((), (), (), ())
+
+    def run(self, job, *, attempt, clock):
+        from investment_engine.research.contracts import CallRecord
+
+        self.captured = ((CallRecord("c1", "Market Analyst", "gemini-quick-001", clock.now(), clock.now(), 5, 2,
+                                     None),), (), (), ())
+        return super().run(job, attempt=attempt, clock=clock)
+
+    def partial(self):
+        return self.captured
+
+
+def test_an_abandoned_run_keeps_its_partial_capture(env):
+    release = threading.Event()
+    w = worker(env, PartialPort(release), deadline=timedelta(milliseconds=200))
+    try:
+        assert w.step().failed == 1
+        final = env.store(ProcessRole.RESEARCH).current(job().job_id)
+        rec = env.store(ProcessRole.RESEARCH).record(final.run_id)
+        assert rec.usage.requests == 1 and len(rec.calls) == 1 and "partial capture" in " ".join(rec.warnings)
+    finally:
+        release.set()
+        w.wait_for_stalled(timeout=5)
+
+
+def test_an_uncaptured_run_is_shown_as_not_measured_never_zero(env):
+    from investment_engine.research_cli import show_text
+
+    release = threading.Event()
+    w = worker(env, FakePort(block=release), deadline=timedelta(milliseconds=200))
+    try:
+        w.step()
+        final = env.store(ProcessRole.RESEARCH).current(job().job_id)
+        text = show_text(env.db, final.run_id)
+        assert "NOT MEASURED" in text and "0 requests" not in text
+    finally:
+        release.set()
+        w.wait_for_stalled(timeout=5)
+
+
+def test_the_code_version_comes_from_the_packages_own_checkout(tmp_path, monkeypatch):
+    import subprocess
+    from pathlib import Path
+
+    import investment_engine
+
+    package = Path(investment_engine.__file__).parent
+    head = subprocess.run(["git", "-C", str(package), "rev-parse", "HEAD"], capture_output=True, text=True,
+                          check=True).stdout.strip()
+    monkeypatch.chdir(tmp_path)  # launched from an unrelated directory
+    assert entry._code_version() == head
+    assert entry._code_version(tmp_path) == "unversioned"  # not this package's checkout

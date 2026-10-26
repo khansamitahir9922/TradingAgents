@@ -107,8 +107,10 @@ def show_text(db, run_id: str) -> str:
     u = record.usage
     lines = [f"Run {run_id}: {record.outcome.value} (attempt {record.attempt}), {record.started_at.isoformat()} to "
              f"{record.finished_at.isoformat()}",
-             f"Usage: {u.requests} requests, tokens in {u.input_tokens if u.input_tokens is not None else 'UNKNOWN'}, "
-             f"out {u.output_tokens if u.output_tokens is not None else 'UNKNOWN'}, {u.tool_calls} tool calls",
+             ("Usage: NOT MEASURED (the run's calls were not captured)" if any(
+                 "not measured" in w for w in record.warnings) else
+              f"Usage: {u.requests} requests, tokens in {u.input_tokens if u.input_tokens is not None else 'UNKNOWN'}, "
+              f"out {u.output_tokens if u.output_tokens is not None else 'UNKNOWN'}, {u.tool_calls} tool calls"),
              f"Upstream {record.upstream_version}; code {record.code_version}"]
     if record.failure:
         lines.append(f"Failure: {record.failure}")
