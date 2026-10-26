@@ -14,10 +14,29 @@ from pathlib import Path
 from types import MappingProxyType
 
 # Keys this worker may load into its own process environment for upstream TradingAgents.
-LLM_KEYS = frozenset({"GOOGLE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "XAI_API_KEY", "DEEPSEEK_API_KEY",
+LLM_KEYS = frozenset({"GOOGLE_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "XAI_API_KEY", "DEEPSEEK_API_KEY",
                       "OPENROUTER_API_KEY", "ALPHA_VANTAGE_API_KEY", "FRED_API_KEY", "FINNHUB_API_KEY"})
 # Environment names that look like broker credentials: the Research Worker must never see one.
 BROKER_MARKERS = ("ALPACA", "BROKER", "IBKR", "INTERACTIVE_BROKERS", "TRADIER", "SCHWAB", "TASTYTRADE", "OANDA")
+
+
+# Ambient variables that change a Google-only run (D45) outside the job's frozen settings and the budget's
+# counter: TypeSafe/Jev switches itself on whatever the provider (excluded, D54), and the Google client moves to
+# Vertex AI (another endpoint, project and billing) on these. Both tiers are pinned to Google (B4), so other
+# providers' keys and endpoints are inert and not refused.
+AMBIENT_SWITCHES = frozenset({"TYPESAFE_API_KEY", "TYPESAFE_BASE_URL", "TYPESAFE_DEFAULT_MODEL",
+                              "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION",
+                              "GOOGLE_APPLICATION_CREDENTIALS"})
+# TRADINGAGENTS_* overrides change upstream defaults; the adapter sets its own paths, so only these three are inert.
+INERT_TRADINGAGENTS = frozenset({"TRADINGAGENTS_RESULTS_DIR", "TRADINGAGENTS_CACHE_DIR",
+                                 "TRADINGAGENTS_MEMORY_LOG_PATH"})
+
+
+def ambient_switches(environ: Mapping[str, str]) -> list[str]:
+    """Names (never values) of set variables that would change providers, endpoints or integrations."""
+    return sorted(name for name, value in environ.items() if value and (
+        name.upper() in AMBIENT_SWITCHES or
+        (name.upper().startswith("TRADINGAGENTS_") and name.upper() not in INERT_TRADINGAGENTS)))
 
 
 class ResearchSecretsError(ValueError):
@@ -53,6 +72,10 @@ def check_environment(environ: Mapping[str, str], *, execution_secrets: Path) ->
     if execution_secrets.exists():
         raise ResearchSecretsError(f"the Execution Worker's broker secrets file {execution_secrets.name} is visible "
                                    "to the Research Worker; run them as separate users (ADR-002)")
+    switches = ambient_switches(environ)
+    if switches:
+        raise ResearchSecretsError("variables that change upstream providers, endpoints or integrations are set ("
+                                   + ", ".join(switches) + "); M6 runs Google only, with Jev excluded (D45, D54)")
     ambient = sorted(name for name in environ if name in LLM_KEYS and environ[name])
     if ambient:
         raise ResearchSecretsError("LLM keys are set in the inherited environment (" + ", ".join(ambient) +
@@ -66,5 +89,5 @@ def install(secrets: Mapping[str, str]) -> None:
         os.environ[key] = value
 
 
-__all__ = ["BROKER_MARKERS", "LLM_KEYS", "ResearchSecretsError", "check_environment", "install",
-           "load_research_secrets"]
+__all__ = ["AMBIENT_SWITCHES", "BROKER_MARKERS", "LLM_KEYS", "ResearchSecretsError", "ambient_switches",
+           "check_environment", "install", "load_research_secrets"]

@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import importlib.metadata
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -27,6 +28,7 @@ from investment_engine.research.contracts import (
     ToolRecord,
     UsageTotals,
 )
+from investment_engine.research.secrets import ambient_switches
 from investment_engine.research.usage import UsageCounter
 
 EXCHANGE_ZONE = ZoneInfo("America/New_York")
@@ -36,6 +38,13 @@ STATE_KEYS = ("company_of_interest", "trade_date", "market_report", "sentiment_r
               "trader_proposal_structured", "risk_debate_state", "final_trade_decision", "final_rating",
               "final_decision_structured", "past_context", "memory_note")
 FAILURE_CHARS = 500
+PROVIDERS = frozenset({"google"})  # D45: Gemini only in M6
+RECORDED_CONFIG = ("llm_provider", "quick_think_provider", "deep_think_provider", "quick_think_llm",
+                   "deep_think_llm", "backend_url", "quick_think_backend_url", "deep_think_backend_url",
+                   "max_debate_rounds", "max_risk_discuss_rounds", "max_tool_rounds", "max_recur_limit",
+                   "temperature", "max_tokens", "llm_max_retries", "checkpoint_enabled", "output_language",
+                   "google_thinking_level", "openai_reasoning_effort", "anthropic_effort", "benchmark_ticker",
+                   "data_vendors", "tool_vendors")
 
 
 @dataclass(frozen=True)
@@ -72,25 +81,43 @@ class TradingAgentsAdapter:
 
         s = job.settings
         cfg = copy.deepcopy(DEFAULT_CONFIG)
-        cfg.update(llm_provider=s.provider, quick_think_llm=s.quick_model, deep_think_llm=s.deep_model,
+        # Every run-shaping key is set here, never inherited: both tiers on the job's provider, no endpoint
+        # overrides, provider knobs at their defaults, upstream's own tool/recursion limits (B4).
+        cfg.update(llm_provider=s.provider, quick_think_provider=s.provider, deep_think_provider=s.provider,
+                   quick_think_llm=s.quick_model, deep_think_llm=s.deep_model, backend_url=None,
+                   quick_think_backend_url=None, deep_think_backend_url=None,
                    max_debate_rounds=s.max_debate_rounds, max_risk_discuss_rounds=s.max_risk_rounds,
+                   max_tool_rounds=20, max_recur_limit=100,
                    temperature=None if s.temperature is None else float(s.temperature),  # LLM setting, not money
-                   output_language=s.output_language, llm_max_retries=0, checkpoint_enabled=False,
-                   results_dir=str(self.work_dir / "results"), data_cache_dir=str(self.work_dir / "cache"),
+                   max_tokens=None, google_thinking_level=None, openai_reasoning_effort=None, anthropic_effort=None,
+                   benchmark_ticker=None, output_language=s.output_language, llm_max_retries=0,
+                   checkpoint_enabled=False, results_dir=str(self.work_dir / "results"),
+                   data_cache_dir=str(self.work_dir / "cache"),
                    memory_log_path=str(self.work_dir / "memory" / "trading_memory.md"))
         return cfg
+
+    @staticmethod
+    def effective(cfg: dict) -> str:
+        return json.dumps({k: cfg.get(k) for k in RECORDED_CONFIG}, sort_keys=True, default=str)
 
     def run(self, job: ResearchJob, *, attempt: int, clock) -> RunOutput:
         started = check_utc(clock.now(), "start")
         counter, capture = UsageCounter(clock=clock), TextCapture(redact=self._redact)
         final_state, state_text, failure, warnings = None, "{}", None, []
         today = started.astimezone(EXCHANGE_ZONE).date()
-        if job.research_date != today:
+        switches = ambient_switches(os.environ)
+        cfg = self.config(job)
+        if job.settings.provider not in PROVIDERS:
+            failure = f"provider {job.settings.provider} is not approved: M6 runs Google only (D45)"
+        elif switches:
+            failure = ("refused before any call: set variables would change upstream providers, endpoints or "
+                       "integrations: " + ", ".join(switches))
+        elif job.research_date != today:
             failure = (f"research date {job.research_date.isoformat()} is not the current exchange date "
                        f"{today.isoformat()}: historical research is refused (D50)")
         else:
             try:
-                graph = self._graph_factory(selected_analysts=job.settings.analysts, config=self.config(job),
+                graph = self._graph_factory(selected_analysts=job.settings.analysts, config=cfg,
                                             callbacks=[counter, capture])
                 state = graph.create_run_state(job.ticker, job.research_date.isoformat())
                 result = graph.graph.invoke(state, **graph.propagator.get_graph_args(callbacks=[counter, capture]))
@@ -111,7 +138,8 @@ class TradingAgentsAdapter:
                                 self.code_version, calls, tools, capture.texts(), sources, state_text,
                                 UsageTotals.of(calls, len(tools)), tuple(warnings), started,
                                 max(started, check_utc(clock.now(), "finish")),
-                                RunOutcome.FAILED if failure else RunOutcome.SUCCEEDED, failure)
+                                RunOutcome.FAILED if failure else RunOutcome.SUCCEEDED, failure,
+                                self.effective(cfg))
         return RunOutput(record, final_state)
 
 

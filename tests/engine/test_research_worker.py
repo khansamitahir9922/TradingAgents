@@ -204,3 +204,13 @@ def test_without_reconnect_a_lost_connection_is_raised_typed(env):
     w.step = lambda: (_ for _ in ()).throw(psycopg.OperationalError("gone"))
     with pytest.raises(psycopg.OperationalError):
         w.run(poll_seconds=Decimal("0"), stop=lambda: False)
+
+
+@pytest.mark.parametrize("name", ["TYPESAFE_API_KEY", "TRADINGAGENTS_DEEP_THINK_PROVIDER", "GOOGLE_GENAI_USE_VERTEXAI",
+                                  "GOOGLE_CLOUD_PROJECT"])
+def test_startup_refuses_ambient_switches_that_change_upstream_providers(paths, monkeypatch, capsys, name):
+    (paths / "secrets" / "research_worker.env").write_text("GOOGLE_API_KEY=file-value-123\n", encoding="utf-8")
+    monkeypatch.setenv(name, "ambient-switch-555")
+    assert entry.main(["run", "--once"]) == 2
+    out = capsys.readouterr().out
+    assert name in out and "ambient-switch-555" not in out and "file-value-123" not in out

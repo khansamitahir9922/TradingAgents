@@ -296,10 +296,13 @@ class ResearchRecord:
     finished_at: datetime
     outcome: RunOutcome
     failure: str | None
+    effective_config_json: str = "{}"  # the upstream configuration actually used (Codex M6 review B4)
 
     def __post_init__(self) -> None:
         check_name(self.job_id, "job_id")
         _count(self.attempt, "attempt", positive=True)
+        if not isinstance(self.effective_config_json, str) or len(self.effective_config_json) > MAX_TEXT:
+            raise ValueError("effective_config_json must be bounded text")
         if not isinstance(self.settings, ResearchSettings):
             raise TypeError("ResearchSettings required")
         check_name(self.upstream_version, "upstream_version")

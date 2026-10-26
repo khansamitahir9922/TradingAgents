@@ -118,3 +118,46 @@ def test_run_times_come_from_the_injected_clock(tmp_path, monkeypatch):
     out = adapter(tmp_path).run(job(), attempt=2, clock=clock)
     assert out.record.started_at == T == out.record.finished_at and out.record.attempt == 2
     assert out.record.finished_at - out.record.started_at == timedelta(0)
+
+
+def test_tier_providers_and_endpoints_are_pinned_whatever_the_ambient_defaults(tmp_path, monkeypatch):
+    from tradingagents.default_config import DEFAULT_CONFIG
+
+    for key, value in (("deep_think_provider", "openai"), ("quick_think_provider", "anthropic"),
+                       ("backend_url", "https://elsewhere.example/v1"), ("deep_think_backend_url", "https://x.example"),
+                       ("google_thinking_level", "high"), ("max_tool_rounds", 3)):
+        monkeypatch.setitem(DEFAULT_CONFIG, key, value)  # what inherited TRADINGAGENTS_* variables would do
+    seen = []
+    real = trading_graph.create_tier_client
+    use_model(monkeypatch, ScriptedModel(structured=True))
+    fake = trading_graph.create_tier_client
+
+    def spy(config, tier, **k):
+        seen.append((tier, config[f"{tier}_think_provider"], config.get(f"{tier}_think_backend_url"),
+                     config.get("backend_url"), config.get("google_thinking_level"), config["max_tool_rounds"]))
+        return fake(config, tier, **k)
+
+    monkeypatch.setattr(trading_graph, "create_tier_client", spy)
+    out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
+    assert real is not None and out.record.outcome is RunOutcome.SUCCEEDED
+    assert sorted(seen) == [("deep", "google", None, None, None, 20), ("quick", "google", None, None, None, 20)]
+    effective = json.loads(out.record.effective_config_json)
+    assert effective["deep_think_provider"] == effective["quick_think_provider"] == "google"
+    assert effective["backend_url"] is None and effective["llm_max_retries"] == 0
+
+
+def test_a_provider_other_than_google_is_refused_before_any_call(tmp_path, monkeypatch):
+    model = ScriptedModel(structured=True)
+    use_model(monkeypatch, model)
+    out = adapter(tmp_path).run(job(settings=settings(provider="openai")), attempt=1, clock=ReplayClock(T))
+    assert out.record.outcome is RunOutcome.FAILED and "D45" in out.record.failure and model.calls == []
+
+
+@pytest.mark.parametrize("name", ["TYPESAFE_API_KEY", "TRADINGAGENTS_DEEP_THINK_PROVIDER", "GOOGLE_GENAI_USE_VERTEXAI"])
+def test_an_ambient_upstream_switch_refuses_the_run_before_any_call(tmp_path, monkeypatch, name):
+    monkeypatch.setenv(name, "ambient-value-xyz")
+    model = ScriptedModel(structured=True)
+    use_model(monkeypatch, model)
+    out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
+    assert out.record.outcome is RunOutcome.FAILED and name in out.record.failure
+    assert "ambient-value-xyz" not in out.record.failure and model.calls == []
