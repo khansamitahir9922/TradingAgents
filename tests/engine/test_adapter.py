@@ -336,3 +336,38 @@ def test_the_recorder_restores_upstream_after_the_run(tmp_path, monkeypatch):
     after = ({m: dict(v) for m, v in router.VENDOR_METHODS.items()}, sentiment_analyst.fetch_stocktwits_messages,
              sentiment_analyst.fetch_reddit_posts, context._identity)
     assert after == before
+
+
+def test_memory_settlement_price_fetches_are_captured_with_their_data(tmp_path, monkeypatch):
+    import pandas as pd
+
+    from tradingagents.memory import settlement
+    from tradingagents.memory.log import TradingMemoryLog
+
+    calls = []
+
+    def closes(symbol, start, end):
+        calls.append(symbol)
+        days = pd.bdate_range(start="2025-12-01", periods=12)
+        base = 100.0 if symbol == "NVDA" else 50.0
+        return pd.Series([base + i for i in range(len(days))], index=days, name="Close")
+
+    monkeypatch.setattr(settlement, "get_closes", closes)
+    a = adapter(tmp_path)
+    TradingMemoryLog(a.config(job())).store_decision(ticker="NVDA", trade_date="2025-12-01",
+                                                     final_trade_decision="Earlier decision.", rating="Buy")
+    use_model(monkeypatch, ScriptedModel(structured=True))
+    out = a.run(job(), attempt=1, clock=ReplayClock(T))
+    assert out.record.outcome is RunOutcome.SUCCEEDED and calls  # the memory step really settled
+    settled = [r for r in out.record.data_sources if r.method == "settlement_closes"]
+    assert len(settled) == len(calls) >= 2 and {r.vendor for r in settled} == {"yfinance"}
+    snapshots = [t.text for t in out.record.texts if t.call_id.startswith("source-")]
+    assert any("111.0" in t for t in snapshots) and any("61.0" in t for t in snapshots)  # actual closes kept
+
+
+def test_direct_fetch_results_are_kept_as_input_snapshots(tmp_path, monkeypatch):
+    use_model(monkeypatch, ScriptedModel(structured=True))
+    out = adapter(tmp_path).run(job(), attempt=1, clock=ReplayClock(T))
+    snapshots = {t.call_id: t.text for t in out.record.texts if t.call_id.startswith("source-")}
+    assert len(snapshots) == len(out.record.data_sources)  # one recoverable snapshot per recorded fetch
+    assert any("no posts" in text for text in snapshots.values())  # the social fetchers' actual answers

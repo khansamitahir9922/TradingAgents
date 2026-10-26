@@ -26,7 +26,9 @@ from langchain_core.callbacks import BaseCallbackHandler
 from investment_engine.market.availability import check_utc
 from investment_engine.research.capture import Redactor, TextCapture
 from investment_engine.research.contracts import (
+    MAX_TEXT,
     CallRecord,
+    CapturedText,
     DataSourceRef,
     ResearchJob,
     ResearchRecord,
@@ -105,9 +107,10 @@ class SourceRecorder:
     restored afterwards. Arguments are hashed, results measured; nothing is altered.
     """
 
-    def __init__(self, clock) -> None:
-        self._clock, self._lock = clock, threading.Lock()
+    def __init__(self, clock, redact) -> None:
+        self._clock, self._redact, self._lock = clock, redact, threading.Lock()
         self._refs: list[DataSourceRef] = []
+        self._snapshots: list[CapturedText] = []
         self._restore: list = []
 
     def _wrap(self, vendor: str, method: str, func):
@@ -122,15 +125,19 @@ class SourceRecorder:
                 recorder._add(DataSourceRef(vendor, method, started, digest, recorder._clock.now(),
                                             type(exc).__name__, None))
                 raise
-            recorder._add(DataSourceRef(vendor, method, started, digest, recorder._clock.now(), None,
-                                        len(str(result))))
+            text = _snapshot(result)
+            recorder._add(DataSourceRef(vendor, method, started, digest, recorder._clock.now(), None, len(text)), text)
             return result
 
         return recorded
 
-    def _add(self, ref: DataSourceRef) -> None:
+    def _add(self, ref: DataSourceRef, text: str | None = None) -> None:
+        """A fetch and, when it answered, its exact result as an untrusted input snapshot (redacted)."""
         with self._lock:
             self._refs.append(ref)
+            body = self._redact(f"[{ref.vendor} {ref.method}] " + (text if text is not None else f"error: {ref.error}"))
+            cut = max(0, len(body) - MAX_TEXT)
+            self._snapshots.append(CapturedText(f"source-{len(self._refs)}", None, "tool_output", body[:MAX_TEXT], cut))
 
     def _replace(self, owner, name, value) -> None:
         self._restore.append((owner, name, owner[name] if isinstance(owner, dict) else getattr(owner, name)))
@@ -143,6 +150,7 @@ class SourceRecorder:
         from tradingagents.agents import context
         from tradingagents.agents.analysts import sentiment_analyst
         from tradingagents.dataflows import router
+        from tradingagents.memory import settlement
 
         for method, vendors in router.VENDOR_METHODS.items():
             for vendor, impl in list(vendors.items()):
@@ -155,6 +163,8 @@ class SourceRecorder:
         self._replace(sentiment_analyst, "fetch_reddit_posts",
                       self._wrap("reddit", "reddit_posts", sentiment_analyst.fetch_reddit_posts))
         self._replace(context, "_identity", self._wrap("yfinance", "instrument_identity", context._identity))
+        # The Memory Log step settles due decisions with prices fetched outside the router (re-review R2).
+        self._replace(settlement, "get_closes", self._wrap("yfinance", "settlement_closes", settlement.get_closes))
         return self
 
     def __exit__(self, *exc) -> None:
@@ -168,6 +178,21 @@ class SourceRecorder:
     def refs(self) -> tuple[DataSourceRef, ...]:
         with self._lock:
             return tuple(self._refs)
+
+    def snapshots(self) -> tuple[CapturedText, ...]:
+        with self._lock:
+            return tuple(self._snapshots)
+
+
+def _snapshot(result) -> str:
+    """The full result as text: frames and series in full (JSON), never pandas' abbreviated repr."""
+    to_json = getattr(result, "to_json", None)
+    if callable(to_json):
+        try:
+            return to_json(date_format="iso")
+        except (TypeError, ValueError):
+            pass
+    return str(result)
 
 
 @dataclass(frozen=True)
@@ -232,7 +257,7 @@ class TradingAgentsAdapter:
         cfg = self.config(job)
         log_factory = logging.getLogRecordFactory()
         logging.setLogRecordFactory(self._redacting_records(log_factory))
-        sources = SourceRecorder(clock)
+        sources = SourceRecorder(clock, self._redact)
         self._live = (counter, capture, sources)
         try:
             with sources:
@@ -240,7 +265,7 @@ class TradingAgentsAdapter:
         finally:
             logging.setLogRecordFactory(log_factory)
         return self._output(job, attempt, clock, started, counter, capture, cfg, failure, final_state, state_text,
-                            sources.refs())
+                            sources)
 
     def partial(self):
         """What the current (or last) run has captured so far: (calls, tools, texts, data sources).
@@ -254,7 +279,7 @@ class TradingAgentsAdapter:
                                  c.output_tokens, c.error) for c in counter.calls())
         tools = tuple(ToolRecord(t.run_id, t.node, t.name, t.input_sha256, t.result_chars, t.started_at, t.ended_at,
                                  t.error) for t in counter.tools())
-        return calls, tools, capture.texts(), sources.refs()
+        return calls, tools, capture.texts() + sources.snapshots(), sources.refs()
 
     def _redacting_records(self, make):
         """Every log record created during a run (upstream's warnings included) carries redacted text only."""
@@ -314,10 +339,10 @@ class TradingAgentsAdapter:
                                  c.error) for c in counter.calls())
         tools = tuple(ToolRecord(t.run_id, t.node, t.name, t.input_sha256, t.result_chars, t.started_at, t.ended_at,
                                  t.error) for t in counter.tools())
-        if sources:
+        if sources.refs():
             warnings.append(CACHE_NOTE)
         record = ResearchRecord(job.job_id, attempt, job.settings, importlib.metadata.version("tradingagents"),
-                                self.code_version, calls, tools, capture.texts(), sources, state_text,
+                                self.code_version, calls, tools, capture.texts() + sources.snapshots(), sources.refs(), state_text,
                                 UsageTotals.of(calls, len(tools)), tuple(warnings), started,
                                 max(started, check_utc(clock.now(), "finish")),
                                 RunOutcome.FAILED if failure else RunOutcome.SUCCEEDED, failure,
