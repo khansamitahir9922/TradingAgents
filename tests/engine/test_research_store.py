@@ -55,7 +55,9 @@ def env(pg_database):
 
 
 def context_for(run_id):
-    return ResearchContext(run_id, "EQ_US_NVDA", Rating.HOLD, None, UntrustedLevels(None, None), 5, T,
+    """A context generated when the fixture record finishes (record() runs T..T+3min)."""
+    finished = T + timedelta(minutes=3)
+    return ResearchContext(run_id, "EQ_US_NVDA", Rating.HOLD, None, UntrustedLevels(None, None), 5, finished,
                            T + timedelta(days=7), (), ContextSource.TYPED)
 
 
@@ -78,7 +80,8 @@ def test_request_claim_and_succeed_atomically_with_one_event(env):
                          context=context_for(rec.run_id), usage=usage)
     assert done.state is JobState.SUCCEEDED
     assert worker.record(rec.run_id) == rec and worker.context(rec.run_id) == context_for(rec.run_id)
-    assert worker.latest_context("EQ_US_NVDA", at=T) == context_for(rec.run_id)
+    assert worker.latest_context("EQ_US_NVDA", at=T) is None  # not generated yet at T
+    assert worker.latest_context("EQ_US_NVDA", at=rec.finished_at) == context_for(rec.run_id)
     assert env.db.fetchone("SELECT count(*) FROM outbox WHERE writer='research-worker' "
                            "AND event_type='research.completed'")[0] == 1
     assert worker.claimable(at=T + timedelta(days=1)) == ()
@@ -200,7 +203,7 @@ def test_upgrade_from_populated_0020_keeps_rows(pg_database, monkeypatch):
             db.execute("INSERT INTO accounts VALUES ('R1','RESEARCH','USD',:t,:t)", {"t": T})
         before = db.fetchall("SELECT * FROM accounts ORDER BY 1")
         monkeypatch.setattr(pg, "_pg_schema_scripts", lambda: scripts)
-        assert pg.apply_pg_schema(conn) == 21
+        assert pg.apply_pg_schema(conn) == scripts[-1][0]
         assert db.fetchall("SELECT * FROM accounts ORDER BY 1") == before
     finally:
         conn.close()
@@ -244,3 +247,70 @@ def test_reclaim_refusal_and_expiry_streams_are_contiguous(env):
     seen, report = _deliver(env, ALL_TYPES)
     assert report.held == 0 and report.failed == 0
     assert sorted(v for _, v in seen) == [1, 1, 2, 2, 3, 4]
+
+
+def test_a_bundle_must_match_its_job_instrument_settings_and_times(env):
+    from tests.engine.test_research_contracts import settings
+
+    core, worker, _ = requested(env)
+    claim = worker.claim(job().job_id, expected_version=1, worker_id="rw-1", lease=LEASE)
+    msft = replace(context_for(claim.run_id), instrument_id="EQ_US_MSFT")
+    other_models = replace(record(), settings=settings(deep_model="gemini-deep-999"))
+    early = replace(context_for(claim.run_id), generated_at=T - timedelta(hours=1))
+    for rec, ctx in ((record(), msft), (other_models, context_for(claim.run_id)), (record(), early)):
+        with pytest.raises(ValueError, match="job"):
+            worker.finish(job().job_id, expected_version=2, worker_id="rw-1", record=rec, context=ctx, usage=None)
+    assert env.counts()[2:4] == (0, 0)  # no record or context was saved
+
+
+def _sql_insert_context(env, run_id, instrument="EQ_US_NVDA"):
+    from investment_engine.lineage.records import canonical_json
+
+    ctx = replace(context_for(run_id), instrument_id=instrument)
+    env.conn.execute("SELECT set_config('investment_engine.process_role','research-worker',true)")
+    env.conn.execute("INSERT INTO research_contexts VALUES (%s,%s,%s,%s,%s)",
+                     (run_id, instrument, ctx.generated_at, ctx.valid_until, canonical_json(ctx)))
+
+
+def test_sql_refuses_a_context_added_after_the_run_failed_or_for_another_instrument(env):
+    core, worker, _ = requested(env)
+    claim = worker.claim(job().job_id, expected_version=1, worker_id="rw-1", lease=LEASE)
+    failed = record(outcome=RunOutcome.FAILED, failure="provider 429")
+    worker.finish(job().job_id, expected_version=2, worker_id="rw-1", record=failed, context=None, usage=None)
+    with pytest.raises(Exception, match="research context"), env.conn.transaction():
+        _sql_insert_context(env, claim.run_id)
+    assert worker.latest_context("EQ_US_NVDA", at=T + timedelta(days=1)) is None
+
+
+def test_sql_refuses_a_record_with_other_settings_than_its_job(env):
+    from investment_engine.lineage.records import canonical_json
+    from tests.engine.test_research_contracts import settings
+
+    core, worker, _ = requested(env)
+    claim = worker.claim(job().job_id, expected_version=1, worker_id="rw-1", lease=LEASE)
+    rec = replace(record(), settings=settings(deep_model="gemini-deep-999"))
+    with pytest.raises(Exception, match="research record"), env.conn.transaction():
+        env.conn.execute("SELECT set_config('investment_engine.process_role','research-worker',true)")
+        env.conn.execute("INSERT INTO research_records VALUES (%s,%s,1,'SUCCEEDED',%s,%s,%s)",
+                         (claim.run_id, job().job_id, rec.started_at, rec.finished_at, canonical_json(rec)))
+
+
+def test_upgrade_0021_to_latest_keeps_a_populated_research_bundle_readable(pg_database, monkeypatch):
+    from investment_engine.storage import postgres as pg
+
+    scripts = pg._pg_schema_scripts()
+    monkeypatch.setattr(pg, "_pg_schema_scripts", lambda: [(n, s) for n, s in scripts if n <= 21])
+    env = Env(pg_database)
+    try:
+        core, worker, _ = requested(env)
+        claim = worker.claim(job().job_id, expected_version=1, worker_id="rw-1", lease=LEASE)
+        worker.finish(job().job_id, expected_version=2, worker_id="rw-1", record=record(),
+                      context=context_for(claim.run_id), usage=None)
+        tables = ("research_jobs", "research_job_versions", "research_records", "research_contexts", "outbox")
+        before = {t: env.db.fetchall(f"SELECT * FROM {t} ORDER BY 1, 2") for t in tables}
+        monkeypatch.setattr(pg, "_pg_schema_scripts", lambda: scripts)
+        assert pg.apply_pg_schema(env.conn) == scripts[-1][0]
+        assert {t: env.db.fetchall(f"SELECT * FROM {t} ORDER BY 1, 2") for t in tables} == before
+        assert worker.context(claim.run_id) == context_for(claim.run_id)
+    finally:
+        env.conn.close()

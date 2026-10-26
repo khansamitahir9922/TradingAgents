@@ -130,16 +130,24 @@ class ResearchStore:
         return value
 
     def context(self, run_id: str) -> ResearchContext:
+        """Only a context whose job succeeded with this run, for the job's instrument (checked on read too)."""
         value = self._decode(self.db.fetchone("SELECT content FROM research_contexts WHERE run_id=:r",
                                               {"r": run_id}), ResearchContext)
         if value.run_id != run_id:
             raise ValueError("stored research context identity mismatch")
+        record = self.record(run_id)
+        succeeded = self.db.fetchone("SELECT 1 FROM research_job_versions WHERE job_id=:j AND run_id=:r "
+                                     "AND state='SUCCEEDED'", {"j": record.job_id, "r": run_id})
+        if succeeded is None or record.outcome is not RunOutcome.SUCCEEDED:
+            raise ValueError("a research context is shown only for a run its job recorded as succeeded")
+        self._check_bundle(self.job(record.job_id), record, value)
         return value
 
     def latest_context(self, instrument_id: str, *, at: datetime) -> ResearchContext | None:
         """The newest context generated at or before `at` (valid or expired: the caller labels it)."""
-        row = self.db.fetchone("SELECT run_id FROM research_contexts WHERE instrument_id=:i AND generated_at<=:t "
-                               "ORDER BY generated_at DESC, run_id DESC LIMIT 1",
+        row = self.db.fetchone("SELECT c.run_id FROM research_contexts c JOIN research_job_versions v ON "
+                               "v.run_id = c.run_id AND v.state = 'SUCCEEDED' WHERE c.instrument_id=:i AND "
+                               "c.generated_at<=:t ORDER BY c.generated_at DESC, c.run_id DESC LIMIT 1",
                                {"i": instrument_id, "t": check_utc(at, "at")})
         return None if row is None else self.context(row[0])
 
@@ -216,6 +224,15 @@ class ResearchStore:
                             {"v": policy.version, "by": policy.set_by, "at": policy.set_at, "c": canonical_json(policy)})
             return policy
 
+    @staticmethod
+    def _check_bundle(job, record, context) -> None:
+        """A saved run belongs to exactly its job: frozen settings, instrument and its own timing."""
+        if record.settings != job.settings:
+            raise ValueError("the run record's settings differ from its job's frozen settings")
+        if context is not None and (context.instrument_id != job.instrument_id
+                                    or context.generated_at != record.finished_at):
+            raise ValueError("the context must be its job's instrument, generated when its run finished")
+
     # ----------------------------------------------------- Research Worker writes
     def claim(self, job_id: str, *, expected_version: int, worker_id: str, lease: timedelta) -> Claim:
         self._require(ProcessRole.RESEARCH, "a research claim")
@@ -280,6 +297,7 @@ class ResearchStore:
         with self.db.transaction():
             self._claim_role()
             current = self._locked_current(job_id, expected_version)
+            self._check_bundle(self.job(job_id), record, context)
             if current.state is not JobState.CLAIMED or current.actor != worker_id or current.run_id != record.run_id:
                 raise StaleJob("only the current claim holder finishes its own run")
             state = JobState.SUCCEEDED if succeeded else JobState.FAILED
