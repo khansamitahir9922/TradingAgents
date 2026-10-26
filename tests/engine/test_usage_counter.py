@@ -41,7 +41,12 @@ def test_every_model_request_and_tool_call_is_counted_once(tmp_path, monkeypatch
     assert summary.requests == len(model.calls)  # the provider saw exactly what was counted
     assert summary.input_tokens == 10 * summary.requests and summary.output_tokens == 3 * summary.requests
     assert {node for node, _ in summary.per_agent} == AGENT_NODES  # every request attributed to its agent
-    assert summary.tool_calls >= 12  # every tool-using analyst called each of its tools
+    # The exact one-round table: each tool-using analyst asks once for its tool calls and once to write up;
+    # every other agent asks once. An extra, unintended call changes this table.
+    expected = dict.fromkeys(AGENT_NODES, 1) | dict.fromkeys(
+        ("Market Analyst", "News Analyst", "Fundamentals Analyst"), 2)
+    assert dict(summary.per_agent) == expected and summary.requests == 15
+    assert summary.tool_calls == 12  # exactly one call per bound tool
     assert summary.warnings == ()
 
 

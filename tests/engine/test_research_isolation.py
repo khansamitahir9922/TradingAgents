@@ -91,7 +91,8 @@ def test_the_research_role_cannot_write_any_order_table(pg_database):
         for sql in ("INSERT INTO orders (order_id) VALUES ('x')", "INSERT INTO fills (fill_id) VALUES ('x')",
                     "INSERT INTO gate_decisions (order_id) VALUES ('x')",
                     "INSERT INTO cancel_requests (order_id) VALUES ('x')"):
-            with pytest.raises(Exception, match="no valid process role|written only by|violates not-null"), \
+            # BEFORE triggers run before NOT NULL checks: the role refusal itself must be the failure.
+            with pytest.raises(Exception, match="no valid process role|written only by"), \
                     env.conn.transaction():
                 env.conn.execute("SELECT set_config('investment_engine.process_role','research-worker',true)")
                 env.conn.execute(sql)
