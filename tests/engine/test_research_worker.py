@@ -344,3 +344,43 @@ def test_the_code_version_comes_from_the_packages_own_checkout(tmp_path, monkeyp
     monkeypatch.chdir(tmp_path)  # launched from an unrelated directory
     assert entry._code_version() == head
     assert entry._code_version(tmp_path) == "unversioned"  # not this package's checkout
+
+
+def _slow_final_read(monkeypatch, env, delay):
+    """The worker's last ownership read before starting takes `delay` on its clock: the first read after
+    the budget reservation, which is the fence's own read (no delay in the reservation itself)."""
+    from investment_engine.research.budget import ResearchBudget as RB
+    from investment_engine.research.store import ResearchStore as RS
+
+    real_current, real_reserve = RS.current, RB.reserve
+    state = {"reserved": False, "delayed": False}
+
+    def reserve(self, run_id):
+        result = real_reserve(self, run_id)
+        state["reserved"] = True
+        return result
+
+    def slow(self, job_id):
+        if state["reserved"] and not state["delayed"]:
+            state["delayed"] = True
+            env.clock.advance_by(delay)
+        return real_current(self, job_id)
+
+    monkeypatch.setattr(RB, "reserve", reserve)
+    monkeypatch.setattr(RS, "current", slow)
+
+
+def test_a_slow_final_ownership_read_counts_against_the_lease(env, monkeypatch):
+    port = FakePort()
+    _slow_final_read(monkeypatch, env, timedelta(minutes=6))  # lease = deadline + 5 min
+    report = worker(env, port, deadline=timedelta(minutes=30)).step()
+    assert port.runs == [] and report.failed == 1
+    assert "not started" in env.store(ProcessRole.RESEARCH).current(job().job_id).reason
+
+
+@pytest.mark.parametrize("delay,starts", [(timedelta(minutes=4), True), (timedelta(minutes=4, seconds=1), False)])
+def test_the_fence_keeps_a_finish_margin_inside_the_lease(env, monkeypatch, delay, starts):
+    port = FakePort()
+    _slow_final_read(monkeypatch, env, delay)  # 4 min + 30 min deadline + 1 min finish margin = the 35 min lease
+    worker(env, port, deadline=timedelta(minutes=30)).step()
+    assert (port.runs == [1]) is starts

@@ -27,6 +27,9 @@ from investment_engine.research.contracts import JobState, ResearchRecord, RunOu
 from investment_engine.research.store import ResearchStore, StaleJob
 
 LEASE_MARGIN = timedelta(minutes=5)
+# A started run must also leave this much of its lease for timeout handling and its terminal write, so no other
+# worker can take the job over while this one is still finishing it (re-review R3).
+FINISH_MARGIN = timedelta(minutes=1)
 NOT_MEASURED = "the run's calls were not captured: request and tool counts are not measured"  # the lease outlives the deadline, so a live run is never re-claimed
 
 
@@ -115,17 +118,18 @@ class ResearchWorker:
             self.store.refuse_budget(job_id, expected_version=expected, worker_id=self.worker_id, reason=str(refused))
             return StepReport(claimed=1, refused=1, published=self.outbox.publish_pending())
         job = self.store.job(job_id)
-        started = check_utc(self.clock.now(), "start")
         # Fence (Codex M6 review B8): lock waits since the claim count against the lease. Start only while the
         # claim is still ours and the lease outlasts the whole deadline, so no other worker can take the job
         # while this run might still be talking to the provider.
         current = self.store.current(job_id)
+        started = check_utc(self.clock.now(), "start")  # after the final blocking read (re-review R3)
         if current.version != expected or current.actor != self.worker_id:
             return StepReport(claimed=1, published=self.outbox.publish_pending())  # taken over: write nothing
-        if started + self.deadline > current.lease_until:
+        if started + self.deadline + FINISH_MARGIN > current.lease_until:
             record = self._failed_record(job, claim.attempt, started,
                                          f"not started: the lease (until {current.lease_until.isoformat()}) would "
-                                         f"expire before the run's {self.deadline.total_seconds():g}s deadline")
+                                         f"expire before the run's {self.deadline.total_seconds():g}s deadline and "
+                                         f"its {FINISH_MARGIN.total_seconds():g}s finish margin")
             record = replace(record, usage=UsageTotals(0, 0, 0, 0), warnings=("no model call was made",))
             self.store.finish(job_id, expected_version=expected, worker_id=self.worker_id, record=record,
                               context=None, usage=actual_usage(reservation, record.usage, at=started))
