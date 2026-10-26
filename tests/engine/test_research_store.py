@@ -204,3 +204,43 @@ def test_upgrade_from_populated_0020_keeps_rows(pg_database, monkeypatch):
         assert db.fetchall("SELECT * FROM accounts ORDER BY 1") == before
     finally:
         conn.close()
+
+
+def _deliver(env, versions_by_type):
+    """Publish both writers' outboxes and run a real Consumer; returns the event types it applied in order."""
+    from investment_engine.events.consumer import Consumer
+
+    seen = []
+    for role in (ProcessRole.CORE, ProcessRole.RESEARCH):
+        Outbox(env.db, writer=role, clock=env.clock).publish_pending()
+    handles = {t: (lambda e, _t=t: seen.append((_t, e.aggregate_version))) for t in versions_by_type}
+    report = Consumer(env.db, name="research-test", handles=handles, clock=env.clock).run_once(limit=100)
+    return seen, report
+
+
+ALL_TYPES = ("research.requested", "research.claimed", "research.completed", "research.budget_refused",
+             "research.expired")
+
+
+def test_every_job_version_reaches_a_real_consumer_without_gaps(env):
+    core, worker, _ = requested(env)
+    claim = worker.claim(job().job_id, expected_version=1, worker_id="rw-1", lease=LEASE)
+    worker.finish(job().job_id, expected_version=2, worker_id="rw-1", record=record(),
+                  context=context_for(claim.run_id), usage=None)
+    seen, report = _deliver(env, ALL_TYPES)
+    assert seen == [("research.requested", 1), ("research.claimed", 2), ("research.completed", 3)]
+    assert report.failed == 0 and report.held == 0
+
+
+def test_reclaim_refusal_and_expiry_streams_are_contiguous(env):
+    core, worker, _ = requested(env)
+    worker.claim(job().job_id, expected_version=1, worker_id="rw-dead", lease=LEASE)
+    env.clock.advance_by(LEASE)
+    worker.claim(job().job_id, expected_version=2, worker_id="rw-2", lease=LEASE)
+    worker.refuse_budget(job().job_id, expected_version=3, worker_id="rw-2", reason="cap reached")
+    other = job(requested_at=env.clock.now())
+    core.request(other, by=TRADER)
+    core.expire_unclaimed(other.job_id, expected_version=1, actor="op-trader", reason="no longer needed")
+    seen, report = _deliver(env, ALL_TYPES)
+    assert report.held == 0 and report.failed == 0
+    assert sorted(v for _, v in seen) == [1, 1, 2, 2, 3, 4]

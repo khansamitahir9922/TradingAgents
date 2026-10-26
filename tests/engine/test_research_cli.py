@@ -52,6 +52,8 @@ def test_a_trader_or_admin_requests_research_for_today(env, operator):
     job = env.store(ProcessRole.CORE).job(version.job_id)
     assert (job.ticker, job.research_date, job.requested_by) == ("NVDA", date(2026, 1, 9), operator)
     assert job.settings.quick_model == "gemini-quick-001" and job.settings.max_debate_rounds == 1
+    published = env.db.fetchone("SELECT count(*) FROM event_log WHERE event_type='research.requested'")[0]
+    assert published == 1  # the request publishes its own event; no Core process is needed for delivery
 
 
 @pytest.mark.postgres

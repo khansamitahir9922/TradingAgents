@@ -56,7 +56,9 @@ def request_research(db, *, instrument_id: str, operator: str, reason: str, prov
         db.lock(f"operator|{operator}")
         actor = _actor(accounts, operator)
         accounts.authorize(actor, (Role.TRADER, Role.ADMIN), live_clock.now())
-        return store.request(ResearchJob(instrument_id, ticker, today, operator, now, reason, settings), by=actor)
+        version = store.request(ResearchJob(instrument_id, ticker, today, operator, now, reason, settings), by=actor)
+    store.outbox.publish_pending()  # after the commit: the request's event does not wait for a Core process
+    return version
 
 
 def set_budget(db, *, operator: str, reason: str, daily_requests: int, daily_tokens: int, reserve_requests: int,

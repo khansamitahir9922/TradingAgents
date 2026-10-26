@@ -235,6 +235,8 @@ class ResearchStore:
             value = self._append_version(JobVersion(job_id, current.version + 1, JobState.CLAIMED, now,
                                                     check_name(worker_id, "worker_id"), now + lease, run_id,
                                                     f"attempt {attempt}"))
+            # Every job version is an event: consumers read each aggregate's versions contiguously.
+            self._event("research.claimed", value, now, value)
             return Claim(value, attempt, run_id)
 
     def add_usage(self, usage: BudgetUsage) -> BudgetUsage:
