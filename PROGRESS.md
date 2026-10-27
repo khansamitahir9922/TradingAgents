@@ -4,17 +4,17 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 
 ---
 
-## Current state (2026-10-26)
+## Current state (2026-10-27)
 
 | | |
 |---|---|
-| **Milestone** | M0/M2/M3/M4/**M5 complete locally**. Claude independently accepted M5 at `d277440` (`docs/reviews/claude-m5-rereview2-d277440.md`, root checkout); the owner approved the merge. **M6 accepted for implementation** (D45–D54, 2026-10-25). M1 15/18, hourly blocked. |
-| **`main`** | `d27744094bf9cb69247a612fbb08338fbd892870`; owner-approved fast-forward from `5cd9363` (2026-10-25); not pushed. |
-| **Current work** | **M6-00 to M6-10 committed (checked) on `m6/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m6`), **plus 14 review-fix commits `e312999..e5c3169`** answering Codex's M6 review (B1–B11, N1–N6) and re-review (R1–R3). Package checks passed on `e5c3169`: both shells 3968 passed, baseline failure only; fresh installs passed. Codex accepted M6-00..10 at `5e13b97`. Owner approved the M6-only scope extensions, including migration 0022 (2026-10-26). **M6-11 measured** (2026-10-27): the third owner-approved attempt succeeded, and the owner chose about 8 runs per day at measured usage, via request/token caps (policy v5: 180 requests, 1,400,000 tokens); no run counter. Codex's M6-11 review B1 (live-test password redaction) and B2 (8-run claim) are fixed in a follow-up awaiting re-review; the merge needs the owner's approval. Nothing merged or pushed. |
+| **Milestone** | M0/M2/M3/M4/M5/**M6 complete locally**. Codex accepted M6 at `571df21` (`docs/reviews/codex-m6-11-rereview-571df21.md`, root checkout, untracked); the owner approved the merge (2026-10-27). M1 15/18, hourly blocked. |
+| **`main`** | `571df21` (M6), owner-approved fast-forward from `d277440` (2026-10-27), then this PROGRESS/status docs commit. |
+| **Current work** | **M6 done** (merged locally 2026-10-27): the Research Worker runs TradingAgents as advisory, display-only research, with a daily budget, full run records and secret redaction. One measured live run on Gemini free tier succeeded (21 requests, about 144,000 tokens, 17 tool calls, 8 min 39 s; `docs/reviews/m6-measurement.md`). The owner chose about 8 runs per day through request/token caps (policy v5: 180 requests, 1,400,000 tokens; no run counter). Next: M7 planning. |
 | **Previous state (2026-10-24)** | M5 deadline-test correction at `29ee1a0`; both full suites and fresh installs passed with baseline failures only; R1/R2 then accepted by Claude's re-review. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
-| **Checks** | Deadline-focused: 20 passed; both deliberate fault controls rejected. Git Bash: 1 failed, 3810 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4638.99s (1:17:18). PowerShell: 1 failed, 3810 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4549.85s (1:15:49). Only baseline failures; fresh base/engine installs with exact SQL-0020 hash, Ruff, scope and whitespace passed. CI not run. |
+| **Checks** | M6: package checks on `e5c3169` (identical production code to `571df21`): Git Bash and PowerShell 3968 passed each, baseline failure only; fresh base/engine installs passed. M6-11 follow-up: focused live checks passed, Ruff passed; full suites not rerun (docs and test-only changes). CI not run. Earlier M5: deadline-focused: 20 passed; both deliberate fault controls rejected. Git Bash: 1 failed, 3810 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4638.99s (1:17:18). PowerShell: 1 failed, 3810 passed, 7 skipped, 3 deselected, 20 warnings, 99 subtests passed in 4549.85s (1:15:49). Only baseline failures; fresh base/engine installs with exact SQL-0020 hash, Ruff, scope and whitespace passed. CI not run. |
 
 ### M0 work items (all complete)
 | ID | Item | State |
@@ -29,11 +29,11 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 ---
 
 ## Next steps
-**M6 (2026-10-26): Claude implements; Codex reviews.**
+**M6 done (2026-10-27).** Next: M7 planning (owner, 2026-10-27).
 
 1. Done: Codex accepted M6-00..10 at `5e13b97` (`codex-m6-rereview-e5c3169.md`, root, untracked).
 2. Done: M6-11 was measured live (2026-10-26/27) and the owner chose the final D46 caps: about 8 runs per day at measured usage, via request/token caps (policy v5: 180 requests, 1,400,000 tokens); no run counter, in `ie_m6_live`. See `docs/reviews/m6-measurement.md`.
-3. Codex re-reviews `1cedac2..` the M6-11 follow-up (B1, B2, N1, N2), starting with `docs/reviews/m6-measurement.md`. Then comes the M6 merge, which needs its own owner approval. No push without explicit instruction.
+3. Done: Codex accepted the M6-11 follow-up at `571df21`; the owner approved the merge, and `main` was fast-forwarded `d277440` -> `571df21` (2026-10-27).
 4. Owner: when the CLI database (`INVESTMENT_ENGINE_PG_DSN`) is set up, run the same `research budget set` there.
 
 **Earlier (M5, completed): Codex implemented the owner-authorized M5 review fixes; Claude independently reviewed (owner, 2026-10-22).**

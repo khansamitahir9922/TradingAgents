@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **v0.1 accepted for implementation by the owner, 2026-10-25** (D45–D54 as recommended; D47 = USD 0). Codex reviews the finished milestone; the M6-11 live run needs separate approval. |
+| Status | **Done: merged into `main` at `571df21` (2026-10-27).** v0.1 was accepted for implementation by the owner on 2026-10-25 (D45–D54 as recommended; D47 = USD 0). Codex accepted the milestone at `571df21`, and the owner approved the merge. |
 | Author | Claude Code (implementation lead) |
 | Planning branch | `docs/m6-specs`, worktree `C:/Users/LOQ/TradingAgents-m6-specs`, from `main` `d277440` (M5 merged locally 2026-10-25, not pushed) |
 | Prerequisites | M5 merged ✔; **OPEN-10 and OPEN-11 decided (D45–D48 below)**; this pack reviewed and accepted |
