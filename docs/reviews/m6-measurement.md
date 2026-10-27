@@ -5,7 +5,7 @@
 | Dates | 2026-10-26 and 2026-10-27 (UTC); NVDA (`EQ_US_NVDA`); research date 2026-10-26 for all three runs |
 | Code | `m6/milestone` at `5e13b97` (recorded `code_version`); upstream TradingAgents 0.6.0 |
 | Database | Dedicated local PostgreSQL database `ie_m6_live` (owner's choice), kept as evidence. It holds only these runs and their budget policies. |
-| Status | **Measured.** Three owner-approved single attempts. The first two failed on Google 503 UNAVAILABLE at the first deep-model call. The third succeeded end to end: 21 requests, 132,246 / 12,078 tokens, 17 tool calls, 8 min 39 s. **The owner chose the final D46 caps (8 runs per day), set as budget policy v4** (see the end of this document). |
+| Status | **Measured.** Three owner-approved single attempts. The first two failed on Google 503 UNAVAILABLE at the first deep-model call. The third succeeded end to end: 21 requests, 132,246 / 12,078 tokens, 17 tool calls, 8 min 39 s. **The owner chose about 8 runs per day. That is enforced through the request and token caps of budget policy v5; there is no run counter** (see the end of this document). |
 | Snapshot precision | Input snapshots use pandas `to_json` at its default of 10 decimal places. They are not a lossless copy (Codex re-review note). |
 
 ## Owner approvals and setup
@@ -112,17 +112,33 @@ Observations:
 - **Proposed daily caps:** 8 runs, so **240 requests and 2,000,000 tokens per UTC day** (8 × 250,000). This assumes nothing else uses the 3.8 Flash daily quota; the other usage seen in AI Studio makes this optimistic. A more cautious choice is 4 runs (120 requests, 1,000,000 tokens).
 - These are free-tier Gemini numbers (D47 = USD 0). They must be re-measured if the provider changes.
 
-**Owner decision (2026-10-27): "8 runs".** Set by Admin `owner` as **budget policy v4** in `ie_m6_live` at 2026-10-27T00:48:47Z: 240 requests and 2,000,000 tokens per UTC day, with a reservation of 30 requests and 250,000 tokens per run. The owner's own CLI database (`INVESTMENT_ENGINE_PG_DSN`) is not set up yet. When it is, the same `research budget set` command must be run there; a budget does not carry between databases.
+**Owner decision (2026-10-27): "8 runs".** It was first set as budget policy v4 at 2026-10-27T00:48:47Z: 240 requests and 2,000,000 tokens per UTC day, with a reservation of 30 requests and 250,000 tokens per run.
+
+**Correction (Codex M6-11 review B2).** v4 did not enforce 8 runs. The budget has no run counter. It reserves 30 requests and 250,000 tokens per run, then **replaces the reservation with the measured usage** when the run finishes. At the measured 21 requests and 144,324 tokens per run, v4 admits 11 runs: run 11 sees 10 × 21 + 30 = 240 requests. The owner chose to keep request and token caps sized for **about 8 runs at measured usage**, with no new code. That is **budget policy v5**, set at 2026-10-27T01:52:58Z: **180 requests and 1,400,000 tokens per UTC day**, with the same reservation of 30 requests and 250,000 tokens.
+
+| At measured usage (21 requests, 144,324 tokens per run) | Requests seen at admission | Tokens seen at admission | Result |
+|---|---|---|---|
+| Run 8 | 7 × 21 + 30 = 177 ≤ 180 | 7 × 144,324 + 250,000 = 1,260,268 ≤ 1,400,000 | admitted |
+| Run 9 | 8 × 21 + 30 = 198 > 180 | 8 × 144,324 + 250,000 = 1,404,592 > 1,400,000 | refused |
+
+**This is not an exact run limit.** If runs use fewer requests or tokens than measured, a ninth (or later) run can be admitted. An exact count would need a reviewed run-count field in the budget, which the owner did not choose. Google's own limit on `gemini-3.8-flash` (20 requests per day per project, 2 per run, shared with other usage) remains a separate, provider-side bound.
+
+The owner's own CLI database (`INVESTMENT_ENGINE_PG_DSN`) is not set up yet. When it is, the same `research budget set` command (v5 values) must be run there; a budget does not carry between databases.
 
 ## Checks
 
-- Live run evidence: `tests/engine/test_research_live.py` is marked integration, so the default run excludes it (2 deselected).
-- With `-m integration`, the run's database as `INVESTMENT_ENGINE_PG_DSN` and `INVESTMENT_ENGINE_M6_LIVE_RUN_ID=rrn-8f8641c8…`: **2 passed**. The worker refuses to start without `research_worker.env`, and this document's requests, tokens and tool calls match the stored record.
-- Red check: the same document test pointed at the failed attempt-2 run: 1 failed.
-- `ruff check`: passed.
+Run from `C:/Users/LOQ/TradingAgents-m6` with `C:/Users/LOQ/TradingAgents/.venv/Scripts/python.exe` (shown as `python`). Environment variables are named; their values are never recorded.
+
+| Command | Result |
+|---|---|
+| `python -m pytest -q -p no:cacheprovider tests/engine/test_research_live.py` (default selection) | The 2 integration tests are deselected. At `1cedac2`, this file alone selected nothing, so pytest exited 5. Now the 2 canary tests run: **2 passed, 2 deselected**. |
+| Same, with `-m integration`, `INVESTMENT_ENGINE_PG_DSN` set to the `ie_m6_live` DSN (the driver strips `ANTHROPIC_API_KEY`) and `INVESTMENT_ENGINE_M6_LIVE_RUN_ID=rrn-8f8641c8c23457563742f75dd10cf9b1b5e0c5449acebabc6e5e6e3c3b3f6a00` | **2 passed, 2 deselected**: the worker refuses without `research_worker.env`, and this document matches the stored record. |
+| Same integration selection of `::test_the_measurement_document_matches_the_stored_record`, with `INVESTMENT_ENGINE_M6_LIVE_RUN_ID` set to the failed attempt-2 run `rrn-e77cdcd5…` (red check) | 1 failed |
+| B1 canary regression `::test_a_failing_evidence_connection_never_prints_the_password` (default and `-l --tb=long -rA`), before the fix | **2 failed**: the canary password appeared in the driver's normalized connection text |
+| Same, after the fix | **2 passed** |
+| `python -m ruff check .` | All checks passed |
 
 ## Not established
 
 - Whether the 503s reflect general demand or free-tier deprioritization. Both deep-model calls failed the same way within four minutes; no more calls were made to find out.
-- Free-tier quotas for the project (AI Studio).
-- Final D46 caps: not proposed until a complete run is measured.
+- The project's free-tier quotas were read from the owner's AI Studio screen, not from a signed-in check of our own. They are attributed to the owner's observation.

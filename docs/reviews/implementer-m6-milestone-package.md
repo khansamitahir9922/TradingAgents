@@ -47,7 +47,7 @@
   - A dedicated run database, `ie_m6_live`.
   - `ANTHROPIC_API_KEY` is kept at user level but stripped from the worker process.
   - Attempts used: one approved attempt; one more the same day with deep model `gemini-3.6-flash`, which needed budget v2; then up to three scheduled tries with budget v3, where the first succeeded and the other two were cancelled.
-  - Final caps: 8 runs per day (budget v4).
+  - Final caps: about 8 runs per day at measured usage, through request and token caps (budget v5: 180 requests and 1,400,000 tokens per UTC day). There is no run counter, so this is not an exact limit. v4 (240 requests and 2,000,000 tokens) would have admitted 11 runs (Codex M6-11 review B2).
 - **One-attempt control:** before every attempt, no other process was running and the job was the only claimable one; each attempt was a single `--once` step. The budget was a secondary safeguard only.
 
 ## Open issues carried

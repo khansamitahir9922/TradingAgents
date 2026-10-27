@@ -10,7 +10,7 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 |---|---|
 | **Milestone** | M0/M2/M3/M4/**M5 complete locally**. Claude independently accepted M5 at `d277440` (`docs/reviews/claude-m5-rereview2-d277440.md`, root checkout); the owner approved the merge. **M6 accepted for implementation** (D45–D54, 2026-10-25). M1 15/18, hourly blocked. |
 | **`main`** | `d27744094bf9cb69247a612fbb08338fbd892870`; owner-approved fast-forward from `5cd9363` (2026-10-25); not pushed. |
-| **Current work** | **M6-00 to M6-10 committed (checked) on `m6/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m6`), **plus 14 review-fix commits `e312999..e5c3169`** answering Codex's M6 review (B1–B11, N1–N6) and re-review (R1–R3). Package checks passed on `e5c3169`: both shells 3968 passed, baseline failure only; fresh installs passed. Codex accepted M6-00..10 at `5e13b97`. Owner approved the M6-only scope extensions, including migration 0022 (2026-10-26). **M6-11 measured** (2026-10-27): the third owner-approved attempt succeeded, and the owner set 8 runs per day. The M6-11 commit awaits Codex's review; the merge needs the owner's approval. Nothing merged or pushed. |
+| **Current work** | **M6-00 to M6-10 committed (checked) on `m6/milestone`** (worktree `C:/Users/LOQ/TradingAgents-m6`), **plus 14 review-fix commits `e312999..e5c3169`** answering Codex's M6 review (B1–B11, N1–N6) and re-review (R1–R3). Package checks passed on `e5c3169`: both shells 3968 passed, baseline failure only; fresh installs passed. Codex accepted M6-00..10 at `5e13b97`. Owner approved the M6-only scope extensions, including migration 0022 (2026-10-26). **M6-11 measured** (2026-10-27): the third owner-approved attempt succeeded, and the owner chose about 8 runs per day at measured usage, via request/token caps (policy v5: 180 requests, 1,400,000 tokens); no run counter. Codex's M6-11 review B1 (live-test password redaction) and B2 (8-run claim) are fixed in a follow-up awaiting re-review; the merge needs the owner's approval. Nothing merged or pushed. |
 | **Previous state (2026-10-24)** | M5 deadline-test correction at `29ee1a0`; both full suites and fresh installs passed with baseline failures only; R1/R2 then accepted by Claude's re-review. |
 | **Package name** | `investment_engine`, confirmed by the owner; public branding remains separate. |
 | **Runtime code** | M5 implementation isolated in `C:/Users/LOQ/TradingAgents-m5`; task commits and follow-up regressions below. Frozen architecture changes are accepted ADR-010 cross-references only; diagrams unchanged. Production accounting integration is task M5-10. |
@@ -32,8 +32,8 @@ The handoff log, shared by Claude Code, Codex and the owner. Update it at the en
 **M6 (2026-10-26): Claude implements; Codex reviews.**
 
 1. Done: Codex accepted M6-00..10 at `5e13b97` (`codex-m6-rereview-e5c3169.md`, root, untracked).
-2. Done: M6-11 was measured live (2026-10-26/27) and the owner set the final D46 caps (8 runs per day, policy v4 in `ie_m6_live`). See `docs/reviews/m6-measurement.md`.
-3. Codex reviews the M6-11 commit, starting with `docs/reviews/m6-measurement.md`. Then comes the M6 merge, which needs its own owner approval. No push without explicit instruction.
+2. Done: M6-11 was measured live (2026-10-26/27) and the owner chose the final D46 caps: about 8 runs per day at measured usage, via request/token caps (policy v5: 180 requests, 1,400,000 tokens); no run counter, in `ie_m6_live`. See `docs/reviews/m6-measurement.md`.
+3. Codex re-reviews `1cedac2..` the M6-11 follow-up (B1, B2, N1, N2), starting with `docs/reviews/m6-measurement.md`. Then comes the M6 merge, which needs its own owner approval. No push without explicit instruction.
 4. Owner: when the CLI database (`INVESTMENT_ENGINE_PG_DSN`) is set up, run the same `research budget set` there.
 
 **Earlier (M5, completed): Codex implemented the owner-authorized M5 review fixes; Claude independently reviewed (owner, 2026-10-22).**
@@ -129,7 +129,7 @@ Report directional accuracy against the base rate, and the information coefficie
 ## Open issues and decisions
 | Item | Owner | Needed by |
 |---|---|---|
-| ~~M6-11: one measured live run (OPEN-10)~~ **Measured 2026-10-27; caps set (8 runs per day, policy v4 in `ie_m6_live`).** Remaining items:<br>• The owner's CLI database is not set up; the same budget command must be run there.<br>• Something else uses the Google project's shared free quotas (seen in AI Studio).<br>• The quick model peaked at 14 of 15 requests per minute, and M6 has no per-minute limiter.<br>• Deep calls took about 4 minutes each.<br>• `research show` prints the cache-origin warning twice (cosmetic).<br>• `ANTHROPIC_API_KEY` remains a user-level variable, stripped from the worker's process only (owner decision). | Owner / implementer | Before relying on research daily |
+| ~~M6-11: one measured live run (OPEN-10)~~ **Measured 2026-10-27; caps set: about 8 runs per day at measured usage, via request/token caps (policy v5: 180 requests, 1,400,000 tokens); no run counter.** Remaining items:<br>• The owner's CLI database is not set up; the same budget command must be run there.<br>• Something else uses the Google project's shared free quotas (seen in AI Studio).<br>• The quick model peaked at 14 of 15 requests per minute, and M6 has no per-minute limiter.<br>• Deep calls took about 4 minutes each.<br>• `research show` prints the cache-origin warning twice (cosmetic).<br>• `ANTHROPIC_API_KEY` remains a user-level variable, stripped from the worker's process only (owner decision). | Owner / implementer | Before relying on research daily |
 | **M6 residual: ledger tables have no database writer-role guard.** OMS tables refuse the research process role in SQL; the M5 ledger tables accept any role, so research code is kept off the ledger by code structure and layering rules only. Adding ledger role triggers is a separate additive ledger migration. | Implementer/reviewer | Before M7 production wiring |
 | **M6 residual: an abandoned past-deadline research run may keep consuming quota** until its thread returns; its reservation stays counted and actual usage is unknown. The worker starts nothing new meanwhile. Measure in M6-11 whether provider calls can be cancelled. | Implementer | M6-11 |
 | **CHECK-1, corrected and checked:** owner-approved deadline-test correction committed at `29ee1a0`; 20 focused tests and both final full suites pass that test. It checks the actual 10s wait and withheld answer, not a whole-command 200ms margin. Wrong-timeout/accepted-ACK mutations are rejected. Earlier failed runs remain recorded. Independent review pending; production worker code unchanged. | Claude reviewer | Final M5 review |
@@ -176,6 +176,13 @@ Report directional accuracy against the base rate, and the information coefficie
 ---
 
 ## Session log
+
+### 2026-10-27: Claude Code (M6-11 review fixes)
+- Codex M6-11 review (`codex-m6-11-review-1cedac2.md`, root, untracked): B1, B2, N1, N2.
+- B1: the evidence test now remembers its DSN (and password) with the engine harness's report scrubber before connecting, and holds it as a SecretDsn. New unit regression `test_a_failing_evidence_connection_never_prints_the_password` (default and `-l --tb=long -rA`) runs the real integration test in a child pytest against a fake loopback DSN on port 1 with a canary password. Red before the fix: 2 failed, with the canary in the driver's normalized conninfo. Green after: 2 passed.
+- B2: the owner chose (2026-10-27) to keep request/token caps sized for about 8 runs, with no run counter. Budget policy v5 in `ie_m6_live`: 180 requests and 1,400,000 tokens per UTC day, reservation 30/250,000. At measured usage, run 9 is refused on both caps. All 8-run claims are corrected to say it is not an exact run limit.
+- N1: stale 'not established' lines removed. N2: exact commands recorded in `docs/reviews/m6-measurement.md` (Checks).
+- Checks: `python -m pytest -q -p no:cacheprovider tests/engine/test_research_live.py`: 2 passed, 2 deselected. The same with `-m integration` against `ie_m6_live` and the run ID: 2 passed, 2 deselected. `python -m ruff check .`: passed. No production code changed; full suites not rerun.
 
 ### 2026-10-27: Claude Code (M6-11)
 - The live measurement is done: OPEN-10 is measured, and the owner set the final D46 caps. The full record is in `docs/reviews/m6-measurement.md`.
